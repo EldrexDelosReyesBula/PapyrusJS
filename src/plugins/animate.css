@@ -1,0 +1,71 @@
+/* PAPER ANIMATE CSS */
+.papyr-animate-base {
+    opacity: 0;
+    will-change: transform, opacity;
+    animation-duration: 0.8s;
+    animation-timing-function: cubic-bezier(0.165, 0.84, 0.44, 1);
+    animation-fill-mode: forwards;
+}
+
+.animated {
+    opacity: 1; /* fallback if animation fails */
+}
+
+/* Entrance Animations */
+.animate-fade-in { animation-name: papyr-fade-in; }
+@keyframes papyr-fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.animate-slide-up { animation-name: papyr-slide-up; }
+@keyframes papyr-slide-up {
+    from { opacity: 0; transform: translateY(40px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-slide-down { animation-name: papyr-slide-down; }
+@keyframes papyr-slide-down {
+    from { opacity: 0; transform: translateY(-40px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-zoom-in { animation-name: papyr-zoom-in; }
+@keyframes papyr-zoom-in {
+    from { opacity: 0; transform: scale(0.85); }
+    to { opacity: 1; transform: scale(1); }
+}
+
+.animate-bounce { animation-name: papyr-bounce; animation-timing-function: cubic-bezier(0.28, 0.84, 0.42, 1); }
+@keyframes papyr-bounce {
+    0% { opacity: 0; transform: scale(0.3); }
+    50% { opacity: 1; transform: scale(1.05); }
+    70% { transform: scale(0.9); }
+    100% { opacity: 1; transform: scale(1); }
+}
+
+/* Interactive Hover Animations */
+.hover-grow {
+    transition: transform 0.3s cubic-bezier(0.165, 0.84, 0.44, 1);
+}
+.hover-grow:hover {
+    transform: scale(1.05);
+}
+
+.hover-lift {
+    transition: transform 0.3s cubic-bezier(0.165, 0.84, 0.44, 1), box-shadow 0.3s;
+}
+.hover-lift:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+}
+
+/* Reduce motion accessibility */
+@media (prefers-reduced-motion: reduce) {
+    .papyr-animate-base, .hover-grow, .hover-lift {
+        animation: none !important;
+        transition: none !important;
+        transform: none !important;
+        opacity: 1 !important;
+    }
+}

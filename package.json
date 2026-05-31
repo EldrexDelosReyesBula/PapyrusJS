@@ -1,0 +1,39 @@
+{
+  "name": "papyr-js",
+  "version": "3.0.0",
+  "description": "Ultra-lightweight static site compiler library with built-in automatic reactivity, SPA router, custom ciphers, and IndexedDB CRUD engine.",
+  "main": "papyr.js",
+  "module": "papyr.esm.js",
+  "types": "papyr.d.ts",
+  "files": [
+    "papyr.js",
+    "papyr-complete.js",
+    "papyr-core.js",
+    "papyr-ui.js",
+    "papyr-advanced.js",
+    "papyr.esm.js",
+    "papyr-complete.esm.js",
+    "papyr-plugins.js",
+    "papyr.d.ts",
+    "README.md",
+    "DOCS.md"
+  ],
+  "scripts": {
+    "build": "node build.js",
+    "test": "echo \"No tests specified\""
+  },
+  "keywords": [
+    "reactive",
+    "vanilla-js",
+    "dom-builder",
+    "indexeddb-crud",
+    "glassmorphism",
+    "static-site",
+    "aes-gcm"
+  ],
+  "author": "Eldrex Bula & Papyr Contributors",
+  "license": "MIT",
+  "devDependencies": {
+    "uglify-js": "^3.19.3"
+  }
+}
