@@ -1,0 +1,38 @@
+# Generated bundles
+papyr.js
+papyr-complete.js
+papyr-plugins.js
+
+# Build artifacts
+/dist/
+/build/
+
+# Scratch and temporary files
+scratch/
+*.tmp
+*~
+
+# Node/npm artifacts
+node_modules/
+npm-debug.log*
+yarn-error.log*
+yarn-debug.log*
+package-lock.json
+
+# Python artifacts
+__pycache__/
+*.py[cod]
+*.pyo
+.python-version
+
+# Editor and OS files
+.vscode/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+
+# Coverage
+coverage/
