@@ -49,9 +49,22 @@
             if (typeof window !== 'undefined' && 'caches' in window) {
                 try {
                     const cache = await window.caches.open(cacheName);
-                    // Filter down to valid HTTP/HTTPS endpoints to prevent local file protocol failures
-                    const validUrls = assetsToCache.filter(url => url.startsWith('http') || url.startsWith('/'));
-                    await cache.addAll(validUrls);
+                    // Filter and deduplicate to valid HTTP/HTTPS endpoints to prevent local file protocol failures and duplicate requests error
+                    const resolvedUrls = [];
+                    assetsToCache.forEach(url => {
+                        try {
+                            const resolved = new URL(url, window.location.href);
+                            if (resolved.protocol === 'http:' || resolved.protocol === 'https:') {
+                                resolvedUrls.push(resolved.href);
+                            }
+                        } catch (e) {
+                            // ignore invalid URLs
+                        }
+                    });
+                    const uniqueUrls = Array.from(new Set(resolvedUrls));
+                    await Promise.allSettled(uniqueUrls.map(url => cache.add(url).catch(err => {
+                        console.warn(`[PWA Cache] Failed to cache URL: ${url}`, err);
+                    })));
                     papyr.log('PWA: Successfully pre-cached core assets offline including library bundles.');
                 } catch(err) {
                     papyr.warn('PWA Cache storage warning (skipping local file protocols):', err);
@@ -70,8 +83,19 @@
                     };
                     dbRequest.onsuccess = (e) => {
                         const db = e.target.result;
-                        assetsToCache.forEach(async (url) => {
-                            if (!url.startsWith('http') && !url.startsWith('/')) return;
+                        
+                        const resolvedUrls = [];
+                        assetsToCache.forEach(url => {
+                            try {
+                                const resolved = new URL(url, window.location.href);
+                                if (resolved.protocol === 'http:' || resolved.protocol === 'https:') {
+                                    resolvedUrls.push(resolved.href);
+                                }
+                            } catch (err) {}
+                        });
+                        const uniqueUrls = Array.from(new Set(resolvedUrls));
+
+                        uniqueUrls.forEach(async (url) => {
                             try {
                                 const response = await fetch(url);
                                 if (!response.ok) return;

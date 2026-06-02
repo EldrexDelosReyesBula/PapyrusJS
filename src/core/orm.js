@@ -59,7 +59,7 @@ coreInitializers.push((papyr) => {
     function modelWrapper(stateOrData) {
         if (new.target) {
             // Called with 'new' - acts as the ORM class constructor
-            return new PapyrModel(stateOrData);
+            Object.assign(this, stateOrData || {});
         } else {
             // Called as a function - acts as the reactivity model mixin
             return {
@@ -67,7 +67,7 @@ coreInitializers.push((papyr) => {
                 oninput: (e) => {
                     if (e.target.type === 'checkbox') {
                         stateOrData.value = e.target.checked;
-                    } else if (e.target.type === 'number') {
+                    } else if (e.target.type === 'number' || e.target.type === 'range') {
                         stateOrData.value = parseFloat(e.target.value) || 0;
                     } else {
                         stateOrData.value = e.target.value;

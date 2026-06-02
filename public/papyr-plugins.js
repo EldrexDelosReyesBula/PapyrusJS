@@ -987,55 +987,65 @@
             };
 
             // Dynamic spring physics-based button builder
-            kernel.button = (text, options = {}) => {
-                const isSecondary = options.variant === 'secondary';
+            kernel.button = (...args) => {
+                let processedArgs = [...args];
+                let isSecondary = false;
                 
-                const btnStyle = {
-                    padding: '12px 24px',
-                    fontSize: '15px',
-                    fontWeight: '600',
-                    borderRadius: '8px',
-                    cursor: 'pointer',
-                    outline: 'none',
-                    border: isSecondary ? '1px solid rgba(255,255,255,0.2)' : 'none',
-                    background: isSecondary ? 'rgba(255,255,255,0.05)' : 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
-                    color: '#ffffff',
-                    transition: 'transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275), box-shadow 0.2s ease, opacity 0.2s ease',
-                    boxShadow: isSecondary ? 'none' : '0 4px 12px rgba(99, 102, 241, 0.3)',
-                };
-
-                const userStyle = options.style || {};
-                const finalStyle = Object.assign({}, btnStyle, userStyle);
-
-                const btn = kernel('button', {
-                    style: finalStyle,
-                    class: options.class || '',
-                    on: {
-                        mouseenter() {
-                            btn.style.transform = 'scale(1.05)';
-                            if (!isSecondary) {
-                                btn.style.boxShadow = '0 6px 20px rgba(99, 102, 241, 0.5)';
-                            }
-                        },
-                        mouseleave() {
-                            btn.style.transform = 'scale(1)';
-                            if (!isSecondary) {
-                                btn.style.boxShadow = '0 4px 12px rgba(99, 102, 241, 0.3)';
-                            }
-                        },
-                        mousedown() {
-                            btn.style.transform = 'scale(0.95)';
-                        },
-                        mouseup() {
-                            btn.style.transform = 'scale(1.05)';
-                        }
+                // If the first argument is a string and it is not a selector,
+                // e.g. kernel.button("Click Me", options)
+                // then swap them so text/child comes after options object
+                if (args.length > 0 && typeof args[0] === 'string' && !args[0].startsWith('.') && !args[0].startsWith('#')) {
+                    if (args.length === 1) {
+                        processedArgs = [args[0]];
+                    } else if (args.length === 2 && typeof args[1] === 'object' && args[1] !== null) {
+                        processedArgs = [args[1], args[0]];
+                        if (args[1].variant === 'secondary') isSecondary = true;
                     }
-                }, text);
-
-                if (options.on && options.on.click) {
-                    btn.addEventListener('click', options.on.click);
+                } else if (args.length > 1 && typeof args[1] === 'object' && args[1] !== null) {
+                    if (args[1].variant === 'secondary') isSecondary = true;
                 }
 
+                const btn = kernel('button', ...processedArgs);
+                
+                // Apply default styles if not already set on btn.style
+                if (!btn.style.padding) btn.style.padding = '12px 24px';
+                if (!btn.style.fontSize) btn.style.fontSize = '15px';
+                if (!btn.style.fontWeight) btn.style.fontWeight = '600';
+                if (!btn.style.borderRadius) btn.style.borderRadius = '8px';
+                if (!btn.style.cursor) btn.style.cursor = 'pointer';
+                if (!btn.style.outline) btn.style.outline = 'none';
+                if (btn.style.border === undefined || btn.style.border === '') {
+                    btn.style.border = isSecondary ? '1px solid rgba(255,255,255,0.2)' : 'none';
+                }
+                if (btn.style.background === undefined || btn.style.background === '') {
+                    btn.style.background = isSecondary ? 'rgba(255,255,255,0.05)' : 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)';
+                }
+                if (!btn.style.color) btn.style.color = '#ffffff';
+                if (!btn.style.transition) btn.style.transition = 'transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275), box-shadow 0.2s ease, opacity 0.2s ease';
+                if (btn.style.boxShadow === undefined || btn.style.boxShadow === '') {
+                    btn.style.boxShadow = isSecondary ? 'none' : '0 4px 12px rgba(99, 102, 241, 0.3)';
+                }
+                
+                // Add scale & spring animations on mouse events
+                btn.addEventListener('mouseenter', () => {
+                    btn.style.transform = 'scale(1.05)';
+                    if (!isSecondary) {
+                        btn.style.boxShadow = '0 6px 20px rgba(99, 102, 241, 0.5)';
+                    }
+                });
+                btn.addEventListener('mouseleave', () => {
+                    btn.style.transform = 'scale(1)';
+                    if (!isSecondary) {
+                        btn.style.boxShadow = '0 4px 12px rgba(99, 102, 241, 0.3)';
+                    }
+                });
+                btn.addEventListener('mousedown', () => {
+                    btn.style.transform = 'scale(0.95)';
+                });
+                btn.addEventListener('mouseup', () => {
+                    btn.style.transform = 'scale(1.05)';
+                });
+                
                 return btn;
             };
         }
@@ -1919,9 +1929,22 @@
             if (typeof window !== 'undefined' && 'caches' in window) {
                 try {
                     const cache = await window.caches.open(cacheName);
-                    // Filter down to valid HTTP/HTTPS endpoints to prevent local file protocol failures
-                    const validUrls = assetsToCache.filter(url => url.startsWith('http') || url.startsWith('/'));
-                    await cache.addAll(validUrls);
+                    // Filter and deduplicate to valid HTTP/HTTPS endpoints to prevent local file protocol failures and duplicate requests error
+                    const resolvedUrls = [];
+                    assetsToCache.forEach(url => {
+                        try {
+                            const resolved = new URL(url, window.location.href);
+                            if (resolved.protocol === 'http:' || resolved.protocol === 'https:') {
+                                resolvedUrls.push(resolved.href);
+                            }
+                        } catch (e) {
+                            // ignore invalid URLs
+                        }
+                    });
+                    const uniqueUrls = Array.from(new Set(resolvedUrls));
+                    await Promise.allSettled(uniqueUrls.map(url => cache.add(url).catch(err => {
+                        console.warn(`[PWA Cache] Failed to cache URL: ${url}`, err);
+                    })));
                     papyr.log('PWA: Successfully pre-cached core assets offline including library bundles.');
                 } catch(err) {
                     papyr.warn('PWA Cache storage warning (skipping local file protocols):', err);
@@ -1940,8 +1963,19 @@
                     };
                     dbRequest.onsuccess = (e) => {
                         const db = e.target.result;
-                        assetsToCache.forEach(async (url) => {
-                            if (!url.startsWith('http') && !url.startsWith('/')) return;
+                        
+                        const resolvedUrls = [];
+                        assetsToCache.forEach(url => {
+                            try {
+                                const resolved = new URL(url, window.location.href);
+                                if (resolved.protocol === 'http:' || resolved.protocol === 'https:') {
+                                    resolvedUrls.push(resolved.href);
+                                }
+                            } catch (err) {}
+                        });
+                        const uniqueUrls = Array.from(new Set(resolvedUrls));
+
+                        uniqueUrls.forEach(async (url) => {
                             try {
                                 const response = await fetch(url);
                                 if (!response.ok) return;
@@ -2311,7 +2345,7 @@
  * Pops up a custom, accessible glassmorphic consent dashboard before native browser triggers execute.
  */
 
-(function() {
+(function () {
     // Check if papyr exists
     if (typeof papyr === 'undefined') {
         console.warn("Papyr core not detected. WATT requires papyr core to run.");
@@ -2323,13 +2357,13 @@
             geolocation: typeof navigator !== 'undefined' && navigator.geolocation ? navigator.geolocation.getCurrentPosition : null,
             getUserMedia: typeof navigator !== 'undefined' && navigator.mediaDevices ? navigator.mediaDevices.getUserMedia : null
         },
-        
+
         // Global developer custom configuration state
         config: {
             branding: { title: "Privacy Guard", primaryColor: "#6366f1" },
             reason: "This app requires secure access to fulfill its baseline function.",
             labels: { accept: "Allow Access", deny: "Ask App Not to Track", linkText: "Learn more about our privacy commitment" },
-            link: "https://landecs.online/privacy"
+            link: "https://eldrex.landecs.org/privacy"
         },
 
         configure(customSettings) {
@@ -2366,7 +2400,7 @@
             // 1. Geolocation Interception
             if (navigator.geolocation && this._originalApis.geolocation) {
                 const self = this;
-                navigator.geolocation.getCurrentPosition = function(successCb, errorCb, options) {
+                navigator.geolocation.getCurrentPosition = function (successCb, errorCb, options) {
                     self.triggerWattPrompt("Location Data", () => {
                         self._originalApis.geolocation.call(navigator.geolocation, successCb, errorCb, options);
                     }, () => {
@@ -2378,7 +2412,7 @@
             // 2. Camera & Microphone getUserMedia Interception
             if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia && this._originalApis.getUserMedia) {
                 const self = this;
-                navigator.mediaDevices.getUserMedia = function(constraints) {
+                navigator.mediaDevices.getUserMedia = function (constraints) {
                     return new Promise((resolve, reject) => {
                         self.triggerWattPrompt("Camera & Microphone Access", () => {
                             self._originalApis.getUserMedia.call(navigator.mediaDevices, constraints)
@@ -2398,7 +2432,7 @@
                 onDeny();
                 return;
             }
-            
+
             // Construct the modal dynamically utilizing standard Papyr UI tags
             const wattModal = papyr.div('.papyr-card.papyr-watt-box', {
                 role: 'dialog',
@@ -2418,9 +2452,9 @@
                     font-family: inherit;
                 `
             },
-                papyr.title(`🔒 ${this.config.branding.title}`, { style: "font-size: 20px; margin-bottom: 12px; font-weight: 700; color: #fff;" }),
+                papyr.h3(`🔒 ${this.config.branding.title}`, { style: "font-size: 20px; margin-bottom: 12px; font-weight: 700; color: #fff;" }),
                 papyr.muted(`wants to access your **${capabilityName}**. ${this.config.reason}`, { style: "color: #cbd5e1; font-size: 0.95rem; line-height: 1.5;" }),
-                
+
                 papyr.flex.row({ style: "margin-top: 24px; justify-content: flex-end; gap: 12px;" },
                     papyr.button(this.config.labels.deny, {
                         style: "background: rgba(239, 68, 68, 0.1); color: #ef4444; border: 1px solid rgba(239,68,68,0.25); padding: 10px 18px; border-radius: 12px; cursor: pointer; font-family: inherit;",
@@ -2431,12 +2465,12 @@
                         onclick: () => { wattModal.remove(); onAllow(); }
                     })
                 ),
-                
+
                 papyr.div({ style: "margin-top: 16px; text-align: center;" },
-                    papyr.a(this.config.labels.linkText, { 
-                        href: this.config.link, 
+                    papyr.a(this.config.labels.linkText, {
+                        href: this.config.link,
                         target: "_blank",
-                        style: "font-size: 11px; color: #94a3b8; text-decoration: underline;" 
+                        style: "font-size: 11px; color: #94a3b8; text-decoration: underline;"
                     })
                 )
             );
@@ -2445,15 +2479,15 @@
         },
 
         requestTracking(options = {}) {
-            const { purpose = "We use data to personalize your experience and keep this app free.", onAllow = () => {}, onDeny = () => {} } = options;
-            
+            const { purpose = "We use data to personalize your experience and keep this app free.", onAllow = () => { }, onDeny = () => { } } = options;
+
             const currentTier = this.getTier();
             if (currentTier === 'none') {
                 if (papyr.security) papyr.security.setConsent(true);
                 onAllow();
                 return Promise.resolve(true);
             }
-            
+
             if (currentTier === 'high') {
                 if (papyr.security) {
                     papyr.security.setConsent(false);
@@ -2462,7 +2496,7 @@
                 onDeny();
                 return Promise.resolve(false);
             }
-            
+
             return new Promise((resolve) => {
                 this.triggerWattPrompt("Personalization Data Usage", () => {
                     if (papyr.security) papyr.security.setConsent(true);
@@ -2840,6 +2874,111 @@
  * v2.0 - Intelligent Three.js bindings, parallax depth, and Canvas2D holographic fallbacks.
  */
 (function(window) {
+    // Isomorphic/reactive value retriever
+    function getValue(val) {
+        if (val && typeof val === 'object' && val.subscribe && 'value' in val) {
+            return val.value;
+        }
+        if (typeof val === 'function') {
+            return val();
+        }
+        return val;
+    }
+
+    // Custom 3D Shape generators for the HTML5 Canvas2D fallback
+    function generateCube(size) {
+        const s = size / 2;
+        const vertices = [
+            {x: -s, y: -s, z: -s}, {x: s, y: -s, z: -s}, {x: s, y: s, z: -s}, {x: -s, y: s, z: -s},
+            {x: -s, y: -s, z: s},  {x: s, y: -s, z: s},  {x: s, y: s, z: s},  {x: -s, y: s, z: s}
+        ];
+        const edges = [
+            [0, 1], [1, 2], [2, 3], [3, 0], // back face
+            [4, 5], [5, 6], [6, 7], [7, 4], // front face
+            [0, 4], [1, 5], [2, 6], [3, 7]  // connections
+        ];
+        return { vertices, edges };
+    }
+
+    function generateSphere(radius, latCount = 8, lonCount = 8) {
+        const vertices = [];
+        const edges = [];
+        for (let lat = 0; lat <= latCount; lat++) {
+            const theta = lat * Math.PI / latCount;
+            const sinTheta = Math.sin(theta);
+            const cosTheta = Math.cos(theta);
+            
+            for (let lon = 0; lon < lonCount; lon++) {
+                const phi = lon * 2 * Math.PI / lonCount;
+                const x = radius * sinTheta * Math.cos(phi);
+                const y = radius * cosTheta;
+                const z = radius * sinTheta * Math.sin(phi);
+                vertices.push({ x, y, z });
+                
+                const currIdx = lat * lonCount + lon;
+                
+                // Connect to next longitude ring
+                const nextLonIdx = lat * lonCount + ((lon + 1) % lonCount);
+                edges.push([currIdx, nextLonIdx]);
+                
+                // Connect to next latitude ring
+                if (lat < latCount) {
+                    const nextLatIdx = (lat + 1) * lonCount + lon;
+                    edges.push([currIdx, nextLatIdx]);
+                }
+            }
+        }
+        return { vertices, edges };
+    }
+
+    function generateTorus(radius, tube, mainSeg = 12, tubeSeg = 8) {
+        const vertices = [];
+        const edges = [];
+        for (let i = 0; i < mainSeg; i++) {
+            const u = i * 2 * Math.PI / mainSeg;
+            const cosU = Math.cos(u);
+            const sinU = Math.sin(u);
+            
+            for (let j = 0; j < tubeSeg; j++) {
+                const v = j * 2 * Math.PI / tubeSeg;
+                const x = (radius + tube * Math.cos(v)) * cosU;
+                const y = (radius + tube * Math.cos(v)) * sinU;
+                const z = tube * Math.sin(v);
+                vertices.push({ x, y, z });
+
+                const currIdx = i * tubeSeg + j;
+                
+                // Connect around tube circle
+                const nextTubeIdx = i * tubeSeg + ((j + 1) % tubeSeg);
+                edges.push([currIdx, nextTubeIdx]);
+                
+                // Connect around torus ring
+                const nextMainIdx = ((i + 1) % mainSeg) * tubeSeg + j;
+                edges.push([currIdx, nextMainIdx]);
+            }
+        }
+        return { vertices, edges };
+    }
+
+    function rotatePoint(x, y, z, rx, ry, rz) {
+        // X-axis rotation
+        let cosX = Math.cos(rx), sinX = Math.sin(rx);
+        let y1 = y * cosX - z * sinX;
+        let z1 = y * sinX + z * cosX;
+
+        // Y-axis rotation
+        let cosY = Math.cos(ry), sinY = Math.sin(ry);
+        let x2 = x * cosY + z1 * sinY;
+        let z2 = -x * sinY + z1 * cosY;
+
+        // Z-axis rotation
+        let cosZ = Math.cos(rz), sinZ = Math.sin(rz);
+        let x3 = x2 * cosZ - y1 * sinZ;
+        let y3 = x2 * sinZ + y1 * cosZ;
+
+        return { x: x3, y: y3, z: z2 };
+    }
+
     // Helper: Smart Three.js WebGL Orchestrator
     function bootThreeJS(canvas, config) {
         try {
@@ -2854,9 +2993,9 @@
             camera.position.z = 5;
 
             // Load environments using lights and particles
-            let particlesGeometry;
+            let particlesMesh;
             if (config.particles) {
-                particlesGeometry = new THREE.BufferGeometry();
+                const particlesGeometry = new THREE.BufferGeometry();
                 const particlesCount = config.environment === 'cyberpunk' ? 400 : 800;
                 const posArray = new Float32Array(particlesCount * 3);
 
@@ -2877,17 +3016,88 @@
                     opacity: 0.8
                 });
 
-                const particlesMesh = new THREE.Points(particlesGeometry, material);
+                particlesMesh = new THREE.Points(particlesGeometry, material);
                 scene.add(particlesMesh);
             }
 
             // Lights
-            const ambientLight = new THREE.AmbientLight(0xffffff, 0.2);
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.3);
             scene.add(ambientLight);
 
             const pointLight = new THREE.PointLight(0x6366f1, 2);
             pointLight.position.set(2, 3, 4);
             scene.add(pointLight);
+
+            const dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
+            dirLight.position.set(-2, 4, 3);
+            scene.add(dirLight);
+
+            // Objects mapping and reactive tracking
+            const meshTrackers = [];
+            if (config.objects && Array.isArray(config.objects)) {
+                config.objects.forEach(obj => {
+                    let geom;
+                    const type = getValue(obj.type);
+                    const size = getValue(obj.size !== undefined ? obj.size : 1);
+                    
+                    if (type === 'cube') {
+                        const width = getValue(obj.width || size);
+                        const height = getValue(obj.height || size);
+                        const depth = getValue(obj.depth || size);
+                        geom = new THREE.BoxGeometry(width, height, depth);
+                    } else if (type === 'sphere') {
+                        const radius = getValue(obj.radius !== undefined ? obj.radius : size);
+                        geom = new THREE.SphereGeometry(radius, 32, 32);
+                    } else if (type === 'torus') {
+                        const radius = getValue(obj.radius !== undefined ? obj.radius : size * 0.8);
+                        const tube = getValue(obj.tube !== undefined ? obj.tube : size * 0.2);
+                        geom = new THREE.TorusGeometry(radius, tube, 16, 100);
+                    } else {
+                        geom = new THREE.BoxGeometry(size, size, size);
+                    }
+
+                    const isWire = getValue(obj.wireframe !== undefined ? obj.wireframe : false);
+                    const matColor = getValue(obj.color || '#6366f1');
+                    const mat = new THREE.MeshStandardMaterial({
+                        color: matColor,
+                        wireframe: isWire,
+                        roughness: 0.3,
+                        metalness: 0.8
+                    });
+
+                    const mesh = new THREE.Mesh(geom, mat);
+                    const pos = getValue(obj.position) || [0, 0, 0];
+                    mesh.position.set(pos[0], pos[1], pos[2]);
+                    scene.add(mesh);
+
+                    const tracker = { mesh, obj };
+                    meshTrackers.push(tracker);
+
+                    // Reactive subscriptions
+                    if (obj.color && typeof obj.color.subscribe === 'function') {
+                        obj.color.subscribe(c => {
+                            mesh.material.color.set(c);
+                        });
+                    }
+                    if (obj.position && typeof obj.position.subscribe === 'function') {
+                        obj.position.subscribe(p => {
+                            if (!tracker.physicsInitialized) {
+                                mesh.position.set(p[0], p[1], p[2]);
+                            }
+                        });
+                    }
+                    if (obj.size && typeof obj.size.subscribe === 'function') {
+                        obj.size.subscribe(s => {
+                            mesh.scale.set(s, s, s);
+                        });
+                    }
+                    if (obj.radius && typeof obj.radius.subscribe === 'function') {
+                        obj.radius.subscribe(r => {
+                            mesh.scale.set(r, r, r);
+                        });
+                    }
+                });
+            }
 
             // Motion tracker
             let mouseX = 0, mouseY = 0;
@@ -2902,13 +3112,66 @@
             const tick = () => {
                 const elapsedTime = clock.getElapsedTime();
 
-                // Rotate particles mesh based on environment
-                if (scene.children[1]) {
-                    scene.children[1].rotation.y = elapsedTime * 0.05;
+                // Rotate particles mesh
+                if (particlesMesh) {
+                    particlesMesh.rotation.y = elapsedTime * 0.05;
                     if (config.environment === 'underwater') {
-                        scene.children[1].rotation.x = Math.sin(elapsedTime * 0.2) * 0.1;
+                        particlesMesh.rotation.x = Math.sin(elapsedTime * 0.2) * 0.1;
                     }
                 }
+
+                // Physics/Gravity Update
+                const gravityActive = getValue(config.gravityActive);
+
+                // Spin and position updates
+                meshTrackers.forEach(t => {
+                    if (gravityActive) {
+                        if (!t.physicsInitialized) {
+                            t.pos = [...(getValue(t.obj.position) || [0, 0, 0])];
+                            t.vel = [
+                                (Math.random() - 0.5) * 0.04,
+                                0.0,
+                                (Math.random() - 0.5) * 0.04
+                            ];
+                            t.physicsInitialized = true;
+                        }
+                        t.vel[1] += -0.005; // gravity acceleration
+                        t.pos[0] += t.vel[0];
+                        t.pos[1] += t.vel[1];
+                        t.pos[2] += t.vel[2];
+
+                        // Collisions
+                        if (t.pos[1] <= -1.8) {
+                            t.pos[1] = -1.8;
+                            t.vel[1] = -t.vel[1] * 0.75; // bounce
+                            t.vel[0] += (Math.random() - 0.5) * 0.01;
+                            t.vel[2] += (Math.random() - 0.5) * 0.01;
+                        }
+                        if (t.pos[1] >= 2.5) {
+                            t.pos[1] = 2.5;
+                            t.vel[1] = -t.vel[1] * 0.75;
+                        }
+                        if (t.pos[0] <= -3.0) { t.pos[0] = -3.0; t.vel[0] = -t.vel[0] * 0.9; }
+                        if (t.pos[0] >= 3.0) { t.pos[0] = 3.0; t.vel[0] = -t.vel[0] * 0.9; }
+                        if (t.pos[2] <= -2.0) { t.pos[2] = -2.0; t.vel[2] = -t.vel[2] * 0.9; }
+                        if (t.pos[2] >= 2.0) { t.pos[2] = 2.0; t.vel[2] = -t.vel[2] * 0.9; }
+
+                        t.mesh.position.set(t.pos[0], t.pos[1], t.pos[2]);
+                    } else {
+                        if (t.physicsInitialized) {
+                            const origPos = getValue(t.obj.position) || [0, 0, 0];
+                            t.mesh.position.set(origPos[0], origPos[1], origPos[2]);
+                            t.physicsInitialized = false;
+                            t.pos = null;
+                            t.vel = null;
+                        }
+                    }
+
+                    const spin = getValue(t.obj.spin) || [0, 0, 0];
+                    t.mesh.rotation.x += getValue(spin[0]);
+                    t.mesh.rotation.y += getValue(spin[1]);
+                    t.mesh.rotation.z += getValue(spin[2]);
+                });
 
                 // Smooth camera depth panning
                 if (config.depth) {
@@ -2925,13 +3188,15 @@
             // Resize support
             window.addEventListener('resize', () => {
                 const parent = canvas.parentElement;
-                const newW = parent.clientWidth;
-                const newH = parent.clientHeight;
-                canvas.width = newW;
-                canvas.height = newH;
-                camera.aspect = newW / newH;
-                camera.updateProjectionMatrix();
-                renderer.setSize(newW, newH);
+                if (parent) {
+                    const newW = parent.clientWidth;
+                    const newH = parent.clientHeight;
+                    canvas.width = newW;
+                    canvas.height = newH;
+                    camera.aspect = newW / newH;
+                    camera.updateProjectionMatrix();
+                    renderer.setSize(newW, newH);
+                }
             });
         } catch (e) {
             console.warn("Three.js WebGL context initialization failed, falling back to Canvas2D.", e);
@@ -3001,6 +3266,18 @@
 
         // 3D holographic rendering loop
         const draw = () => {
+            // Check and update backing store size to match CSS display size perfectly
+            const rect = canvas.getBoundingClientRect();
+            const displayW = Math.floor(rect.width) || 300;
+            const displayH = Math.floor(rect.height) || 300;
+            if (canvas.width !== displayW || canvas.height !== displayH) {
+                canvas.width = displayW;
+                canvas.height = displayH;
+                w = displayW;
+                h = displayH;
+                initParticles();
+            }
+
             ctx.clearRect(0, 0, w, h);
 
             // Interpolate pointer displacement smoothly for camera lag
@@ -3154,6 +3431,107 @@
                 }
             }
 
+            // Draw custom 3D wireframe objects
+            if (config.objects && Array.isArray(config.objects)) {
+                const gravityActive = getValue(config.gravityActive);
+
+                config.objects.forEach(obj => {
+                    const type = getValue(obj.type);
+                    const size = getValue(obj.size !== undefined ? obj.size : 1);
+                    const color = getValue(obj.color || '#6366f1');
+                    const spin = getValue(obj.spin) || [0.01, 0.01, 0.01];
+
+                    let pos;
+                    if (gravityActive) {
+                        if (!obj._physicsInitialized) {
+                            obj._physicsPos = [...(getValue(obj.position) || [0, 0, 0])];
+                            obj._physicsVel = [
+                                (Math.random() - 0.5) * 0.04,
+                                0.0,
+                                (Math.random() - 0.5) * 0.04
+                            ];
+                            obj._physicsInitialized = true;
+                        }
+                        obj._physicsVel[1] += -0.005; // gravity force
+                        obj._physicsPos[0] += obj._physicsVel[0];
+                        obj._physicsPos[1] += obj._physicsVel[1];
+                        obj._physicsPos[2] += obj._physicsVel[2];
+
+                        // Collisions
+                        if (obj._physicsPos[1] <= -1.8) {
+                            obj._physicsPos[1] = -1.8;
+                            obj._physicsVel[1] = -obj._physicsVel[1] * 0.75; // bounce
+                            obj._physicsVel[0] += (Math.random() - 0.5) * 0.01;
+                            obj._physicsVel[2] += (Math.random() - 0.5) * 0.01;
+                        }
+                        if (obj._physicsPos[1] >= 2.5) {
+                            obj._physicsPos[1] = 2.5;
+                            obj._physicsVel[1] = -obj._physicsVel[1] * 0.75;
+                        }
+                        if (obj._physicsPos[0] <= -3.0) { obj._physicsPos[0] = -3.0; obj._physicsVel[0] = -obj._physicsVel[0] * 0.9; }
+                        if (obj._physicsPos[0] >= 3.0) { obj._physicsPos[0] = 3.0; obj._physicsVel[0] = -obj._physicsVel[0] * 0.9; }
+                        if (obj._physicsPos[2] <= -2.0) { obj._physicsPos[2] = -2.0; obj._physicsVel[2] = -obj._physicsVel[2] * 0.9; }
+                        if (obj._physicsPos[2] >= 2.0) { obj._physicsPos[2] = 2.0; obj._physicsVel[2] = -obj._physicsVel[2] * 0.9; }
+
+                        pos = obj._physicsPos;
+                    } else {
+                        if (obj._physicsInitialized) {
+                            obj._physicsInitialized = false;
+                            obj._physicsPos = null;
+                            obj._physicsVel = null;
+                        }
+                        pos = getValue(obj.position) || [0, 0, 0];
+                    }
+
+                    if (!obj._rx) { obj._rx = 0; obj._ry = 0; obj._rz = 0; }
+                    obj._rx += getValue(spin[0]);
+                    obj._ry += getValue(spin[1]);
+                    obj._rz += getValue(spin[2]);
+
+                    let geom;
+                    if (type === 'cube') {
+                        geom = generateCube(size);
+                    } else if (type === 'sphere') {
+                        geom = generateSphere(size * 0.8);
+                    } else if (type === 'torus') {
+                        geom = generateTorus(size * 0.8, size * 0.2);
+                    } else {
+                        geom = generateCube(size);
+                    }
+
+                    const projectedVertices = geom.vertices.map(v => {
+                        const rot = rotatePoint(v.x, v.y, v.z, obj._rx, obj._ry, obj._rz);
+                        const worldX = rot.x + pos[0];
+                        const worldY = rot.y + pos[1];
+                        const worldZ = rot.z + pos[2] + 4; // offset forward
+
+                        const fov = 400;
+                        const scale = fov / (fov + worldZ);
+                        const screenX = (worldX - camX * 0.02) * scale * 150 + w / 2;
+                        const screenY = (worldY - camY * 0.02) * scale * 150 + h / 2;
+                        return { x: screenX, y: screenY };
+                    });
+
+                    ctx.strokeStyle = color;
+                    ctx.lineWidth = 1.5;
+                    ctx.shadowColor = color;
+                    ctx.shadowBlur = 10;
+
+                    geom.edges.forEach(([idxA, idxB]) => {
+                        const ptA = projectedVertices[idxA];
+                        const ptB = projectedVertices[idxB];
+                        if (ptA && ptB) {
+                            ctx.beginPath();
+                            ctx.moveTo(ptA.x, ptA.y);
+                            ctx.lineTo(ptB.x, ptB.y);
+                            ctx.stroke();
+                        }
+                    });
+                    
+                    ctx.shadowBlur = 0;
+                });
+            }
+
             requestAnimationFrame(draw);
         };
         requestAnimationFrame(draw);
@@ -3176,6 +3554,40 @@
         version: '2.0.0',
         install(papyr) {
             const papyr3d = {
+                cube(options = {}) {
+                    return {
+                        type: 'cube',
+                        size: options.size !== undefined ? options.size : 1,
+                        width: options.width,
+                        height: options.height,
+                        depth: options.depth,
+                        color: options.color || '#6366f1',
+                        position: options.position || [0, 0, 0],
+                        spin: options.spin || [0.01, 0.02, 0.01],
+                        wireframe: options.wireframe !== undefined ? options.wireframe : false
+                    };
+                },
+                sphere(options = {}) {
+                    return {
+                        type: 'sphere',
+                        radius: options.radius !== undefined ? options.radius : 1,
+                        color: options.color || '#f43f5e',
+                        position: options.position || [0, 0, 0],
+                        spin: options.spin || [0.01, 0.01, 0.02],
+                        wireframe: options.wireframe !== undefined ? options.wireframe : false
+                    };
+                },
+                torus(options = {}) {
+                    return {
+                        type: 'torus',
+                        radius: options.radius !== undefined ? options.radius : 0.8,
+                        tube: options.tube !== undefined ? options.tube : 0.2,
+                        color: options.color || '#a855f7',
+                        position: options.position || [0, 0, 0],
+                        spin: options.spin || [0.02, 0.01, 0.02],
+                        wireframe: options.wireframe !== undefined ? options.wireframe : false
+                    };
+                },
                 /**
                  * Orchestrates an immersive 3D/holographic backdrop.
                  * Detects Three.js globally, otherwise boots a gorgeous, pointer-aware fallback particle environment.
@@ -3185,7 +3597,8 @@
                         environment: 'space', // 'space', 'cyberpunk', 'underwater'
                         particles: true,
                         depth: true,
-                        overlay: null
+                        overlay: null,
+                        objects: []
                     }, options);
 
                     const container = papyr.div('.papyr-3d-container', {

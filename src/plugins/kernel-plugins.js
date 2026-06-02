@@ -68,55 +68,65 @@
             };
 
             // Dynamic spring physics-based button builder
-            kernel.button = (text, options = {}) => {
-                const isSecondary = options.variant === 'secondary';
+            kernel.button = (...args) => {
+                let processedArgs = [...args];
+                let isSecondary = false;
                 
-                const btnStyle = {
-                    padding: '12px 24px',
-                    fontSize: '15px',
-                    fontWeight: '600',
-                    borderRadius: '8px',
-                    cursor: 'pointer',
-                    outline: 'none',
-                    border: isSecondary ? '1px solid rgba(255,255,255,0.2)' : 'none',
-                    background: isSecondary ? 'rgba(255,255,255,0.05)' : 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
-                    color: '#ffffff',
-                    transition: 'transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275), box-shadow 0.2s ease, opacity 0.2s ease',
-                    boxShadow: isSecondary ? 'none' : '0 4px 12px rgba(99, 102, 241, 0.3)',
-                };
-
-                const userStyle = options.style || {};
-                const finalStyle = Object.assign({}, btnStyle, userStyle);
-
-                const btn = kernel('button', {
-                    style: finalStyle,
-                    class: options.class || '',
-                    on: {
-                        mouseenter() {
-                            btn.style.transform = 'scale(1.05)';
-                            if (!isSecondary) {
-                                btn.style.boxShadow = '0 6px 20px rgba(99, 102, 241, 0.5)';
-                            }
-                        },
-                        mouseleave() {
-                            btn.style.transform = 'scale(1)';
-                            if (!isSecondary) {
-                                btn.style.boxShadow = '0 4px 12px rgba(99, 102, 241, 0.3)';
-                            }
-                        },
-                        mousedown() {
-                            btn.style.transform = 'scale(0.95)';
-                        },
-                        mouseup() {
-                            btn.style.transform = 'scale(1.05)';
-                        }
+                // If the first argument is a string and it is not a selector,
+                // e.g. kernel.button("Click Me", options)
+                // then swap them so text/child comes after options object
+                if (args.length > 0 && typeof args[0] === 'string' && !args[0].startsWith('.') && !args[0].startsWith('#')) {
+                    if (args.length === 1) {
+                        processedArgs = [args[0]];
+                    } else if (args.length === 2 && typeof args[1] === 'object' && args[1] !== null) {
+                        processedArgs = [args[1], args[0]];
+                        if (args[1].variant === 'secondary') isSecondary = true;
                     }
-                }, text);
-
-                if (options.on && options.on.click) {
-                    btn.addEventListener('click', options.on.click);
+                } else if (args.length > 1 && typeof args[1] === 'object' && args[1] !== null) {
+                    if (args[1].variant === 'secondary') isSecondary = true;
                 }
 
+                const btn = kernel('button', ...processedArgs);
+                
+                // Apply default styles if not already set on btn.style
+                if (!btn.style.padding) btn.style.padding = '12px 24px';
+                if (!btn.style.fontSize) btn.style.fontSize = '15px';
+                if (!btn.style.fontWeight) btn.style.fontWeight = '600';
+                if (!btn.style.borderRadius) btn.style.borderRadius = '8px';
+                if (!btn.style.cursor) btn.style.cursor = 'pointer';
+                if (!btn.style.outline) btn.style.outline = 'none';
+                if (btn.style.border === undefined || btn.style.border === '') {
+                    btn.style.border = isSecondary ? '1px solid rgba(255,255,255,0.2)' : 'none';
+                }
+                if (btn.style.background === undefined || btn.style.background === '') {
+                    btn.style.background = isSecondary ? 'rgba(255,255,255,0.05)' : 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)';
+                }
+                if (!btn.style.color) btn.style.color = '#ffffff';
+                if (!btn.style.transition) btn.style.transition = 'transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275), box-shadow 0.2s ease, opacity 0.2s ease';
+                if (btn.style.boxShadow === undefined || btn.style.boxShadow === '') {
+                    btn.style.boxShadow = isSecondary ? 'none' : '0 4px 12px rgba(99, 102, 241, 0.3)';
+                }
+                
+                // Add scale & spring animations on mouse events
+                btn.addEventListener('mouseenter', () => {
+                    btn.style.transform = 'scale(1.05)';
+                    if (!isSecondary) {
+                        btn.style.boxShadow = '0 6px 20px rgba(99, 102, 241, 0.5)';
+                    }
+                });
+                btn.addEventListener('mouseleave', () => {
+                    btn.style.transform = 'scale(1)';
+                    if (!isSecondary) {
+                        btn.style.boxShadow = '0 4px 12px rgba(99, 102, 241, 0.3)';
+                    }
+                });
+                btn.addEventListener('mousedown', () => {
+                    btn.style.transform = 'scale(0.95)';
+                });
+                btn.addEventListener('mouseup', () => {
+                    btn.style.transform = 'scale(1.05)';
+                });
+                
                 return btn;
             };
         }

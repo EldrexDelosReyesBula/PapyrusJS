@@ -10,6 +10,12 @@ coreInitializers.push((papyr) => {
         user: papyr.state(null), // Reactive current user state
         
         _config: { provider: 'local' },
+        _providers: {},
+
+        registerProvider(name, providerInstance) {
+            if (name === '__proto__' || name === 'constructor' || name === 'prototype') return;
+            this._providers[name] = providerInstance;
+        },
 
         async _hashPassword(password) {
             if (typeof window !== 'undefined' && window.crypto && window.crypto.subtle) {
@@ -126,18 +132,15 @@ coreInitializers.push((papyr) => {
                 let userObj = { id: userRecord.id, username: credentials.username, token };
                 this.user.value = userObj;
                 return userObj;
-            } else if (this._config.provider === 'firebase') {
-                if (papyr.firebase && papyr.firebase.auth) {
-                    return papyr.firebase.auth().signInWithEmailAndPassword(credentials.email, credentials.password)
-                        .then(res => {
-                            this.user.value = res.user;
-                            return res.user;
-                        });
-                } else {
-                    return Promise.reject(new Error("Firebase not initialized"));
+            } else {
+                const provider = this._providers[this._config.provider];
+                if (provider && typeof provider.login === 'function') {
+                    const user = await provider.login(credentials);
+                    this.user.value = user;
+                    return user;
                 }
+                return Promise.reject(new Error(`Auth provider "${this._config.provider}" is not registered or does not support login.`));
             }
-            return Promise.reject(new Error("Provider not supported"));
         },
 
         async register(credentials) {
@@ -182,8 +185,15 @@ coreInitializers.push((papyr) => {
                 let userObj = { id: uId, username: credentials.username, token };
                 this.user.value = userObj;
                 return userObj;
+            } else {
+                const provider = this._providers[this._config.provider];
+                if (provider && typeof provider.register === 'function') {
+                    const user = await provider.register(credentials);
+                    this.user.value = user;
+                    return user;
+                }
+                return Promise.reject(new Error(`Auth provider "${this._config.provider}" is not registered or does not support registration.`));
             }
-            return Promise.reject(new Error("Registration not implemented for " + this._config.provider));
         },
 
         logout() {
@@ -200,10 +210,15 @@ coreInitializers.push((papyr) => {
                 papyr.storage.set("auth_token", null);
                 this.user.value = null;
                 return Promise.resolve();
-            } else if (this._config.provider === 'firebase' && papyr.firebase) {
-                return papyr.firebase.auth().signOut().then(() => {
-                    this.user.value = null;
-                });
+            } else {
+                const provider = this._providers[this._config.provider];
+                if (provider && typeof provider.logout === 'function') {
+                    return Promise.resolve(provider.logout()).then(() => {
+                        this.user.value = null;
+                    });
+                }
+                this.user.value = null;
+                return Promise.resolve();
             }
         }
     };

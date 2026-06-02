@@ -6,6 +6,37 @@
 
 coreInitializers.push((papyr) => {
     
+    const getDB = (collectionName) => {
+        return new Promise((resolve, reject) => {
+            if (typeof window === 'undefined' || !window.indexedDB) return reject(new Error("IndexedDB not supported"));
+            const req = window.indexedDB.open("papyr_database");
+            req.onsuccess = (e) => {
+                const db = e.target.result;
+                if (!db.objectStoreNames.contains(collectionName)) {
+                    const newVer = db.version + 1;
+                    db.close();
+                    const reqUp = window.indexedDB.open("papyr_database", newVer);
+                    reqUp.onupgradeneeded = (ev) => {
+                        ev.target.result.createObjectStore(collectionName, { keyPath: "id" });
+                    };
+                    reqUp.onsuccess = (ev) => {
+                        resolve(ev.target.result);
+                    };
+                    reqUp.onerror = (err) => reject(err);
+                } else {
+                    resolve(db);
+                }
+            };
+            req.onerror = (err) => reject(err);
+            req.onupgradeneeded = (e) => {
+                const db = e.target.result;
+                if (!db.objectStoreNames.contains(collectionName)) {
+                    db.createObjectStore(collectionName, { keyPath: "id" });
+                }
+            };
+        });
+    };
+
     papyr.db = (collectionName, engine = 'local') => {
         
         // Engine Drivers with fully granular transaction-safe CRUD methods
@@ -103,70 +134,51 @@ coreInitializers.push((papyr) => {
             'indexeddb': {
                 getAsync: () => {
                     return new Promise((resolve) => {
-                        if (typeof window === 'undefined' || !window.indexedDB) return resolve([]);
-                        const req = window.indexedDB.open("papyr_database", 1);
-                        req.onupgradeneeded = (e) => {
-                            const db = e.target.result;
-                            if (!db.objectStoreNames.contains(collectionName)) {
-                                db.createObjectStore(collectionName, { keyPath: "id" });
-                            }
-                        };
-                        req.onsuccess = (e) => {
-                            const db = e.target.result;
-                            if (!db.objectStoreNames.contains(collectionName)) {
-                                const newVer = db.version + 1;
-                                db.close();
-                                const reqUp = window.indexedDB.open("papyr_database", newVer);
-                                reqUp.onupgradeneeded = (ev) => {
-                                    ev.target.result.createObjectStore(collectionName, { keyPath: "id" });
-                                };
-                                reqUp.onsuccess = (ev) => {
-                                    fetchData(ev.target.result);
-                                };
-                                reqUp.onerror = () => resolve([]);
-                                return;
-                            }
-                            fetchData(db);
-                        };
-                        req.onerror = () => resolve([]);
-                        
-                        function fetchData(db) {
+                        getDB(collectionName).then(db => {
                             try {
                                 const tx = db.transaction(collectionName, "readonly");
                                 const store = tx.objectStore(collectionName);
                                 const getReq = store.getAll();
-                                getReq.onsuccess = () => resolve(getReq.result || []);
-                                getReq.onerror = () => resolve([]);
+                                getReq.onsuccess = () => {
+                                    db.close();
+                                    resolve(getReq.result || []);
+                                };
+                                getReq.onerror = () => {
+                                    db.close();
+                                    resolve([]);
+                                };
                             } catch(err) {
+                                db.close();
                                 resolve([]);
                             }
-                        }
+                        }).catch(() => resolve([]));
                     });
                 },
                 insertAsync: (item) => {
                     return new Promise((resolve) => {
-                        if (typeof window === 'undefined' || !window.indexedDB) return resolve();
-                        const req = window.indexedDB.open("papyr_database");
-                        req.onsuccess = (e) => {
-                            const db = e.target.result;
+                        getDB(collectionName).then(db => {
                             try {
                                 const tx = db.transaction(collectionName, "readwrite");
                                 const store = tx.objectStore(collectionName);
-                                store.put(item).onsuccess = () => resolve();
+                                store.put(item).onsuccess = () => {
+                                    db.close();
+                                    resolve();
+                                };
+                                store.put(item).onerror = () => {
+                                    db.close();
+                                    resolve();
+                                };
                             } catch(err) {
                                 console.error("PapyrDB [indexeddb] insert error:", err);
+                                db.close();
                                 resolve();
                             }
-                        };
-                        req.onerror = () => resolve();
+                        }).catch(() => resolve());
                     });
                 },
                 updateAsync: (id, updates) => {
                     return new Promise((resolve) => {
-                        if (typeof window === 'undefined' || !window.indexedDB) return resolve();
-                        const req = window.indexedDB.open("papyr_database");
-                        req.onsuccess = (e) => {
-                            const db = e.target.result;
+                        getDB(collectionName).then(db => {
                             try {
                                 const tx = db.transaction(collectionName, "readwrite");
                                 const store = tx.objectStore(collectionName);
@@ -175,138 +187,73 @@ coreInitializers.push((papyr) => {
                                     const current = getReq.result;
                                     if (current) {
                                         const updated = { ...current, ...updates };
-                                        store.put(updated).onsuccess = () => resolve();
+                                        store.put(updated).onsuccess = () => {
+                                            db.close();
+                                            resolve();
+                                        };
+                                        store.put(updated).onerror = () => {
+                                            db.close();
+                                            resolve();
+                                        };
                                     } else {
+                                        db.close();
                                         resolve();
                                     }
                                 };
-                                getReq.onerror = () => resolve();
+                                getReq.onerror = () => {
+                                    db.close();
+                                    resolve();
+                                };
                             } catch(err) {
                                 console.error("PapyrDB [indexeddb] update error:", err);
+                                db.close();
                                 resolve();
                             }
-                        };
-                        req.onerror = () => resolve();
+                        }).catch(() => resolve());
                     });
                 },
                 deleteAsync: (id) => {
                     return new Promise((resolve) => {
-                        if (typeof window === 'undefined' || !window.indexedDB) return resolve();
-                        const req = window.indexedDB.open("papyr_database");
-                        req.onsuccess = (e) => {
-                            const db = e.target.result;
+                        getDB(collectionName).then(db => {
                             try {
                                 const tx = db.transaction(collectionName, "readwrite");
                                 const store = tx.objectStore(collectionName);
-                                store.delete(id).onsuccess = () => resolve();
+                                store.delete(id).onsuccess = () => {
+                                    db.close();
+                                    resolve();
+                                };
+                                store.delete(id).onerror = () => {
+                                    db.close();
+                                    resolve();
+                                };
                             } catch(err) {
                                 console.error("PapyrDB [indexeddb] delete error:", err);
+                                db.close();
                                 resolve();
                             }
-                        };
-                        req.onerror = () => resolve();
+                        }).catch(() => resolve());
                     });
                 },
                 clearAsync: () => {
                     return new Promise((resolve) => {
-                        if (typeof window === 'undefined' || !window.indexedDB) return resolve();
-                        const req = window.indexedDB.open("papyr_database");
-                        req.onsuccess = (e) => {
-                            const db = e.target.result;
+                        getDB(collectionName).then(db => {
                             try {
                                 const tx = db.transaction(collectionName, "readwrite");
                                 const store = tx.objectStore(collectionName);
-                                store.clear().onsuccess = () => resolve();
+                                store.clear().onsuccess = () => {
+                                    db.close();
+                                    resolve();
+                                };
+                                store.clear().onerror = () => {
+                                    db.close();
+                                    resolve();
+                                };
                             } catch(err) {
                                 console.error("PapyrDB [indexeddb] clear error:", err);
+                                db.close();
                                 resolve();
                             }
-                        };
-                        req.onerror = () => resolve();
-                    });
-                }
-            },
-            'firebase': {
-                getAsync: () => {
-                    return new Promise((resolve) => {
-                        if (papyr.firebase && papyr.firebase.db) {
-                            papyr.firebase.db(collectionName).get().then(resolve).catch(() => resolve([]));
-                        } else if (typeof window !== 'undefined' && window.firebase && window.firebase.firestore) {
-                            try {
-                                const db = window.firebase.firestore();
-                                db.collection(collectionName).get()
-                                    .then(querySnapshot => {
-                                        const data = [];
-                                        querySnapshot.forEach(doc => {
-                                            data.push({ id: doc.id, ...doc.data() });
-                                        });
-                                        resolve(data);
-                                    })
-                                    .catch(() => resolve([]));
-                            } catch(e) { resolve([]); }
-                        } else {
-                            resolve([]);
-                        }
-                    });
-                },
-                insertAsync: (item) => {
-                    return new Promise((resolve) => {
-                        if (papyr.firebase && papyr.firebase.db) {
-                            papyr.firebase.db(collectionName).insert(item).then(resolve).catch(resolve);
-                        } else if (typeof window !== 'undefined' && window.firebase && window.firebase.firestore) {
-                            try {
-                                const db = window.firebase.firestore();
-                                db.collection(collectionName).doc(item.id).set(item).then(resolve).catch(resolve);
-                            } catch(e) { resolve(); }
-                        } else {
-                            resolve();
-                        }
-                    });
-                },
-                updateAsync: (id, updates) => {
-                    return new Promise((resolve) => {
-                        if (papyr.firebase && papyr.firebase.db) {
-                            papyr.firebase.db(collectionName).update(id, updates).then(resolve).catch(resolve);
-                        } else if (typeof window !== 'undefined' && window.firebase && window.firebase.firestore) {
-                            try {
-                                const db = window.firebase.firestore();
-                                db.collection(collectionName).doc(id).update(updates).then(resolve).catch(resolve);
-                            } catch(e) { resolve(); }
-                        } else {
-                            resolve();
-                        }
-                    });
-                },
-                deleteAsync: (id) => {
-                    return new Promise((resolve) => {
-                        if (papyr.firebase && papyr.firebase.db) {
-                            papyr.firebase.db(collectionName).delete(id).then(resolve).catch(resolve);
-                        } else if (typeof window !== 'undefined' && window.firebase && window.firebase.firestore) {
-                            try {
-                                const db = window.firebase.firestore();
-                                db.collection(collectionName).doc(id).delete().then(resolve).catch(resolve);
-                            } catch(e) { resolve(); }
-                        } else {
-                            resolve();
-                        }
-                    });
-                },
-                clearAsync: () => {
-                    return new Promise((resolve) => {
-                        if (typeof window !== 'undefined' && window.firebase && window.firebase.firestore) {
-                            try {
-                                const db = window.firebase.firestore();
-                                db.collection(collectionName).get().then(snapshot => {
-                                    const batch = db.batch();
-                                    snapshot.forEach(doc => {
-                                        batch.delete(doc.ref);
-                                    });
-                                    batch.commit().then(resolve).catch(resolve);
-                                }).catch(resolve);
-                            } catch(e) { resolve(); }
-                        } else {
-                            resolve();
-                        }
+                        }).catch(() => resolve());
                     });
                 }
             },
@@ -447,7 +394,16 @@ coreInitializers.push((papyr) => {
             }
         };
 
-        const isAsync = ['indexeddb', 'firebase', 'sqlite'].includes(engine);
+        // Dynamically instantiate registered custom drivers for this collection
+        Object.keys(papyr.db.drivers).forEach(name => {
+            try {
+                drivers[name] = papyr.db.drivers[name](collectionName);
+            } catch(e) {
+                console.error(`Failed to initialize custom db driver ${name}:`, e);
+            }
+        });
+
+        const isAsync = engine !== 'local' && engine !== 'session' && drivers[engine];
         // eslint-disable-next-line security/detect-object-injection
         const driver = (engine && engine !== '__proto__' && engine !== 'constructor' && engine !== 'prototype' && Object.prototype.hasOwnProperty.call(drivers, engine)) ? drivers[engine] : drivers['local'];
         
@@ -502,14 +458,18 @@ coreInitializers.push((papyr) => {
                     result = result.filter(options.filter);
                 } else if (options.filter && typeof options.filter === 'object') {
                     result = result.filter(item => 
-                        Object.entries(options.filter).every(([k, v]) => item[k] === v)
+                        Object.entries(options.filter).every(([k, v]) => {
+                            if (k === '__proto__' || k === 'constructor' || k === 'prototype') return false;
+                            return Object.prototype.hasOwnProperty.call(item, k) ? item[k] === v : false;
+                        })
                     );
                 }
                 if (options.sort) {
                     const { field, direction = 'asc' } = options.sort;
                     result.sort((a, b) => {
-                        let valA = a[field];
-                        let valB = b[field];
+                        if (field === '__proto__' || field === 'constructor' || field === 'prototype') return 0;
+                        let valA = Object.prototype.hasOwnProperty.call(a, field) ? a[field] : undefined;
+                        let valB = Object.prototype.hasOwnProperty.call(b, field) ? b[field] : undefined;
                         if (typeof valA === 'string') valA = valA.toLowerCase();
                         if (typeof valB === 'string') valB = valB.toLowerCase();
                         if (valA < valB) return direction === 'asc' ? -1 : 1;
@@ -630,6 +590,12 @@ coreInitializers.push((papyr) => {
                 return () => watchers = watchers.filter(cb => cb !== callback); // unsubscribe
             }
         };
+    };
+
+    papyr.db.drivers = {};
+    papyr.db.registerDriver = (name, driverFactory) => {
+        if (name === '__proto__' || name === 'constructor' || name === 'prototype') return;
+        papyr.db.drivers[name] = driverFactory;
     };
 
     // Upgraded storage helper function with dual call signature compatibility

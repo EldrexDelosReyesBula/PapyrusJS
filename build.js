@@ -2,6 +2,12 @@ const fs = require('fs');
 const path = require('path');
 
 const srcDir = path.join(__dirname, 'src');
+const publicDir = path.join(__dirname, 'public');
+
+// Ensure public directory exists
+if (!fs.existsSync(publicDir)) {
+    fs.mkdirSync(publicDir, { recursive: true });
+}
 const coreFiles = [
     'core/papyr-core.js',
     'core/security.js',
@@ -12,6 +18,7 @@ const coreFiles = [
     'core/crud.js',
     'core/orm.js',
     'core/auth.js',
+    'core/payments.js',
     'core/api.js',
     'core/debug.js'
 ];
@@ -83,7 +90,7 @@ ${coreContents}
 })(typeof window !== 'undefined' ? window : (typeof global !== 'undefined' ? global : this));
 `;
 
-    fs.writeFileSync(path.join(__dirname, 'papyr.js'), paperCode, 'utf8');
+    fs.writeFileSync(path.join(publicDir, 'papyr.js'), paperCode, 'utf8');
     console.log("✨ Compiled papyr.js successfully!");
 
     // 3. Load official plugins & widgets
@@ -146,7 +153,7 @@ ${stylesContent.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$/g, '\\$'
 })(typeof window !== 'undefined' ? window : (typeof global !== 'undefined' ? global : this));
 `;
 
-    fs.writeFileSync(path.join(__dirname, 'papyr-complete.js'), paperCompleteCode, 'utf8');
+    fs.writeFileSync(path.join(publicDir, 'papyr-complete.js'), paperCompleteCode, 'utf8');
     console.log("✨ Compiled papyr-complete.js successfully!");
 
     // 6. Build papyr.esm.js (Core ES Module Bundle)
@@ -165,7 +172,7 @@ const papyr = createPapyr();
 export { papyr, createPapyr };
 export default papyr;
 `;
-    fs.writeFileSync(path.join(__dirname, 'papyr.esm.js'), paperEsmCode, 'utf8');
+    fs.writeFileSync(path.join(publicDir, 'papyr.esm.js'), paperEsmCode, 'utf8');
     console.log("✨ Compiled papyr.esm.js successfully!");
 
     // 7. Build papyr-complete.esm.js (Complete Showcase ES Module Bundle)
@@ -201,7 +208,7 @@ ${stylesContent.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$/g, '\\$'
 export { papyr, createPapyr };
 export default papyr;
 `;
-    fs.writeFileSync(path.join(__dirname, 'papyr-complete.esm.js'), paperCompleteEsmCode, 'utf8');
+    fs.writeFileSync(path.join(publicDir, 'papyr-complete.esm.js'), paperCompleteEsmCode, 'utf8');
     console.log("✨ Compiled papyr-complete.esm.js successfully!");
 
     // 7b. Build papyr-plugins.js (Decoupled Plugins IIFE Bundle)
@@ -223,11 +230,11 @@ ${pluginsContent}
     console.log("📄 Papyr plugins loaded and registered successfully!");
 })(typeof window !== 'undefined' ? window : (typeof global !== 'undefined' ? global : this));
 `;
-    fs.writeFileSync(path.join(__dirname, 'papyr-plugins.js'), paperPluginsCode, 'utf8');
+    fs.writeFileSync(path.join(publicDir, 'papyr-plugins.js'), paperPluginsCode, 'utf8');
     console.log("✨ Compiled papyr-plugins.js successfully!");
 
     // 7c. Build Modular CDN Bundle: papyr-core.js
-    fs.writeFileSync(path.join(__dirname, 'papyr-core.js'), paperCode, 'utf8');
+    fs.writeFileSync(path.join(publicDir, 'papyr-core.js'), paperCode, 'utf8');
     console.log("✨ Compiled papyr-core.js successfully!");
 
     // 7d. Build Modular CDN Bundle: papyr-ui.js
@@ -286,7 +293,7 @@ ${stylesContent.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$/g, '\\$'
 
 })(typeof window !== 'undefined' ? window : (typeof global !== 'undefined' ? global : this));
 `;
-    fs.writeFileSync(path.join(__dirname, 'papyr-ui.js'), paperUiCode, 'utf8');
+    fs.writeFileSync(path.join(publicDir, 'papyr-ui.js'), paperUiCode, 'utf8');
     console.log("✨ Compiled papyr-ui.js successfully!");
 
     // 7e. Build Modular CDN Bundle: papyr-advanced.js
@@ -336,7 +343,7 @@ ${advancedPluginsContent}
 
 })(typeof window !== 'undefined' ? window : (typeof global !== 'undefined' ? global : this));
 `;
-    fs.writeFileSync(path.join(__dirname, 'papyr-advanced.js'), paperAdvancedCode, 'utf8');
+    fs.writeFileSync(path.join(publicDir, 'papyr-advanced.js'), paperAdvancedCode, 'utf8');
     console.log("✨ Compiled papyr-advanced.js successfully!");
 
     // 8. Try optional minification
@@ -347,29 +354,29 @@ ${advancedPluginsContent}
         // Minify core
         const minCore = UglifyJS.minify(paperCode, { sourceMap: { filename: 'papyr.min.js', url: 'papyr.min.js.map' } });
         if (minCore.error) throw minCore.error;
-        fs.writeFileSync(path.join(__dirname, 'papyr.min.js'), minCore.code, 'utf8');
-        fs.writeFileSync(path.join(__dirname, 'papyr.min.js.map'), minCore.map, 'utf8');
+        fs.writeFileSync(path.join(publicDir, 'papyr.min.js'), minCore.code, 'utf8');
+        fs.writeFileSync(path.join(publicDir, 'papyr.min.js.map'), minCore.map, 'utf8');
 
         // Minify modular core
         const minCoreModular = UglifyJS.minify(paperCode, { sourceMap: { filename: 'papyr-core.min.js', url: 'papyr-core.min.js.map' } });
         if (minCoreModular.error) throw minCoreModular.error;
-        fs.writeFileSync(path.join(__dirname, 'papyr-core.min.js'), minCoreModular.code, 'utf8');
+        fs.writeFileSync(path.join(publicDir, 'papyr-core.min.js'), minCoreModular.code, 'utf8');
         
         // Minify complete
         const minComplete = UglifyJS.minify(paperCompleteCode, { sourceMap: { filename: 'papyr-complete.min.js', url: 'papyr-complete.min.js.map' } });
         if (minComplete.error) throw minComplete.error;
-        fs.writeFileSync(path.join(__dirname, 'papyr-complete.min.js'), minComplete.code, 'utf8');
-        fs.writeFileSync(path.join(__dirname, 'papyr-complete.min.js.map'), minComplete.map, 'utf8');
+        fs.writeFileSync(path.join(publicDir, 'papyr-complete.min.js'), minComplete.code, 'utf8');
+        fs.writeFileSync(path.join(publicDir, 'papyr-complete.min.js.map'), minComplete.map, 'utf8');
 
         // Minify UI
         const minUi = UglifyJS.minify(paperUiCode, { sourceMap: { filename: 'papyr-ui.min.js', url: 'papyr-ui.min.js.map' } });
         if (minUi.error) throw minUi.error;
-        fs.writeFileSync(path.join(__dirname, 'papyr-ui.min.js'), minUi.code, 'utf8');
+        fs.writeFileSync(path.join(publicDir, 'papyr-ui.min.js'), minUi.code, 'utf8');
 
         // Minify Advanced
         const minAdvanced = UglifyJS.minify(paperAdvancedCode, { sourceMap: { filename: 'papyr-advanced.min.js', url: 'papyr-advanced.min.js.map' } });
         if (minAdvanced.error) throw minAdvanced.error;
-        fs.writeFileSync(path.join(__dirname, 'papyr-advanced.min.js'), minAdvanced.code, 'utf8');
+        fs.writeFileSync(path.join(publicDir, 'papyr-advanced.min.js'), minAdvanced.code, 'utf8');
         
         console.log("✨ Minified bundles and source maps generated successfully!");
     } catch (e) {

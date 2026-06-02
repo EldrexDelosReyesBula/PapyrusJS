@@ -80,10 +80,13 @@ coreInitializers.push((papyr) => {
             currentView,
             () => {
                 let Component = currentView.value;
-                if (Component.prototype && Component.prototype instanceof papyr.component) {
+                if (Component && Component.prototype && typeof papyr.component === 'function' && Component.prototype instanceof papyr.component) {
                     return new Component().render();
                 }
-                return Component();
+                if (typeof Component === 'function') {
+                    return Component();
+                }
+                return papyr.div();
             },
             () => papyr.div()
         );

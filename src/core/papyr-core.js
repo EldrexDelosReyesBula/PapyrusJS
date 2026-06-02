@@ -1063,22 +1063,26 @@ function createPapyr() {
                 });
                 mutation.removedNodes.forEach(node => {
                     if (node.nodeType === 1) { // Element
-                        const checkUnmounted = (n) => {
-                            if (n._cleanups) {
-                                n._cleanups.forEach(c => {
-                                    if (typeof c === 'function') {
-                                        try { c(); } catch(e) { papyrInstance.diagnostics.reportError(e); }
-                                    }
-                                });
-                                n._cleanups = [];
-                            }
-                            if (n._onUnmounted) {
-                                n._isMounted = false;
-                                try { n._onUnmounted(n); } catch(e) { papyrInstance.diagnostics.reportError(e); }
-                            }
-                            Array.from(n.children || []).forEach(checkUnmounted);
-                        };
-                        checkUnmounted(node);
+                        if (typeof papyrInstance._cleanupElement === 'function') {
+                            papyrInstance._cleanupElement(node);
+                        } else {
+                            const checkUnmounted = (n) => {
+                                if (n._cleanups) {
+                                    n._cleanups.forEach(c => {
+                                        if (typeof c === 'function') {
+                                            try { c(); } catch(e) { papyrInstance.diagnostics.reportError(e); }
+                                        }
+                                    });
+                                    n._cleanups = [];
+                                }
+                                if (n._onUnmounted) {
+                                    n._isMounted = false;
+                                    try { n._onUnmounted(n); } catch(e) { papyrInstance.diagnostics.reportError(e); }
+                                }
+                                Array.from(n.children || []).forEach(checkUnmounted);
+                            };
+                            checkUnmounted(node);
+                        }
                     }
                 });
             });

@@ -18,7 +18,17 @@ Welcome to the official master documentation for **Papyrus (papyr.js)**—an ult
 10. [Developer Tiers: Basics to Hackers](#10-developer-tiers-basics-to-hackers)
 11. [Step-by-Step Practice Tutorials](#11-step-by-step-practice-tutorials)
 12. [Debugging & Shifting to Other Languages](#12-debugging--shifting-to-other-languages)
-13. [Vanilla JS vs. Papyr.js Cheat Sheet](#13-vanilla-js-vs-papyrjs-cheat-sheet)
+13. [Reactivity Deep Dive: How It Works Without Virtual DOM](#13-reactivity-deep-dive-how-it-works-without-virtual-dom)
+14. [Master API Reference Manual (31 Subsystems)](#14-master-api-reference-manual-31-subsystems)
+15. [TypeScript Support Status](#15-typescript-support-status)
+16. [Error Handling Patterns](#16-error-handling-patterns)
+17. [Testing Guide](#17-testing-guide)
+18. [Browser Compatibility Details](#18-browser-compatibility-details)
+19. [Migration Guides from React/Vue/jQuery](#19-migration-guides-from-reactvuejquery)
+20. [Memory Management & Leak Prevention](#20-memory-management--leak-prevention)
+21. [Performance Characteristics](#21-performance-characteristics)
+22. [GDPR & OWASP Security Framework](#22-gdpr--owasp-security-framework)
+23. [Contributor Guide: Intelligent Web Runtime Kernel Lifecycle](#23-contributor-guide-intelligent-web-runtime-kernel-lifecycle)
 
 ---
 
@@ -230,6 +240,25 @@ await offlineDB.insertAsync({ name: "Alice", rank: 1 });
 let list = await offlineDB.listAsync();
 ```
 
+### C. Database Engine Capabilities & Matrix
+
+| Feature | local | session | indexeddb | firebase | sqlite |
+|---------|-------|---------|-----------|----------|--------|
+| Persistence | ✅ | ❌ (tab only) | ✅ | ✅ | ✅ |
+| Capacity | ~5-10MB | ~5-10MB | ~50MB+ | Unlimited | ~50MB+ |
+| Async | ❌ | ❌ | ✅ | ✅ | ✅ |
+| Offline | ✅ | ✅ | ✅ | ❌ | ✅ |
+| Sync | ❌ | ❌ | ❌ | ✅ | ❌ |
+| Queries | Simple | Simple | Simple | Realtime | SQL |
+| Setup | None | None | None | API Key | None |
+
+#### Engine-Specific Configurations & Workflows
+- **LocalStorage (`local`)**: Synchronous, ideal for tiny configurations, settings, or user preferences.
+- **SessionStorage (`session`)**: Transient, active only for the duration of the browser tab session.
+- **IndexedDB (`indexeddb`)**: High-capacity asynchronous object store built for offline-first data caching.
+- **Firebase (`firebase`)**: Connects to dynamic remote cloud Firestore nodes for real-time document synchronization.
+- **SQLite (`sqlite`)**: Accesses local relational SQL engines natively where Web SQL/SQL.js APIs are available.
+
 ---
 
 ## 6. Security, Obfuscation & WATT Enforcements
@@ -259,6 +288,9 @@ console.log(localStorage.getItem('_ga')); // Trapped and fetched from memory san
 papyr.security.setConsent(true); // Flushes all sandboxed values safely back to real LocalStorage!
 ```
 
+#### WATT Under the Hood (Technical Interception Layer)
+WATT runs early inside the Papyrus kernel initialization sequence. It overrides the default browser storage APIs (`localStorage.getItem`, `localStorage.setItem`, `localStorage.removeItem`) with a Proxy layer. If WATT determines a storage key matches a tracking signature and consent is absent, the key is redirected to a temporary in-memory sandbox Map. When `setConsent(true)` is called, WATT automatically flushes all sandboxed memory keys into physical LocalStorage.
+
 ### B. XSS Sanitizer (`papyr.security.sanitize`)
 Blocks malicious script tags, pseudo-protocols (`javascript:`), and inline HTML event handler exploits (`onerror=`) from user inputs:
 
@@ -267,15 +299,31 @@ let untrustedInput = "<img src=x onerror='alert(1)'>";
 let safe = papyr.security.sanitize(untrustedInput); // Strips the onerror attribute completely!
 ```
 
-### C. Local Storage Encrypted Vaults
-Protect key-value data on client machines from generic localStorage scraping:
+#### XSS Protection: What's Actually Protected
+- **Protected By Default**: All elements created using tag creators (e.g. `papyr.p()`, `papyr.div()`) automatically treat string arguments as text nodes rather than executable HTML. Attributes are bound using native `setAttribute` or object property assign, which completely prevents standard XSS vectors.
+- **Manual Protection**: You should run untrusted user inputs through `papyr.security.sanitize(input)` before rendering or storing them.
+- **Recommended Content Security Policy (CSP)**: Implement defense-in-depth by configuring a strict CSP header:
+  ```html
+  <meta http-equiv="Content-Security-Policy" 
+        content="default-src 'self'; 
+                 script-src 'self' https://papyrus-js.vercel.app; 
+                 style-src 'self' 'unsafe-inline';">
+  ```
 
+### C. Local Storage Encrypted Vaults & Real Encryption
+
+#### Synchronous Obfuscation Warning
+> [!WARNING]
+> The synchronous methods `papyr.storage.secureSet()` and `papyr.storage.secureGet()` use **XOR + Base64 obfuscation**. While useful for stopping casual inspection of LocalStorage on a client machine, this does **NOT** provide true cryptographic security or protection against dedicated memory scrapers.
+
+#### Asynchronous Real Encryption (AES-256-GCM)
+For sensitive keys, tokens, or personal identifiers, you **must** use the asynchronous Web Crypto API integrations:
 ```javascript
-// Save encrypted JSON objects (XOR + Base64 obfus-feedback cipher)
-papyr.storage.secureSet("user_session", { token: "secret-jwt" }, "my-passphrase-key");
+// ✅ Save securely using AES-GCM 256-bit with PBKDF2 key derivation
+await papyr.storage.secureSetAsync("token", { jwt: "secret-data" }, "user-passphrase");
 
-// Retrieve decrypted plaintext
-let sessionObj = papyr.storage.secureGet("user_session", "my-passphrase-key");
+// ✅ Retrieve and decrypt
+let decrypted = await papyr.storage.secureGetAsync("token", "user-passphrase");
 ```
 
 ---
@@ -840,6 +888,24 @@ graph LR
 
 ---
 
+## 13. Reactivity Deep Dive: How It Works Without Virtual DOM
+
+### Virtual DOM Frameworks (React, Vue)
+Traditional frameworks recompute virtual DOM structures and perform diff computations to reconcile elements on every state trigger:
+```text
+State Change → Virtual DOM Diff → Recompute UI Nodes → Update Real DOM
+```
+
+### Papyrus Reactivity Model
+Papyrus bypasses the virtual DOM entirely. It maps states directly to targets through a fine-grained, dependency-tracking subscription graph:
+```text
+State Change → Direct Targeted Node Mutator Action
+```
+
+When you write a reactive expression like `papyr.p(() => count.value)`, Papyrus runs the getter during mount, flags the active element as a dependency, and attaches it directly to the state's `subscribers` set. When the state `.value` is mutated, only the bound element's update handler executes, leaving the rest of the DOM tree completely untouched. This avoids full-page reconciliation calculations.
+
+---
+
 ## 14. Master API Reference Manual (31 Subsystems)
 
 This section maps the complete isomorphic API surface of all 31 sub-systems, core modules, and official capability plugins in the Papyr.js Intelligent Web Runtime Kernel.
@@ -1189,7 +1255,200 @@ This section maps the complete isomorphic API surface of all 31 sub-systems, cor
 
 ---
 
-## 15. Contributor Guide: Intelligent Web Runtime Kernel Lifecycle
+## 15. TypeScript Support Status
+
+### Current Status (v3.0)
+- **Workaround Required**: No automatic TypeScript types are pre-bundled in standard NPM imports yet.
+- **VS Code autocomplete**: You can use the provided declarations file `public/papyr.d.ts` (configured under `"types"` in `package.json`).
+- **v3.1 Roadmap**: Native TypeScript definitions (`.d.ts`) will be officially generated and shipped inside the core whitelisted distributions.
+
+---
+
+## 16. Error Handling Patterns
+
+Build highly resilient UI states by capturing runtime database issues, network interruptions, and element rendering failures.
+
+### A. Database Storage Failures
+```javascript
+try {
+    let tasks = papyr.crud("user_tasks");
+    tasks.create({ title: "My Task" });
+} catch (error) {
+    if (error.name === "QuotaExceededError") {
+        papyr.toast("Browser storage is full! Please clear items.", "error");
+    } else {
+        console.error("Storage failed:", error);
+    }
+}
+```
+
+### B. Async Network Retries with Exponential Backoff
+```javascript
+async function fetchWithRetry(url, retries = 3, delay = 1000) {
+    for (let i = 0; i < retries; i++) {
+        try {
+            return await papyr.api.get(url);
+        } catch (e) {
+            if (i === retries - 1) throw e;
+            await papyr.delay(delay * (i + 1)); // Exponential delay
+        }
+    }
+}
+```
+
+### C. Component Error Boundaries
+Prevent a single broken element or API fail from crashing your entire application:
+```javascript
+let stableUI = papyr.errorBoundary(
+    () => papyr.div(".widget", () => "Data: " + rawInput.value),
+    (err) => papyr.div(".error-card", "⚠️ Fail: " + err.message)
+);
+```
+
+---
+
+## 17. Testing Guide
+
+Ensure stability of your Papyrus applications using standard unit and E2E tools.
+
+### A. Unit Testing Reactivity (Vitest / Jest)
+```javascript
+import { state, computed } from 'papyr-js';
+
+test('reactive computations update on state changes', () => {
+    const a = state(5);
+    const b = computed(() => a.value * 10);
+    expect(b.value).toBe(50);
+    
+    a.value = 10;
+    expect(b.value).toBe(100);
+});
+```
+
+### B. Component DOM Testing
+```javascript
+import { state, button, mount } from 'papyr-js';
+
+test('button increments counter reactively', () => {
+    document.body.innerHTML = '<div id="app"></div>';
+    const count = state(0);
+    const btn = button(() => `Clicked ${count.value} times`, {
+        onclick: () => count.value++
+    });
+    mount('#app', btn);
+    
+    const renderedBtn = document.querySelector('button');
+    renderedBtn.click();
+    expect(renderedBtn.textContent).toBe('Clicked 1 times');
+});
+```
+
+---
+
+## 18. Browser Compatibility Details
+
+| Feature | Chrome | Firefox | Safari | Edge | IE11 |
+|---------|--------|---------|--------|------|------|
+| Reactivity Engine (Proxy) | 49+ | 18+ | 10+ | 12+ | ❌ |
+| Document Elements | 60+ | 55+ | 11+ | 79+ | ❌ |
+| Web Crypto API (AES-GCM) | 37+ | 34+ | 7+ | 12+ | ❌ |
+| IndexedDB driver | 24+ | 16+ | 8+ | 12+ | ❌ |
+
+---
+
+## 19. Migration Guides from React/Vue/jQuery
+
+### A. From React
+- **React state** (`useState`) maps directly to `papyr.state()`.
+- **JSX rendering** maps to declarative tag creator parameters.
+
+**React:**
+```jsx
+function Counter() {
+    const [count, setCount] = useState(0);
+    return <button onClick={() => setCount(count + 1)}>{count}</button>;
+}
+```
+
+**Papyrus:**
+```javascript
+function Counter() {
+    let count = papyr.state(0);
+    return papyr.button(() => count.value, { onclick: () => count.value++ });
+}
+```
+
+### B. From jQuery
+jQuery manual DOM selection and event attachment is replaced by unified component structures with inline bindings.
+
+**jQuery:**
+```javascript
+$('#btn').on('click', () => { $('#box').addClass('active'); });
+```
+
+**Papyrus:**
+```javascript
+let active = papyr.state(false);
+let box = papyr.div('.box', {
+    class: () => active.value ? 'active' : ''
+});
+let btn = papyr.button('Toggle', {
+    onclick: () => active.value = !active.value
+});
+```
+
+---
+
+## 20. Memory Management & Leak Prevention
+
+Papyrus includes automated lifecycles that register subscriptions inside element cleanups (`_cleanups`) which are recursively disposed when nodes are unmounted.
+
+### A. Automatic Cleanups
+When you remove elements using `papyr.if` or `papyr.for`, Papyrus traverses the unmounted nodes and unsubscribes all active state bindings automatically.
+
+### B. Manual Subscription Cleanups
+If you manually subscribe to states outside DOM creation, assign and trigger unsubscribe functions:
+```javascript
+let count = papyr.state(0);
+let unsub = count.subscribe(val => console.log(val));
+
+// When tearing down
+unsub();
+```
+
+---
+
+## 21. Performance Characteristics
+
+- **Direct Updates**: Updates affect only target text nodes and attributes registered in the subscription graph, avoiding full-page virtual DOM diff computations.
+- **Keystroke Throttle**: Recommended for heavy real-time data input grids and multi-widget status charts.
+- **Limitations**: In extremely massive lists (e.g. 5,000+ items), batch DOM writes or virtual lists should be utilized to prevent browser rendering reflow bottlenecks.
+
+---
+
+## 22. GDPR & OWASP Security Framework
+
+### GDPR Data Export / Deletion Checklists
+- **Right to Access**: Implement user data export via JSON:
+  ```javascript
+  const exportData = () => {
+      const data = papyr.storage.get("user_data");
+      const blob = new Blob([JSON.stringify(data)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "user-data.json";
+      a.click();
+  };
+  ```
+- **Right to be Forgotten**: Ensure calling `papyr.crud().clear()` or `localStorage.clear()` completely purges local records.
+
+### Vulnerability Disclosure Policy
+Found a security vulnerability? Email `security@papyrus-js.dev`. Do not open a public GitHub issue.
+
+---
+
+## 23. Contributor Guide: Intelligent Web Runtime Kernel Lifecycle
 
 For open-source ecosystem contributors, understanding the Papyr.js execution sequence is critical to maintaining zero-overhead performance.
 
@@ -1217,6 +1476,90 @@ graph TD
 2. **Dynamic Bracket Hardening**: Guard *every* dynamic lookup against prototype pollution (`__proto__`, etc.) and add dynamic suppression keys `// eslint-disable-next-line security/detect-object-injection`.
 3. **PWA & SSR Isomorphism**: Ensure all newly registered DOM APIs check and fallback to `docFallback` if run inside a Node.js/Express environment.
 4. **Memory Conservation**: Always register DOM cleanup handlers inside the elements' `_cleanups` array to avoid garbage collector memory leaks.
+
+
+---
+
+## 24. Creative 3D/2D Engine & Vanilla JS Transition Guide
+
+### A. Declarative 3D/2D Immersive Engine Presets
+
+Papyrus includes a cinematic 3D and 2D graphics engine under the `papyr['3d']` namespace. It automatically detects global `THREE` (Three.js) for WebGL rendering; if Three.js is not present, it gracefully falls back to a high-performance 2D HTML Canvas rendering mathematically projected 3D neon vector wireframes.
+
+#### 1. Presets API
+- **`papyr['3d'].cube(options)`**: Defines a 3D box shape.
+  - Options: `size` (default: 1), `width`, `height`, `depth`, `color`, `position` `[x, y, z]`, `spin` `[rx, ry, rz]`, `wireframe` (boolean).
+- **`papyr['3d'].sphere(options)`**: Defines a 3D sphere shape.
+  - Options: `radius` (default: 1), `color`, `position` `[x, y, z]`, `spin` `[rx, ry, rz]`, `wireframe` (boolean).
+- **`papyr['3d'].torus(options)`**: Defines a 3D torus (donut) shape.
+  - Options: `radius` (default: 0.8), `tube` (default: 0.2), `color`, `position` `[x, y, z]`, `spin` `[rx, ry, rz]`, `wireframe` (boolean).
+
+#### 2. Declarative Usage Example
+You can pass these presets inside a `papyr['3d'].scene` wrapper to orchestrate full scenes with zero WebGL boilerplate:
+```javascript
+const myScene = papyr['3d'].scene({
+    environment: 'cyberpunk',
+    particles: false,
+    depth: true,
+    objects: [
+        papyr['3d'].cube({ size: 1.2, color: '#6366f1', position: [-1.5, 0, 0] }),
+        papyr['3d'].sphere({ radius: 1.0, color: '#f43f5e', position: [1.5, 0, 0] })
+    ]
+});
+```
+
+#### 3. Reactive Property Mutations
+Any parameter (like `size`, `color`, or `spin` speed) can be bound directly to a reactive state. When the state changes, the mesh updates instantly in-place without rebuilding the scene:
+```javascript
+let cubeSize = papyr.state(1.5);
+let torusColor = papyr.state("#a855f7");
+
+const myScene = papyr['3d'].scene({
+    objects: [
+        papyr['3d'].cube({ size: cubeSize }),
+        papyr['3d'].torus({ color: torusColor })
+    ]
+});
+```
+
+---
+
+### B. Legacy Code Renovations (Vanilla JS Transition)
+
+Papyrus makes it incredibly easy for developers using legacy vanilla JS or jQuery applications to transition to reactive states. You don't have to rewrite your entire UI; you can perform "renovations inside while keeping the outside the same."
+
+#### 1. Reactively Binding Legacy DOM Elements
+Use `papyr.bind` to bind any existing non-Papyr DOM input element to a state:
+```javascript
+const nameState = papyr.state("Alice");
+const legacyInput = document.getElementById("my-legacy-input");
+
+// Two-way reactive binding:
+papyr.bind(legacyInput, nameState);
+```
+
+#### 2. Syncing State Changes to Legacy Elements
+Use `papyr.watch` to listen to state modifications and sync them to standard DOM nodes:
+```javascript
+const legacyDisplay = document.getElementById("my-legacy-display");
+
+papyr.watch(nameState, (newVal) => {
+    legacyDisplay.textContent = newVal;
+});
+```
+
+---
+
+### C. WATT Hardware Permission Interceptions
+
+The Web App Tracking Transparency (WATT) engine intercepts browser-level geolocation (`navigator.geolocation.getCurrentPosition`) and hardware media streams (`navigator.mediaDevices.getUserMedia`). 
+
+When a website or plugin attempts to call these APIs, WATT pauses execution and pops up a user-friendly, accessible glassmorphic consent dialog. The native permission prompt is executed only after the user grants consent in the WATT modal.
+```javascript
+// Native calls automatically intercepted by WATT:
+navigator.geolocation.getCurrentPosition(successCallback, errorCallback);
+navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+```
 
 ---
 

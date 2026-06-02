@@ -5,7 +5,7 @@
  * Pops up a custom, accessible glassmorphic consent dashboard before native browser triggers execute.
  */
 
-(function() {
+(function () {
     // Check if papyr exists
     if (typeof papyr === 'undefined') {
         console.warn("Papyr core not detected. WATT requires papyr core to run.");
@@ -17,13 +17,13 @@
             geolocation: typeof navigator !== 'undefined' && navigator.geolocation ? navigator.geolocation.getCurrentPosition : null,
             getUserMedia: typeof navigator !== 'undefined' && navigator.mediaDevices ? navigator.mediaDevices.getUserMedia : null
         },
-        
+
         // Global developer custom configuration state
         config: {
             branding: { title: "Privacy Guard", primaryColor: "#6366f1" },
             reason: "This app requires secure access to fulfill its baseline function.",
             labels: { accept: "Allow Access", deny: "Ask App Not to Track", linkText: "Learn more about our privacy commitment" },
-            link: "https://landecs.online/privacy"
+            link: "https://eldrex.landecs.org/privacy"
         },
 
         configure(customSettings) {
@@ -60,7 +60,7 @@
             // 1. Geolocation Interception
             if (navigator.geolocation && this._originalApis.geolocation) {
                 const self = this;
-                navigator.geolocation.getCurrentPosition = function(successCb, errorCb, options) {
+                navigator.geolocation.getCurrentPosition = function (successCb, errorCb, options) {
                     self.triggerWattPrompt("Location Data", () => {
                         self._originalApis.geolocation.call(navigator.geolocation, successCb, errorCb, options);
                     }, () => {
@@ -72,7 +72,7 @@
             // 2. Camera & Microphone getUserMedia Interception
             if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia && this._originalApis.getUserMedia) {
                 const self = this;
-                navigator.mediaDevices.getUserMedia = function(constraints) {
+                navigator.mediaDevices.getUserMedia = function (constraints) {
                     return new Promise((resolve, reject) => {
                         self.triggerWattPrompt("Camera & Microphone Access", () => {
                             self._originalApis.getUserMedia.call(navigator.mediaDevices, constraints)
@@ -92,7 +92,7 @@
                 onDeny();
                 return;
             }
-            
+
             // Construct the modal dynamically utilizing standard Papyr UI tags
             const wattModal = papyr.div('.papyr-card.papyr-watt-box', {
                 role: 'dialog',
@@ -112,9 +112,9 @@
                     font-family: inherit;
                 `
             },
-                papyr.title(`🔒 ${this.config.branding.title}`, { style: "font-size: 20px; margin-bottom: 12px; font-weight: 700; color: #fff;" }),
+                papyr.h3(`🔒 ${this.config.branding.title}`, { style: "font-size: 20px; margin-bottom: 12px; font-weight: 700; color: #fff;" }),
                 papyr.muted(`wants to access your **${capabilityName}**. ${this.config.reason}`, { style: "color: #cbd5e1; font-size: 0.95rem; line-height: 1.5;" }),
-                
+
                 papyr.flex.row({ style: "margin-top: 24px; justify-content: flex-end; gap: 12px;" },
                     papyr.button(this.config.labels.deny, {
                         style: "background: rgba(239, 68, 68, 0.1); color: #ef4444; border: 1px solid rgba(239,68,68,0.25); padding: 10px 18px; border-radius: 12px; cursor: pointer; font-family: inherit;",
@@ -125,12 +125,12 @@
                         onclick: () => { wattModal.remove(); onAllow(); }
                     })
                 ),
-                
+
                 papyr.div({ style: "margin-top: 16px; text-align: center;" },
-                    papyr.a(this.config.labels.linkText, { 
-                        href: this.config.link, 
+                    papyr.a(this.config.labels.linkText, {
+                        href: this.config.link,
                         target: "_blank",
-                        style: "font-size: 11px; color: #94a3b8; text-decoration: underline;" 
+                        style: "font-size: 11px; color: #94a3b8; text-decoration: underline;"
                     })
                 )
             );
@@ -139,15 +139,15 @@
         },
 
         requestTracking(options = {}) {
-            const { purpose = "We use data to personalize your experience and keep this app free.", onAllow = () => {}, onDeny = () => {} } = options;
-            
+            const { purpose = "We use data to personalize your experience and keep this app free.", onAllow = () => { }, onDeny = () => { } } = options;
+
             const currentTier = this.getTier();
             if (currentTier === 'none') {
                 if (papyr.security) papyr.security.setConsent(true);
                 onAllow();
                 return Promise.resolve(true);
             }
-            
+
             if (currentTier === 'high') {
                 if (papyr.security) {
                     papyr.security.setConsent(false);
@@ -156,7 +156,7 @@
                 onDeny();
                 return Promise.resolve(false);
             }
-            
+
             return new Promise((resolve) => {
                 this.triggerWattPrompt("Personalization Data Usage", () => {
                     if (papyr.security) papyr.security.setConsent(true);

@@ -1074,22 +1074,26 @@ function createPapyr() {
                 });
                 mutation.removedNodes.forEach(node => {
                     if (node.nodeType === 1) { // Element
-                        const checkUnmounted = (n) => {
-                            if (n._cleanups) {
-                                n._cleanups.forEach(c => {
-                                    if (typeof c === 'function') {
-                                        try { c(); } catch(e) { papyrInstance.diagnostics.reportError(e); }
-                                    }
-                                });
-                                n._cleanups = [];
-                            }
-                            if (n._onUnmounted) {
-                                n._isMounted = false;
-                                try { n._onUnmounted(n); } catch(e) { papyrInstance.diagnostics.reportError(e); }
-                            }
-                            Array.from(n.children || []).forEach(checkUnmounted);
-                        };
-                        checkUnmounted(node);
+                        if (typeof papyrInstance._cleanupElement === 'function') {
+                            papyrInstance._cleanupElement(node);
+                        } else {
+                            const checkUnmounted = (n) => {
+                                if (n._cleanups) {
+                                    n._cleanups.forEach(c => {
+                                        if (typeof c === 'function') {
+                                            try { c(); } catch(e) { papyrInstance.diagnostics.reportError(e); }
+                                        }
+                                    });
+                                    n._cleanups = [];
+                                }
+                                if (n._onUnmounted) {
+                                    n._isMounted = false;
+                                    try { n._onUnmounted(n); } catch(e) { papyrInstance.diagnostics.reportError(e); }
+                                }
+                                Array.from(n.children || []).forEach(checkUnmounted);
+                            };
+                            checkUnmounted(node);
+                        }
                     }
                 });
             });
@@ -1512,6 +1516,28 @@ coreInitializers.push((papyr) => {
                (x.nodeType === 1 || x.nodeType === 11);
     };
 
+    const cleanupElement = (n) => {
+        if (!n) return;
+        if (n._cleanups) {
+            n._cleanups.forEach(c => {
+                if (typeof c === 'function') {
+                    try { c(); } catch(e) { papyr.diagnostics.reportError(e); }
+                }
+            });
+            n._cleanups = [];
+        }
+        if (n._onUnmounted) {
+            n._isMounted = false;
+            try { n._onUnmounted(n); } catch(e) { papyr.diagnostics.reportError(e); }
+        }
+        if (n._updateObserver) {
+            try { n._updateObserver.disconnect(); } catch(e) {}
+        }
+        Array.from(n.children || []).forEach(cleanupElement);
+    };
+
+    papyr._cleanupElement = cleanupElement;
+
     // Deep Proxy wrapper supporting array mutations and deep object updates
     const reactiveProxy = (obj, onNotify) => {
         if (obj === null || typeof obj !== 'object' || isElement(obj)) {
@@ -1609,45 +1635,40 @@ coreInitializers.push((papyr) => {
     papyr.computed = (fn) => {
         let subscribers = new Set();
         let currentVal;
+        let isDirty = true;
         
         let effect = () => {
-            // Clear old dependencies before re-evaluating
-            effect._deps.forEach(s => {
-                if (s._subscribers) s._subscribers.delete(effect);
-            });
-            effect._deps.clear();
-
-            effectStack.push(effect);
-            activeEffect = effect;
-            try {
-                currentVal = fn();
-            } catch (err) {
-                papyr.diagnostics.reportError(err);
-            } finally {
-                effectStack.pop();
-                activeEffect = effectStack[effectStack.length - 1] || null;
-            }
-            Array.from(subscribers).forEach(sub => sub(currentVal));
+            isDirty = true;
+            Array.from(subscribers).forEach(sub => sub(computedObj.value));
         };
         effect._deps = new Set();
         effect._addDep = (stateObj) => {
             effect._deps.add(stateObj);
         };
         
-        effectStack.push(effect);
-        activeEffect = effect;
-        try {
-            currentVal = fn();
-        } catch (err) {
-            papyr.diagnostics.reportError(err);
-        } finally {
-            effectStack.pop();
-            activeEffect = effectStack[effectStack.length - 1] || null;
-        }
-        
         let computedObj = {
             _subscribers: subscribers,
             get value() {
+                if (isDirty) {
+                    // Clear old dependencies before re-evaluating
+                    effect._deps.forEach(s => {
+                        if (s._subscribers) s._subscribers.delete(effect);
+                    });
+                    effect._deps.clear();
+
+                    effectStack.push(effect);
+                    activeEffect = effect;
+                    try {
+                        currentVal = fn();
+                        isDirty = false;
+                    } catch (err) {
+                        papyr.diagnostics.reportError(err);
+                    } finally {
+                        effectStack.pop();
+                        activeEffect = effectStack[effectStack.length - 1] || null;
+                    }
+                }
+                
                 if (activeEffect) {
                     subscribers.add(activeEffect);
                     if (typeof activeEffect._addDep === 'function') {
@@ -1658,8 +1679,18 @@ coreInitializers.push((papyr) => {
             },
             subscribe(sub) {
                 subscribers.add(sub);
-                sub(currentVal);
-                return () => subscribers.delete(sub);
+                sub(computedObj.value);
+                return () => {
+                    subscribers.delete(sub);
+                    if (subscribers.size === 0) {
+                        // Cleanup dependencies to avoid memory leaks
+                        effect._deps.forEach(s => {
+                            if (s._subscribers) s._subscribers.delete(effect);
+                        });
+                        effect._deps.clear();
+                        isDirty = true;
+                    }
+                };
             }
         };
         return computedObj;
@@ -1721,7 +1752,11 @@ coreInitializers.push((papyr) => {
             if (truthy === prevVal) return;
             prevVal = truthy;
             
-            if (currentEl) currentEl.remove();
+            if (container.childNodes) {
+                Array.from(container.childNodes).forEach(cleanupElement);
+            }
+            container.innerHTML = '';
+            
             let target = truthy ? trueVal : falseVal;
             if (target) {
                 currentEl = typeof target === 'function' ? target() : target;
@@ -1731,13 +1766,18 @@ coreInitializers.push((papyr) => {
             }
         };
         
+        let unsubscribe;
         if (conditionState && typeof conditionState.subscribe === 'function') {
-            conditionState.subscribe(update);
+            unsubscribe = conditionState.subscribe(update);
         } else if (typeof conditionState === 'function') {
             let comp = papyr.computed(() => !!conditionState());
-            comp.subscribe(update);
+            unsubscribe = comp.subscribe(update);
         } else {
             update(!!conditionState);
+        }
+        if (unsubscribe) {
+            if (!container._cleanups) container._cleanups = [];
+            container._cleanups.push(unsubscribe);
         }
         return container;
     };
@@ -1763,17 +1803,44 @@ coreInitializers.push((papyr) => {
             // 1. Identify all keys and get/create their elements
             let newKeys = new Set();
             let newElements = [];
+            let keyCounts = new Map();
             
             arr.forEach((item, index) => {
-                let key = (item && typeof item === 'object') ? (item.id !== undefined ? item.id : item) : item;
+                let baseKey = (item && typeof item === 'object' && item.id !== undefined) 
+                    ? item.id 
+                    : (item && typeof item === 'object') 
+                        ? item 
+                        : item;
+                
+                let occurrence = (keyCounts.get(baseKey) || 0) + 1;
+                keyCounts.set(baseKey, occurrence);
+                
+                let key = occurrence === 1 ? baseKey : (typeof baseKey === 'object' ? ('dup::' + occurrence) : (baseKey + '::dup::' + occurrence));
                 newKeys.add(key);
                 
-                let el = nodeMap.get(key);
-                if (!el) {
-                    el = renderCallback(item, index);
-                    if (isElement(el)) {
-                        nodeMap.set(key, el);
+                let entry = nodeMap.get(key);
+                let el;
+                if (!entry || entry.item !== item) {
+                    if (entry) {
+                        cleanupElement(entry.el);
                     }
+                    el = renderCallback(item, index);
+                    if (el && el.nodeType === 11) { // DocumentFragment
+                        if (typeof document !== 'undefined') {
+                            let wrapper = document.createElement('span');
+                            wrapper.style.display = 'contents';
+                            wrapper.appendChild(el);
+                            el = wrapper;
+                        }
+                    }
+                    if (isElement(el)) {
+                        nodeMap.set(key, { el, item });
+                        if (entry && entry.el && entry.el.parentNode) {
+                            entry.el.parentNode.replaceChild(el, entry.el);
+                        }
+                    }
+                } else {
+                    el = entry.el;
                 }
                 if (isElement(el)) {
                     newElements.push(el);
@@ -1781,29 +1848,15 @@ coreInitializers.push((papyr) => {
             });
             
             // 2. Remove elements that are no longer in the array and trigger their cleanups
-            nodeMap.forEach((el, key) => {
+            nodeMap.forEach((entry, key) => {
                 if (!newKeys.has(key)) {
-                    const runCleanups = (n) => {
-                        if (n._cleanups) {
-                            n._cleanups.forEach(c => {
-                                if (typeof c === 'function') {
-                                    try { c(); } catch(e) { papyr.diagnostics.reportError(e); }
-                                }
-                            });
-                            n._cleanups = [];
-                        }
-                        if (n._onUnmounted) {
-                            try { n._onUnmounted(n); } catch(e) { papyr.diagnostics.reportError(e); }
-                        }
-                        Array.from(n.children || []).forEach(runCleanups);
-                    };
-                    runCleanups(el);
+                    cleanupElement(entry.el);
                     
-                    if (el.parentNode === container) {
+                    if (entry.el.parentNode === container) {
                         if (typeof container.removeChild === 'function') {
-                            container.removeChild(el);
-                        } else if (typeof el.remove === 'function') {
-                            el.remove();
+                            container.removeChild(entry.el);
+                        } else if (typeof entry.el.remove === 'function') {
+                            entry.el.remove();
                         }
                     }
                     nodeMap.delete(key);
@@ -1824,7 +1877,9 @@ coreInitializers.push((papyr) => {
         };
         
         if (arrayState && typeof arrayState.subscribe === 'function') {
-            arrayState.subscribe(update);
+            const unsubscribe = arrayState.subscribe(update);
+            if (!container._cleanups) container._cleanups = [];
+            container._cleanups.push(unsubscribe);
         } else {
             update(arrayState);
         }
@@ -1898,7 +1953,7 @@ coreInitializers.push((papyr) => {
         const listener = (e) => {
             if (isCheckbox) {
                 stateObj.value = e.target.checked;
-            } else if (inputEl.type === 'number') {
+            } else if (inputEl.type === 'number' || inputEl.type === 'range') {
                 stateObj.value = parseFloat(e.target.value) || 0;
             } else {
                 stateObj.value = e.target.value;
@@ -1909,12 +1964,11 @@ coreInitializers.push((papyr) => {
         inputEl.addEventListener(eventType, listener);
         
         // Store cleanup hook on element
-        const oldCleanup = inputEl._bindCleanup;
-        inputEl._bindCleanup = () => {
-            if (oldCleanup) oldCleanup();
+        if (!inputEl._cleanups) inputEl._cleanups = [];
+        inputEl._cleanups.push(() => {
             unsubscribe();
             inputEl.removeEventListener(eventType, listener);
-        };
+        });
     };
 
     /**
@@ -1926,7 +1980,7 @@ coreInitializers.push((papyr) => {
             oninput: (e) => {
                 if (e.target.type === 'checkbox') {
                     stateObj.value = e.target.checked;
-                } else if (e.target.type === 'number') {
+                } else if (e.target.type === 'number' || e.target.type === 'range') {
                     stateObj.value = parseFloat(e.target.value) || 0;
                 } else {
                     stateObj.value = e.target.value;
@@ -2024,10 +2078,13 @@ coreInitializers.push((papyr) => {
             currentView,
             () => {
                 let Component = currentView.value;
-                if (Component.prototype && Component.prototype instanceof papyr.component) {
+                if (Component && Component.prototype && typeof papyr.component === 'function' && Component.prototype instanceof papyr.component) {
                     return new Component().render();
                 }
-                return Component();
+                if (typeof Component === 'function') {
+                    return Component();
+                }
+                return papyr.div();
             },
             () => papyr.div()
         );
@@ -2147,6 +2204,37 @@ coreInitializers.push((papyr) => {
 
 coreInitializers.push((papyr) => {
     
+    const getDB = (collectionName) => {
+        return new Promise((resolve, reject) => {
+            if (typeof window === 'undefined' || !window.indexedDB) return reject(new Error("IndexedDB not supported"));
+            const req = window.indexedDB.open("papyr_database");
+            req.onsuccess = (e) => {
+                const db = e.target.result;
+                if (!db.objectStoreNames.contains(collectionName)) {
+                    const newVer = db.version + 1;
+                    db.close();
+                    const reqUp = window.indexedDB.open("papyr_database", newVer);
+                    reqUp.onupgradeneeded = (ev) => {
+                        ev.target.result.createObjectStore(collectionName, { keyPath: "id" });
+                    };
+                    reqUp.onsuccess = (ev) => {
+                        resolve(ev.target.result);
+                    };
+                    reqUp.onerror = (err) => reject(err);
+                } else {
+                    resolve(db);
+                }
+            };
+            req.onerror = (err) => reject(err);
+            req.onupgradeneeded = (e) => {
+                const db = e.target.result;
+                if (!db.objectStoreNames.contains(collectionName)) {
+                    db.createObjectStore(collectionName, { keyPath: "id" });
+                }
+            };
+        });
+    };
+
     papyr.db = (collectionName, engine = 'local') => {
         
         // Engine Drivers with fully granular transaction-safe CRUD methods
@@ -2244,70 +2332,51 @@ coreInitializers.push((papyr) => {
             'indexeddb': {
                 getAsync: () => {
                     return new Promise((resolve) => {
-                        if (typeof window === 'undefined' || !window.indexedDB) return resolve([]);
-                        const req = window.indexedDB.open("papyr_database", 1);
-                        req.onupgradeneeded = (e) => {
-                            const db = e.target.result;
-                            if (!db.objectStoreNames.contains(collectionName)) {
-                                db.createObjectStore(collectionName, { keyPath: "id" });
-                            }
-                        };
-                        req.onsuccess = (e) => {
-                            const db = e.target.result;
-                            if (!db.objectStoreNames.contains(collectionName)) {
-                                const newVer = db.version + 1;
-                                db.close();
-                                const reqUp = window.indexedDB.open("papyr_database", newVer);
-                                reqUp.onupgradeneeded = (ev) => {
-                                    ev.target.result.createObjectStore(collectionName, { keyPath: "id" });
-                                };
-                                reqUp.onsuccess = (ev) => {
-                                    fetchData(ev.target.result);
-                                };
-                                reqUp.onerror = () => resolve([]);
-                                return;
-                            }
-                            fetchData(db);
-                        };
-                        req.onerror = () => resolve([]);
-                        
-                        function fetchData(db) {
+                        getDB(collectionName).then(db => {
                             try {
                                 const tx = db.transaction(collectionName, "readonly");
                                 const store = tx.objectStore(collectionName);
                                 const getReq = store.getAll();
-                                getReq.onsuccess = () => resolve(getReq.result || []);
-                                getReq.onerror = () => resolve([]);
+                                getReq.onsuccess = () => {
+                                    db.close();
+                                    resolve(getReq.result || []);
+                                };
+                                getReq.onerror = () => {
+                                    db.close();
+                                    resolve([]);
+                                };
                             } catch(err) {
+                                db.close();
                                 resolve([]);
                             }
-                        }
+                        }).catch(() => resolve([]));
                     });
                 },
                 insertAsync: (item) => {
                     return new Promise((resolve) => {
-                        if (typeof window === 'undefined' || !window.indexedDB) return resolve();
-                        const req = window.indexedDB.open("papyr_database");
-                        req.onsuccess = (e) => {
-                            const db = e.target.result;
+                        getDB(collectionName).then(db => {
                             try {
                                 const tx = db.transaction(collectionName, "readwrite");
                                 const store = tx.objectStore(collectionName);
-                                store.put(item).onsuccess = () => resolve();
+                                store.put(item).onsuccess = () => {
+                                    db.close();
+                                    resolve();
+                                };
+                                store.put(item).onerror = () => {
+                                    db.close();
+                                    resolve();
+                                };
                             } catch(err) {
                                 console.error("PapyrDB [indexeddb] insert error:", err);
+                                db.close();
                                 resolve();
                             }
-                        };
-                        req.onerror = () => resolve();
+                        }).catch(() => resolve());
                     });
                 },
                 updateAsync: (id, updates) => {
                     return new Promise((resolve) => {
-                        if (typeof window === 'undefined' || !window.indexedDB) return resolve();
-                        const req = window.indexedDB.open("papyr_database");
-                        req.onsuccess = (e) => {
-                            const db = e.target.result;
+                        getDB(collectionName).then(db => {
                             try {
                                 const tx = db.transaction(collectionName, "readwrite");
                                 const store = tx.objectStore(collectionName);
@@ -2316,138 +2385,73 @@ coreInitializers.push((papyr) => {
                                     const current = getReq.result;
                                     if (current) {
                                         const updated = { ...current, ...updates };
-                                        store.put(updated).onsuccess = () => resolve();
+                                        store.put(updated).onsuccess = () => {
+                                            db.close();
+                                            resolve();
+                                        };
+                                        store.put(updated).onerror = () => {
+                                            db.close();
+                                            resolve();
+                                        };
                                     } else {
+                                        db.close();
                                         resolve();
                                     }
                                 };
-                                getReq.onerror = () => resolve();
+                                getReq.onerror = () => {
+                                    db.close();
+                                    resolve();
+                                };
                             } catch(err) {
                                 console.error("PapyrDB [indexeddb] update error:", err);
+                                db.close();
                                 resolve();
                             }
-                        };
-                        req.onerror = () => resolve();
+                        }).catch(() => resolve());
                     });
                 },
                 deleteAsync: (id) => {
                     return new Promise((resolve) => {
-                        if (typeof window === 'undefined' || !window.indexedDB) return resolve();
-                        const req = window.indexedDB.open("papyr_database");
-                        req.onsuccess = (e) => {
-                            const db = e.target.result;
+                        getDB(collectionName).then(db => {
                             try {
                                 const tx = db.transaction(collectionName, "readwrite");
                                 const store = tx.objectStore(collectionName);
-                                store.delete(id).onsuccess = () => resolve();
+                                store.delete(id).onsuccess = () => {
+                                    db.close();
+                                    resolve();
+                                };
+                                store.delete(id).onerror = () => {
+                                    db.close();
+                                    resolve();
+                                };
                             } catch(err) {
                                 console.error("PapyrDB [indexeddb] delete error:", err);
+                                db.close();
                                 resolve();
                             }
-                        };
-                        req.onerror = () => resolve();
+                        }).catch(() => resolve());
                     });
                 },
                 clearAsync: () => {
                     return new Promise((resolve) => {
-                        if (typeof window === 'undefined' || !window.indexedDB) return resolve();
-                        const req = window.indexedDB.open("papyr_database");
-                        req.onsuccess = (e) => {
-                            const db = e.target.result;
+                        getDB(collectionName).then(db => {
                             try {
                                 const tx = db.transaction(collectionName, "readwrite");
                                 const store = tx.objectStore(collectionName);
-                                store.clear().onsuccess = () => resolve();
+                                store.clear().onsuccess = () => {
+                                    db.close();
+                                    resolve();
+                                };
+                                store.clear().onerror = () => {
+                                    db.close();
+                                    resolve();
+                                };
                             } catch(err) {
                                 console.error("PapyrDB [indexeddb] clear error:", err);
+                                db.close();
                                 resolve();
                             }
-                        };
-                        req.onerror = () => resolve();
-                    });
-                }
-            },
-            'firebase': {
-                getAsync: () => {
-                    return new Promise((resolve) => {
-                        if (papyr.firebase && papyr.firebase.db) {
-                            papyr.firebase.db(collectionName).get().then(resolve).catch(() => resolve([]));
-                        } else if (typeof window !== 'undefined' && window.firebase && window.firebase.firestore) {
-                            try {
-                                const db = window.firebase.firestore();
-                                db.collection(collectionName).get()
-                                    .then(querySnapshot => {
-                                        const data = [];
-                                        querySnapshot.forEach(doc => {
-                                            data.push({ id: doc.id, ...doc.data() });
-                                        });
-                                        resolve(data);
-                                    })
-                                    .catch(() => resolve([]));
-                            } catch(e) { resolve([]); }
-                        } else {
-                            resolve([]);
-                        }
-                    });
-                },
-                insertAsync: (item) => {
-                    return new Promise((resolve) => {
-                        if (papyr.firebase && papyr.firebase.db) {
-                            papyr.firebase.db(collectionName).insert(item).then(resolve).catch(resolve);
-                        } else if (typeof window !== 'undefined' && window.firebase && window.firebase.firestore) {
-                            try {
-                                const db = window.firebase.firestore();
-                                db.collection(collectionName).doc(item.id).set(item).then(resolve).catch(resolve);
-                            } catch(e) { resolve(); }
-                        } else {
-                            resolve();
-                        }
-                    });
-                },
-                updateAsync: (id, updates) => {
-                    return new Promise((resolve) => {
-                        if (papyr.firebase && papyr.firebase.db) {
-                            papyr.firebase.db(collectionName).update(id, updates).then(resolve).catch(resolve);
-                        } else if (typeof window !== 'undefined' && window.firebase && window.firebase.firestore) {
-                            try {
-                                const db = window.firebase.firestore();
-                                db.collection(collectionName).doc(id).update(updates).then(resolve).catch(resolve);
-                            } catch(e) { resolve(); }
-                        } else {
-                            resolve();
-                        }
-                    });
-                },
-                deleteAsync: (id) => {
-                    return new Promise((resolve) => {
-                        if (papyr.firebase && papyr.firebase.db) {
-                            papyr.firebase.db(collectionName).delete(id).then(resolve).catch(resolve);
-                        } else if (typeof window !== 'undefined' && window.firebase && window.firebase.firestore) {
-                            try {
-                                const db = window.firebase.firestore();
-                                db.collection(collectionName).doc(id).delete().then(resolve).catch(resolve);
-                            } catch(e) { resolve(); }
-                        } else {
-                            resolve();
-                        }
-                    });
-                },
-                clearAsync: () => {
-                    return new Promise((resolve) => {
-                        if (typeof window !== 'undefined' && window.firebase && window.firebase.firestore) {
-                            try {
-                                const db = window.firebase.firestore();
-                                db.collection(collectionName).get().then(snapshot => {
-                                    const batch = db.batch();
-                                    snapshot.forEach(doc => {
-                                        batch.delete(doc.ref);
-                                    });
-                                    batch.commit().then(resolve).catch(resolve);
-                                }).catch(resolve);
-                            } catch(e) { resolve(); }
-                        } else {
-                            resolve();
-                        }
+                        }).catch(() => resolve());
                     });
                 }
             },
@@ -2588,7 +2592,16 @@ coreInitializers.push((papyr) => {
             }
         };
 
-        const isAsync = ['indexeddb', 'firebase', 'sqlite'].includes(engine);
+        // Dynamically instantiate registered custom drivers for this collection
+        Object.keys(papyr.db.drivers).forEach(name => {
+            try {
+                drivers[name] = papyr.db.drivers[name](collectionName);
+            } catch(e) {
+                console.error(`Failed to initialize custom db driver ${name}:`, e);
+            }
+        });
+
+        const isAsync = engine !== 'local' && engine !== 'session' && drivers[engine];
         // eslint-disable-next-line security/detect-object-injection
         const driver = (engine && engine !== '__proto__' && engine !== 'constructor' && engine !== 'prototype' && Object.prototype.hasOwnProperty.call(drivers, engine)) ? drivers[engine] : drivers['local'];
         
@@ -2643,14 +2656,18 @@ coreInitializers.push((papyr) => {
                     result = result.filter(options.filter);
                 } else if (options.filter && typeof options.filter === 'object') {
                     result = result.filter(item => 
-                        Object.entries(options.filter).every(([k, v]) => item[k] === v)
+                        Object.entries(options.filter).every(([k, v]) => {
+                            if (k === '__proto__' || k === 'constructor' || k === 'prototype') return false;
+                            return Object.prototype.hasOwnProperty.call(item, k) ? item[k] === v : false;
+                        })
                     );
                 }
                 if (options.sort) {
                     const { field, direction = 'asc' } = options.sort;
                     result.sort((a, b) => {
-                        let valA = a[field];
-                        let valB = b[field];
+                        if (field === '__proto__' || field === 'constructor' || field === 'prototype') return 0;
+                        let valA = Object.prototype.hasOwnProperty.call(a, field) ? a[field] : undefined;
+                        let valB = Object.prototype.hasOwnProperty.call(b, field) ? b[field] : undefined;
                         if (typeof valA === 'string') valA = valA.toLowerCase();
                         if (typeof valB === 'string') valB = valB.toLowerCase();
                         if (valA < valB) return direction === 'asc' ? -1 : 1;
@@ -2771,6 +2788,12 @@ coreInitializers.push((papyr) => {
                 return () => watchers = watchers.filter(cb => cb !== callback); // unsubscribe
             }
         };
+    };
+
+    papyr.db.drivers = {};
+    papyr.db.registerDriver = (name, driverFactory) => {
+        if (name === '__proto__' || name === 'constructor' || name === 'prototype') return;
+        papyr.db.drivers[name] = driverFactory;
     };
 
     // Upgraded storage helper function with dual call signature compatibility
@@ -2920,7 +2943,7 @@ coreInitializers.push((papyr) => {
                 if (options.sort) {
                     const { field, direction = 'asc' } = options.sort;
                     result.sort((a, b) => {
-                        if (field === '__proto__' || field === 'constructor' || field === '__prototype') return 0;
+                        if (field === '__proto__' || field === 'constructor' || field === 'prototype') return 0;
                         // eslint-disable-next-line security/detect-object-injection
                         let valA = Object.prototype.hasOwnProperty.call(a, field) ? a[field] : undefined;
                         // eslint-disable-next-line security/detect-object-injection
@@ -3071,7 +3094,7 @@ coreInitializers.push((papyr) => {
     function modelWrapper(stateOrData) {
         if (new.target) {
             // Called with 'new' - acts as the ORM class constructor
-            return new PapyrModel(stateOrData);
+            Object.assign(this, stateOrData || {});
         } else {
             // Called as a function - acts as the reactivity model mixin
             return {
@@ -3079,7 +3102,7 @@ coreInitializers.push((papyr) => {
                 oninput: (e) => {
                     if (e.target.type === 'checkbox') {
                         stateOrData.value = e.target.checked;
-                    } else if (e.target.type === 'number') {
+                    } else if (e.target.type === 'number' || e.target.type === 'range') {
                         stateOrData.value = parseFloat(e.target.value) || 0;
                     } else {
                         stateOrData.value = e.target.value;
@@ -3112,6 +3135,12 @@ coreInitializers.push((papyr) => {
         user: papyr.state(null), // Reactive current user state
         
         _config: { provider: 'local' },
+        _providers: {},
+
+        registerProvider(name, providerInstance) {
+            if (name === '__proto__' || name === 'constructor' || name === 'prototype') return;
+            this._providers[name] = providerInstance;
+        },
 
         async _hashPassword(password) {
             if (typeof window !== 'undefined' && window.crypto && window.crypto.subtle) {
@@ -3228,18 +3257,15 @@ coreInitializers.push((papyr) => {
                 let userObj = { id: userRecord.id, username: credentials.username, token };
                 this.user.value = userObj;
                 return userObj;
-            } else if (this._config.provider === 'firebase') {
-                if (papyr.firebase && papyr.firebase.auth) {
-                    return papyr.firebase.auth().signInWithEmailAndPassword(credentials.email, credentials.password)
-                        .then(res => {
-                            this.user.value = res.user;
-                            return res.user;
-                        });
-                } else {
-                    return Promise.reject(new Error("Firebase not initialized"));
+            } else {
+                const provider = this._providers[this._config.provider];
+                if (provider && typeof provider.login === 'function') {
+                    const user = await provider.login(credentials);
+                    this.user.value = user;
+                    return user;
                 }
+                return Promise.reject(new Error(`Auth provider "${this._config.provider}" is not registered or does not support login.`));
             }
-            return Promise.reject(new Error("Provider not supported"));
         },
 
         async register(credentials) {
@@ -3284,8 +3310,15 @@ coreInitializers.push((papyr) => {
                 let userObj = { id: uId, username: credentials.username, token };
                 this.user.value = userObj;
                 return userObj;
+            } else {
+                const provider = this._providers[this._config.provider];
+                if (provider && typeof provider.register === 'function') {
+                    const user = await provider.register(credentials);
+                    this.user.value = user;
+                    return user;
+                }
+                return Promise.reject(new Error(`Auth provider "${this._config.provider}" is not registered or does not support registration.`));
             }
-            return Promise.reject(new Error("Registration not implemented for " + this._config.provider));
         },
 
         logout() {
@@ -3302,11 +3335,73 @@ coreInitializers.push((papyr) => {
                 papyr.storage.set("auth_token", null);
                 this.user.value = null;
                 return Promise.resolve();
-            } else if (this._config.provider === 'firebase' && papyr.firebase) {
-                return papyr.firebase.auth().signOut().then(() => {
-                    this.user.value = null;
-                });
+            } else {
+                const provider = this._providers[this._config.provider];
+                if (provider && typeof provider.logout === 'function') {
+                    return Promise.resolve(provider.logout()).then(() => {
+                        this.user.value = null;
+                    });
+                }
+                this.user.value = null;
+                return Promise.resolve();
             }
+        }
+    };
+});
+
+
+// --- MODULE: core/payments.js ---
+/**
+ * PAPYR PAYMENT GATEWAY CORE
+ * 
+ * Provides an abstract payment gateway registry to decouple cash flows, checkout sessions,
+ * and currency transaction handling.
+ * 
+ * LIABILITY & DISCLAIMER:
+ * Papyr.js is a zero-dependency front-end library. It does not store, transmit, or process
+ * payment credentials or monetary transactions directly. Developers integrating third-party
+ * gateways (e.g. Stripe, PayPal) bear full compliance and liability for data handling,
+ * secure transit (PCI-DSS), and financial cash flows.
+ */
+
+coreInitializers.push((papyr) => {
+    papyr.payments = {
+        _gateways: {},
+
+        /**
+         * Register a custom third-party payment gateway provider.
+         * @param {string} name Gateway provider name (e.g. 'stripe', 'paypal')
+         * @param {object} gatewayInstance Gateway implementation object
+         */
+        register(name, gatewayInstance) {
+            if (name === '__proto__' || name === 'constructor' || name === 'prototype') return;
+            this._gateways[name] = gatewayInstance;
+        },
+
+        /**
+         * Resolve a registered gateway provider.
+         * @param {string} name Gateway name
+         * @returns {object|undefined}
+         */
+        resolve(name) {
+            return this._gateways[name];
+        },
+
+        /**
+         * Initiates a checkout or subscription process through the registered gateway.
+         * @param {string} gatewayName Registered gateway name
+         * @param {object} options Checkout options (amount, currency, lineItems, etc.)
+         * @returns {Promise<any>}
+         */
+        async checkout(gatewayName, options) {
+            const gw = this.resolve(gatewayName);
+            if (!gw) {
+                return Promise.reject(new Error(`Payment gateway "${gatewayName}" is not registered.`));
+            }
+            if (typeof gw.checkout !== 'function') {
+                return Promise.reject(new Error(`Payment gateway "${gatewayName}" does not implement checkout().`));
+            }
+            return gw.checkout(options);
         }
     };
 });
@@ -3523,6 +3618,111 @@ if (typeof window !== 'undefined' && !window.papyr) {
  * v2.0 - Intelligent Three.js bindings, parallax depth, and Canvas2D holographic fallbacks.
  */
 (function(window) {
+    // Isomorphic/reactive value retriever
+    function getValue(val) {
+        if (val && typeof val === 'object' && val.subscribe && 'value' in val) {
+            return val.value;
+        }
+        if (typeof val === 'function') {
+            return val();
+        }
+        return val;
+    }
+
+    // Custom 3D Shape generators for the HTML5 Canvas2D fallback
+    function generateCube(size) {
+        const s = size / 2;
+        const vertices = [
+            {x: -s, y: -s, z: -s}, {x: s, y: -s, z: -s}, {x: s, y: s, z: -s}, {x: -s, y: s, z: -s},
+            {x: -s, y: -s, z: s},  {x: s, y: -s, z: s},  {x: s, y: s, z: s},  {x: -s, y: s, z: s}
+        ];
+        const edges = [
+            [0, 1], [1, 2], [2, 3], [3, 0], // back face
+            [4, 5], [5, 6], [6, 7], [7, 4], // front face
+            [0, 4], [1, 5], [2, 6], [3, 7]  // connections
+        ];
+        return { vertices, edges };
+    }
+
+    function generateSphere(radius, latCount = 8, lonCount = 8) {
+        const vertices = [];
+        const edges = [];
+        for (let lat = 0; lat <= latCount; lat++) {
+            const theta = lat * Math.PI / latCount;
+            const sinTheta = Math.sin(theta);
+            const cosTheta = Math.cos(theta);
+            
+            for (let lon = 0; lon < lonCount; lon++) {
+                const phi = lon * 2 * Math.PI / lonCount;
+                const x = radius * sinTheta * Math.cos(phi);
+                const y = radius * cosTheta;
+                const z = radius * sinTheta * Math.sin(phi);
+                vertices.push({ x, y, z });
+                
+                const currIdx = lat * lonCount + lon;
+                
+                // Connect to next longitude ring
+                const nextLonIdx = lat * lonCount + ((lon + 1) % lonCount);
+                edges.push([currIdx, nextLonIdx]);
+                
+                // Connect to next latitude ring
+                if (lat < latCount) {
+                    const nextLatIdx = (lat + 1) * lonCount + lon;
+                    edges.push([currIdx, nextLatIdx]);
+                }
+            }
+        }
+        return { vertices, edges };
+    }
+
+    function generateTorus(radius, tube, mainSeg = 12, tubeSeg = 8) {
+        const vertices = [];
+        const edges = [];
+        for (let i = 0; i < mainSeg; i++) {
+            const u = i * 2 * Math.PI / mainSeg;
+            const cosU = Math.cos(u);
+            const sinU = Math.sin(u);
+            
+            for (let j = 0; j < tubeSeg; j++) {
+                const v = j * 2 * Math.PI / tubeSeg;
+                const x = (radius + tube * Math.cos(v)) * cosU;
+                const y = (radius + tube * Math.cos(v)) * sinU;
+                const z = tube * Math.sin(v);
+                vertices.push({ x, y, z });
+
+                const currIdx = i * tubeSeg + j;
+                
+                // Connect around tube circle
+                const nextTubeIdx = i * tubeSeg + ((j + 1) % tubeSeg);
+                edges.push([currIdx, nextTubeIdx]);
+                
+                // Connect around torus ring
+                const nextMainIdx = ((i + 1) % mainSeg) * tubeSeg + j;
+                edges.push([currIdx, nextMainIdx]);
+            }
+        }
+        return { vertices, edges };
+    }
+
+    function rotatePoint(x, y, z, rx, ry, rz) {
+        // X-axis rotation
+        let cosX = Math.cos(rx), sinX = Math.sin(rx);
+        let y1 = y * cosX - z * sinX;
+        let z1 = y * sinX + z * cosX;
+
+        // Y-axis rotation
+        let cosY = Math.cos(ry), sinY = Math.sin(ry);
+        let x2 = x * cosY + z1 * sinY;
+        let z2 = -x * sinY + z1 * cosY;
+
+        // Z-axis rotation
+        let cosZ = Math.cos(rz), sinZ = Math.sin(rz);
+        let x3 = x2 * cosZ - y1 * sinZ;
+        let y3 = x2 * sinZ + y1 * cosZ;
+
+        return { x: x3, y: y3, z: z2 };
+    }
+
     // Helper: Smart Three.js WebGL Orchestrator
     function bootThreeJS(canvas, config) {
         try {
@@ -3537,9 +3737,9 @@ if (typeof window !== 'undefined' && !window.papyr) {
             camera.position.z = 5;
 
             // Load environments using lights and particles
-            let particlesGeometry;
+            let particlesMesh;
             if (config.particles) {
-                particlesGeometry = new THREE.BufferGeometry();
+                const particlesGeometry = new THREE.BufferGeometry();
                 const particlesCount = config.environment === 'cyberpunk' ? 400 : 800;
                 const posArray = new Float32Array(particlesCount * 3);
 
@@ -3560,17 +3760,88 @@ if (typeof window !== 'undefined' && !window.papyr) {
                     opacity: 0.8
                 });
 
-                const particlesMesh = new THREE.Points(particlesGeometry, material);
+                particlesMesh = new THREE.Points(particlesGeometry, material);
                 scene.add(particlesMesh);
             }
 
             // Lights
-            const ambientLight = new THREE.AmbientLight(0xffffff, 0.2);
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.3);
             scene.add(ambientLight);
 
             const pointLight = new THREE.PointLight(0x6366f1, 2);
             pointLight.position.set(2, 3, 4);
             scene.add(pointLight);
+
+            const dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
+            dirLight.position.set(-2, 4, 3);
+            scene.add(dirLight);
+
+            // Objects mapping and reactive tracking
+            const meshTrackers = [];
+            if (config.objects && Array.isArray(config.objects)) {
+                config.objects.forEach(obj => {
+                    let geom;
+                    const type = getValue(obj.type);
+                    const size = getValue(obj.size !== undefined ? obj.size : 1);
+                    
+                    if (type === 'cube') {
+                        const width = getValue(obj.width || size);
+                        const height = getValue(obj.height || size);
+                        const depth = getValue(obj.depth || size);
+                        geom = new THREE.BoxGeometry(width, height, depth);
+                    } else if (type === 'sphere') {
+                        const radius = getValue(obj.radius !== undefined ? obj.radius : size);
+                        geom = new THREE.SphereGeometry(radius, 32, 32);
+                    } else if (type === 'torus') {
+                        const radius = getValue(obj.radius !== undefined ? obj.radius : size * 0.8);
+                        const tube = getValue(obj.tube !== undefined ? obj.tube : size * 0.2);
+                        geom = new THREE.TorusGeometry(radius, tube, 16, 100);
+                    } else {
+                        geom = new THREE.BoxGeometry(size, size, size);
+                    }
+
+                    const isWire = getValue(obj.wireframe !== undefined ? obj.wireframe : false);
+                    const matColor = getValue(obj.color || '#6366f1');
+                    const mat = new THREE.MeshStandardMaterial({
+                        color: matColor,
+                        wireframe: isWire,
+                        roughness: 0.3,
+                        metalness: 0.8
+                    });
+
+                    const mesh = new THREE.Mesh(geom, mat);
+                    const pos = getValue(obj.position) || [0, 0, 0];
+                    mesh.position.set(pos[0], pos[1], pos[2]);
+                    scene.add(mesh);
+
+                    const tracker = { mesh, obj };
+                    meshTrackers.push(tracker);
+
+                    // Reactive subscriptions
+                    if (obj.color && typeof obj.color.subscribe === 'function') {
+                        obj.color.subscribe(c => {
+                            mesh.material.color.set(c);
+                        });
+                    }
+                    if (obj.position && typeof obj.position.subscribe === 'function') {
+                        obj.position.subscribe(p => {
+                            if (!tracker.physicsInitialized) {
+                                mesh.position.set(p[0], p[1], p[2]);
+                            }
+                        });
+                    }
+                    if (obj.size && typeof obj.size.subscribe === 'function') {
+                        obj.size.subscribe(s => {
+                            mesh.scale.set(s, s, s);
+                        });
+                    }
+                    if (obj.radius && typeof obj.radius.subscribe === 'function') {
+                        obj.radius.subscribe(r => {
+                            mesh.scale.set(r, r, r);
+                        });
+                    }
+                });
+            }
 
             // Motion tracker
             let mouseX = 0, mouseY = 0;
@@ -3585,13 +3856,66 @@ if (typeof window !== 'undefined' && !window.papyr) {
             const tick = () => {
                 const elapsedTime = clock.getElapsedTime();
 
-                // Rotate particles mesh based on environment
-                if (scene.children[1]) {
-                    scene.children[1].rotation.y = elapsedTime * 0.05;
+                // Rotate particles mesh
+                if (particlesMesh) {
+                    particlesMesh.rotation.y = elapsedTime * 0.05;
                     if (config.environment === 'underwater') {
-                        scene.children[1].rotation.x = Math.sin(elapsedTime * 0.2) * 0.1;
+                        particlesMesh.rotation.x = Math.sin(elapsedTime * 0.2) * 0.1;
                     }
                 }
+
+                // Physics/Gravity Update
+                const gravityActive = getValue(config.gravityActive);
+
+                // Spin and position updates
+                meshTrackers.forEach(t => {
+                    if (gravityActive) {
+                        if (!t.physicsInitialized) {
+                            t.pos = [...(getValue(t.obj.position) || [0, 0, 0])];
+                            t.vel = [
+                                (Math.random() - 0.5) * 0.04,
+                                0.0,
+                                (Math.random() - 0.5) * 0.04
+                            ];
+                            t.physicsInitialized = true;
+                        }
+                        t.vel[1] += -0.005; // gravity acceleration
+                        t.pos[0] += t.vel[0];
+                        t.pos[1] += t.vel[1];
+                        t.pos[2] += t.vel[2];
+
+                        // Collisions
+                        if (t.pos[1] <= -1.8) {
+                            t.pos[1] = -1.8;
+                            t.vel[1] = -t.vel[1] * 0.75; // bounce
+                            t.vel[0] += (Math.random() - 0.5) * 0.01;
+                            t.vel[2] += (Math.random() - 0.5) * 0.01;
+                        }
+                        if (t.pos[1] >= 2.5) {
+                            t.pos[1] = 2.5;
+                            t.vel[1] = -t.vel[1] * 0.75;
+                        }
+                        if (t.pos[0] <= -3.0) { t.pos[0] = -3.0; t.vel[0] = -t.vel[0] * 0.9; }
+                        if (t.pos[0] >= 3.0) { t.pos[0] = 3.0; t.vel[0] = -t.vel[0] * 0.9; }
+                        if (t.pos[2] <= -2.0) { t.pos[2] = -2.0; t.vel[2] = -t.vel[2] * 0.9; }
+                        if (t.pos[2] >= 2.0) { t.pos[2] = 2.0; t.vel[2] = -t.vel[2] * 0.9; }
+
+                        t.mesh.position.set(t.pos[0], t.pos[1], t.pos[2]);
+                    } else {
+                        if (t.physicsInitialized) {
+                            const origPos = getValue(t.obj.position) || [0, 0, 0];
+                            t.mesh.position.set(origPos[0], origPos[1], origPos[2]);
+                            t.physicsInitialized = false;
+                            t.pos = null;
+                            t.vel = null;
+                        }
+                    }
+
+                    const spin = getValue(t.obj.spin) || [0, 0, 0];
+                    t.mesh.rotation.x += getValue(spin[0]);
+                    t.mesh.rotation.y += getValue(spin[1]);
+                    t.mesh.rotation.z += getValue(spin[2]);
+                });
 
                 // Smooth camera depth panning
                 if (config.depth) {
@@ -3608,13 +3932,15 @@ if (typeof window !== 'undefined' && !window.papyr) {
             // Resize support
             window.addEventListener('resize', () => {
                 const parent = canvas.parentElement;
-                const newW = parent.clientWidth;
-                const newH = parent.clientHeight;
-                canvas.width = newW;
-                canvas.height = newH;
-                camera.aspect = newW / newH;
-                camera.updateProjectionMatrix();
-                renderer.setSize(newW, newH);
+                if (parent) {
+                    const newW = parent.clientWidth;
+                    const newH = parent.clientHeight;
+                    canvas.width = newW;
+                    canvas.height = newH;
+                    camera.aspect = newW / newH;
+                    camera.updateProjectionMatrix();
+                    renderer.setSize(newW, newH);
+                }
             });
         } catch (e) {
             console.warn("Three.js WebGL context initialization failed, falling back to Canvas2D.", e);
@@ -3684,6 +4010,18 @@ if (typeof window !== 'undefined' && !window.papyr) {
 
         // 3D holographic rendering loop
         const draw = () => {
+            // Check and update backing store size to match CSS display size perfectly
+            const rect = canvas.getBoundingClientRect();
+            const displayW = Math.floor(rect.width) || 300;
+            const displayH = Math.floor(rect.height) || 300;
+            if (canvas.width !== displayW || canvas.height !== displayH) {
+                canvas.width = displayW;
+                canvas.height = displayH;
+                w = displayW;
+                h = displayH;
+                initParticles();
+            }
+
             ctx.clearRect(0, 0, w, h);
 
             // Interpolate pointer displacement smoothly for camera lag
@@ -3837,6 +4175,107 @@ if (typeof window !== 'undefined' && !window.papyr) {
                 }
             }
 
+            // Draw custom 3D wireframe objects
+            if (config.objects && Array.isArray(config.objects)) {
+                const gravityActive = getValue(config.gravityActive);
+
+                config.objects.forEach(obj => {
+                    const type = getValue(obj.type);
+                    const size = getValue(obj.size !== undefined ? obj.size : 1);
+                    const color = getValue(obj.color || '#6366f1');
+                    const spin = getValue(obj.spin) || [0.01, 0.01, 0.01];
+
+                    let pos;
+                    if (gravityActive) {
+                        if (!obj._physicsInitialized) {
+                            obj._physicsPos = [...(getValue(obj.position) || [0, 0, 0])];
+                            obj._physicsVel = [
+                                (Math.random() - 0.5) * 0.04,
+                                0.0,
+                                (Math.random() - 0.5) * 0.04
+                            ];
+                            obj._physicsInitialized = true;
+                        }
+                        obj._physicsVel[1] += -0.005; // gravity force
+                        obj._physicsPos[0] += obj._physicsVel[0];
+                        obj._physicsPos[1] += obj._physicsVel[1];
+                        obj._physicsPos[2] += obj._physicsVel[2];
+
+                        // Collisions
+                        if (obj._physicsPos[1] <= -1.8) {
+                            obj._physicsPos[1] = -1.8;
+                            obj._physicsVel[1] = -obj._physicsVel[1] * 0.75; // bounce
+                            obj._physicsVel[0] += (Math.random() - 0.5) * 0.01;
+                            obj._physicsVel[2] += (Math.random() - 0.5) * 0.01;
+                        }
+                        if (obj._physicsPos[1] >= 2.5) {
+                            obj._physicsPos[1] = 2.5;
+                            obj._physicsVel[1] = -obj._physicsVel[1] * 0.75;
+                        }
+                        if (obj._physicsPos[0] <= -3.0) { obj._physicsPos[0] = -3.0; obj._physicsVel[0] = -obj._physicsVel[0] * 0.9; }
+                        if (obj._physicsPos[0] >= 3.0) { obj._physicsPos[0] = 3.0; obj._physicsVel[0] = -obj._physicsVel[0] * 0.9; }
+                        if (obj._physicsPos[2] <= -2.0) { obj._physicsPos[2] = -2.0; obj._physicsVel[2] = -obj._physicsVel[2] * 0.9; }
+                        if (obj._physicsPos[2] >= 2.0) { obj._physicsPos[2] = 2.0; obj._physicsVel[2] = -obj._physicsVel[2] * 0.9; }
+
+                        pos = obj._physicsPos;
+                    } else {
+                        if (obj._physicsInitialized) {
+                            obj._physicsInitialized = false;
+                            obj._physicsPos = null;
+                            obj._physicsVel = null;
+                        }
+                        pos = getValue(obj.position) || [0, 0, 0];
+                    }
+
+                    if (!obj._rx) { obj._rx = 0; obj._ry = 0; obj._rz = 0; }
+                    obj._rx += getValue(spin[0]);
+                    obj._ry += getValue(spin[1]);
+                    obj._rz += getValue(spin[2]);
+
+                    let geom;
+                    if (type === 'cube') {
+                        geom = generateCube(size);
+                    } else if (type === 'sphere') {
+                        geom = generateSphere(size * 0.8);
+                    } else if (type === 'torus') {
+                        geom = generateTorus(size * 0.8, size * 0.2);
+                    } else {
+                        geom = generateCube(size);
+                    }
+
+                    const projectedVertices = geom.vertices.map(v => {
+                        const rot = rotatePoint(v.x, v.y, v.z, obj._rx, obj._ry, obj._rz);
+                        const worldX = rot.x + pos[0];
+                        const worldY = rot.y + pos[1];
+                        const worldZ = rot.z + pos[2] + 4; // offset forward
+
+                        const fov = 400;
+                        const scale = fov / (fov + worldZ);
+                        const screenX = (worldX - camX * 0.02) * scale * 150 + w / 2;
+                        const screenY = (worldY - camY * 0.02) * scale * 150 + h / 2;
+                        return { x: screenX, y: screenY };
+                    });
+
+                    ctx.strokeStyle = color;
+                    ctx.lineWidth = 1.5;
+                    ctx.shadowColor = color;
+                    ctx.shadowBlur = 10;
+
+                    geom.edges.forEach(([idxA, idxB]) => {
+                        const ptA = projectedVertices[idxA];
+                        const ptB = projectedVertices[idxB];
+                        if (ptA && ptB) {
+                            ctx.beginPath();
+                            ctx.moveTo(ptA.x, ptA.y);
+                            ctx.lineTo(ptB.x, ptB.y);
+                            ctx.stroke();
+                        }
+                    });
+                    
+                    ctx.shadowBlur = 0;
+                });
+            }
+
             requestAnimationFrame(draw);
         };
         requestAnimationFrame(draw);
@@ -3859,6 +4298,40 @@ if (typeof window !== 'undefined' && !window.papyr) {
         version: '2.0.0',
         install(papyr) {
             const papyr3d = {
+                cube(options = {}) {
+                    return {
+                        type: 'cube',
+                        size: options.size !== undefined ? options.size : 1,
+                        width: options.width,
+                        height: options.height,
+                        depth: options.depth,
+                        color: options.color || '#6366f1',
+                        position: options.position || [0, 0, 0],
+                        spin: options.spin || [0.01, 0.02, 0.01],
+                        wireframe: options.wireframe !== undefined ? options.wireframe : false
+                    };
+                },
+                sphere(options = {}) {
+                    return {
+                        type: 'sphere',
+                        radius: options.radius !== undefined ? options.radius : 1,
+                        color: options.color || '#f43f5e',
+                        position: options.position || [0, 0, 0],
+                        spin: options.spin || [0.01, 0.01, 0.02],
+                        wireframe: options.wireframe !== undefined ? options.wireframe : false
+                    };
+                },
+                torus(options = {}) {
+                    return {
+                        type: 'torus',
+                        radius: options.radius !== undefined ? options.radius : 0.8,
+                        tube: options.tube !== undefined ? options.tube : 0.2,
+                        color: options.color || '#a855f7',
+                        position: options.position || [0, 0, 0],
+                        spin: options.spin || [0.02, 0.01, 0.02],
+                        wireframe: options.wireframe !== undefined ? options.wireframe : false
+                    };
+                },
                 /**
                  * Orchestrates an immersive 3D/holographic backdrop.
                  * Detects Three.js globally, otherwise boots a gorgeous, pointer-aware fallback particle environment.
@@ -3868,7 +4341,8 @@ if (typeof window !== 'undefined' && !window.papyr) {
                         environment: 'space', // 'space', 'cyberpunk', 'underwater'
                         particles: true,
                         depth: true,
-                        overlay: null
+                        overlay: null,
+                        objects: []
                     }, options);
 
                     const container = papyr.div('.papyr-3d-container', {

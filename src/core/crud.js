@@ -48,7 +48,7 @@ coreInitializers.push((papyr) => {
                 if (options.sort) {
                     const { field, direction = 'asc' } = options.sort;
                     result.sort((a, b) => {
-                        if (field === '__proto__' || field === 'constructor' || field === '__prototype') return 0;
+                        if (field === '__proto__' || field === 'constructor' || field === 'prototype') return 0;
                         // eslint-disable-next-line security/detect-object-injection
                         let valA = Object.prototype.hasOwnProperty.call(a, field) ? a[field] : undefined;
                         // eslint-disable-next-line security/detect-object-injection

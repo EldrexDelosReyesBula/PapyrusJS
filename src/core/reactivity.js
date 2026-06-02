@@ -22,6 +22,28 @@ coreInitializers.push((papyr) => {
                (x.nodeType === 1 || x.nodeType === 11);
     };
 
+    const cleanupElement = (n) => {
+        if (!n) return;
+        if (n._cleanups) {
+            n._cleanups.forEach(c => {
+                if (typeof c === 'function') {
+                    try { c(); } catch(e) { papyr.diagnostics.reportError(e); }
+                }
+            });
+            n._cleanups = [];
+        }
+        if (n._onUnmounted) {
+            n._isMounted = false;
+            try { n._onUnmounted(n); } catch(e) { papyr.diagnostics.reportError(e); }
+        }
+        if (n._updateObserver) {
+            try { n._updateObserver.disconnect(); } catch(e) {}
+        }
+        Array.from(n.children || []).forEach(cleanupElement);
+    };
+
+    papyr._cleanupElement = cleanupElement;
+
     // Deep Proxy wrapper supporting array mutations and deep object updates
     const reactiveProxy = (obj, onNotify) => {
         if (obj === null || typeof obj !== 'object' || isElement(obj)) {
@@ -119,45 +141,40 @@ coreInitializers.push((papyr) => {
     papyr.computed = (fn) => {
         let subscribers = new Set();
         let currentVal;
+        let isDirty = true;
         
         let effect = () => {
-            // Clear old dependencies before re-evaluating
-            effect._deps.forEach(s => {
-                if (s._subscribers) s._subscribers.delete(effect);
-            });
-            effect._deps.clear();
-
-            effectStack.push(effect);
-            activeEffect = effect;
-            try {
-                currentVal = fn();
-            } catch (err) {
-                papyr.diagnostics.reportError(err);
-            } finally {
-                effectStack.pop();
-                activeEffect = effectStack[effectStack.length - 1] || null;
-            }
-            Array.from(subscribers).forEach(sub => sub(currentVal));
+            isDirty = true;
+            Array.from(subscribers).forEach(sub => sub(computedObj.value));
         };
         effect._deps = new Set();
         effect._addDep = (stateObj) => {
             effect._deps.add(stateObj);
         };
         
-        effectStack.push(effect);
-        activeEffect = effect;
-        try {
-            currentVal = fn();
-        } catch (err) {
-            papyr.diagnostics.reportError(err);
-        } finally {
-            effectStack.pop();
-            activeEffect = effectStack[effectStack.length - 1] || null;
-        }
-        
         let computedObj = {
             _subscribers: subscribers,
             get value() {
+                if (isDirty) {
+                    // Clear old dependencies before re-evaluating
+                    effect._deps.forEach(s => {
+                        if (s._subscribers) s._subscribers.delete(effect);
+                    });
+                    effect._deps.clear();
+
+                    effectStack.push(effect);
+                    activeEffect = effect;
+                    try {
+                        currentVal = fn();
+                        isDirty = false;
+                    } catch (err) {
+                        papyr.diagnostics.reportError(err);
+                    } finally {
+                        effectStack.pop();
+                        activeEffect = effectStack[effectStack.length - 1] || null;
+                    }
+                }
+                
                 if (activeEffect) {
                     subscribers.add(activeEffect);
                     if (typeof activeEffect._addDep === 'function') {
@@ -168,8 +185,18 @@ coreInitializers.push((papyr) => {
             },
             subscribe(sub) {
                 subscribers.add(sub);
-                sub(currentVal);
-                return () => subscribers.delete(sub);
+                sub(computedObj.value);
+                return () => {
+                    subscribers.delete(sub);
+                    if (subscribers.size === 0) {
+                        // Cleanup dependencies to avoid memory leaks
+                        effect._deps.forEach(s => {
+                            if (s._subscribers) s._subscribers.delete(effect);
+                        });
+                        effect._deps.clear();
+                        isDirty = true;
+                    }
+                };
             }
         };
         return computedObj;
@@ -231,7 +258,11 @@ coreInitializers.push((papyr) => {
             if (truthy === prevVal) return;
             prevVal = truthy;
             
-            if (currentEl) currentEl.remove();
+            if (container.childNodes) {
+                Array.from(container.childNodes).forEach(cleanupElement);
+            }
+            container.innerHTML = '';
+            
             let target = truthy ? trueVal : falseVal;
             if (target) {
                 currentEl = typeof target === 'function' ? target() : target;
@@ -241,13 +272,18 @@ coreInitializers.push((papyr) => {
             }
         };
         
+        let unsubscribe;
         if (conditionState && typeof conditionState.subscribe === 'function') {
-            conditionState.subscribe(update);
+            unsubscribe = conditionState.subscribe(update);
         } else if (typeof conditionState === 'function') {
             let comp = papyr.computed(() => !!conditionState());
-            comp.subscribe(update);
+            unsubscribe = comp.subscribe(update);
         } else {
             update(!!conditionState);
+        }
+        if (unsubscribe) {
+            if (!container._cleanups) container._cleanups = [];
+            container._cleanups.push(unsubscribe);
         }
         return container;
     };
@@ -273,17 +309,44 @@ coreInitializers.push((papyr) => {
             // 1. Identify all keys and get/create their elements
             let newKeys = new Set();
             let newElements = [];
+            let keyCounts = new Map();
             
             arr.forEach((item, index) => {
-                let key = (item && typeof item === 'object') ? (item.id !== undefined ? item.id : item) : item;
+                let baseKey = (item && typeof item === 'object' && item.id !== undefined) 
+                    ? item.id 
+                    : (item && typeof item === 'object') 
+                        ? item 
+                        : item;
+                
+                let occurrence = (keyCounts.get(baseKey) || 0) + 1;
+                keyCounts.set(baseKey, occurrence);
+                
+                let key = occurrence === 1 ? baseKey : (typeof baseKey === 'object' ? ('dup::' + occurrence) : (baseKey + '::dup::' + occurrence));
                 newKeys.add(key);
                 
-                let el = nodeMap.get(key);
-                if (!el) {
-                    el = renderCallback(item, index);
-                    if (isElement(el)) {
-                        nodeMap.set(key, el);
+                let entry = nodeMap.get(key);
+                let el;
+                if (!entry || entry.item !== item) {
+                    if (entry) {
+                        cleanupElement(entry.el);
                     }
+                    el = renderCallback(item, index);
+                    if (el && el.nodeType === 11) { // DocumentFragment
+                        if (typeof document !== 'undefined') {
+                            let wrapper = document.createElement('span');
+                            wrapper.style.display = 'contents';
+                            wrapper.appendChild(el);
+                            el = wrapper;
+                        }
+                    }
+                    if (isElement(el)) {
+                        nodeMap.set(key, { el, item });
+                        if (entry && entry.el && entry.el.parentNode) {
+                            entry.el.parentNode.replaceChild(el, entry.el);
+                        }
+                    }
+                } else {
+                    el = entry.el;
                 }
                 if (isElement(el)) {
                     newElements.push(el);
@@ -291,29 +354,15 @@ coreInitializers.push((papyr) => {
             });
             
             // 2. Remove elements that are no longer in the array and trigger their cleanups
-            nodeMap.forEach((el, key) => {
+            nodeMap.forEach((entry, key) => {
                 if (!newKeys.has(key)) {
-                    const runCleanups = (n) => {
-                        if (n._cleanups) {
-                            n._cleanups.forEach(c => {
-                                if (typeof c === 'function') {
-                                    try { c(); } catch(e) { papyr.diagnostics.reportError(e); }
-                                }
-                            });
-                            n._cleanups = [];
-                        }
-                        if (n._onUnmounted) {
-                            try { n._onUnmounted(n); } catch(e) { papyr.diagnostics.reportError(e); }
-                        }
-                        Array.from(n.children || []).forEach(runCleanups);
-                    };
-                    runCleanups(el);
+                    cleanupElement(entry.el);
                     
-                    if (el.parentNode === container) {
+                    if (entry.el.parentNode === container) {
                         if (typeof container.removeChild === 'function') {
-                            container.removeChild(el);
-                        } else if (typeof el.remove === 'function') {
-                            el.remove();
+                            container.removeChild(entry.el);
+                        } else if (typeof entry.el.remove === 'function') {
+                            entry.el.remove();
                         }
                     }
                     nodeMap.delete(key);
@@ -334,7 +383,9 @@ coreInitializers.push((papyr) => {
         };
         
         if (arrayState && typeof arrayState.subscribe === 'function') {
-            arrayState.subscribe(update);
+            const unsubscribe = arrayState.subscribe(update);
+            if (!container._cleanups) container._cleanups = [];
+            container._cleanups.push(unsubscribe);
         } else {
             update(arrayState);
         }
@@ -408,7 +459,7 @@ coreInitializers.push((papyr) => {
         const listener = (e) => {
             if (isCheckbox) {
                 stateObj.value = e.target.checked;
-            } else if (inputEl.type === 'number') {
+            } else if (inputEl.type === 'number' || inputEl.type === 'range') {
                 stateObj.value = parseFloat(e.target.value) || 0;
             } else {
                 stateObj.value = e.target.value;
@@ -419,12 +470,11 @@ coreInitializers.push((papyr) => {
         inputEl.addEventListener(eventType, listener);
         
         // Store cleanup hook on element
-        const oldCleanup = inputEl._bindCleanup;
-        inputEl._bindCleanup = () => {
-            if (oldCleanup) oldCleanup();
+        if (!inputEl._cleanups) inputEl._cleanups = [];
+        inputEl._cleanups.push(() => {
             unsubscribe();
             inputEl.removeEventListener(eventType, listener);
-        };
+        });
     };
 
     /**
@@ -436,7 +486,7 @@ coreInitializers.push((papyr) => {
             oninput: (e) => {
                 if (e.target.type === 'checkbox') {
                     stateObj.value = e.target.checked;
-                } else if (e.target.type === 'number') {
+                } else if (e.target.type === 'number' || e.target.type === 'range') {
                     stateObj.value = parseFloat(e.target.value) || 0;
                 } else {
                     stateObj.value = e.target.value;

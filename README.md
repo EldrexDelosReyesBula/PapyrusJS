@@ -5,7 +5,7 @@
 
 [![MIT License](https://img.shields.io/badge/License-MIT-teal.svg)](#license)
 [![Zero Dependencies](https://img.shields.io/badge/Dependencies-Zero-indigo.svg)](#core-philosophy)
-[![Bundle Size](https://img.shields.io/badge/Minified--Gzipped-~12KB-blue.svg)](#performance-benchmarks)
+[![Bundle Size](https://img.shields.io/badge/Minified--Gzipped-~13.8KB--Core-blue.svg)](#performance-benchmarks)
 
 Papyrus is an ultra-lightweight, blazing-fast JavaScript library designed to build modern interactive HTML interfaces with absolute zero complexity and zero terminal setups. By bypassing the Virtual DOM, Papyrus delivers direct DOM manipulation with reactive state tracking, enterprise-grade security, and a delightfully simple API.
 
@@ -71,15 +71,28 @@ Papyrus is an ultra-lightweight, blazing-fast JavaScript library designed to bui
 
 ### Modular CDN (Load Only What You Need)
 ```html
-<!-- Core only (~4KB) -->
+<!-- Core only (~13.8KB gzipped) -->
 <script src="https://papyrus-js.vercel.app/papyr-core.js"></script>
 
-<!-- + UI Components (~3KB) -->
+<!-- + UI Components (~29.6KB gzipped) -->
 <script src="https://papyrus-js.vercel.app/papyr-ui.js"></script>
 
-<!-- + Advanced (Physics, 3D, ML) (~5KB) -->
+<!-- + Advanced (Physics, 3D, ML) (~23.1KB gzipped) -->
 <script src="https://papyrus-js.vercel.app/papyr-advanced.js"></script>
 ```
+
+## 📦 Bundle Size Breakdown (v3.0)
+
+| Module | Minified | Gzipped | Features |
+|--------|----------|---------|----------|
+| `papyr.js` (Core) | 140.96 KB | 25.33 KB | Reactivity, DOM, Router, storage |
+| `papyr.min.js` (Core Min) | 51.63 KB | 13.78 KB | Reactivity, DOM, Router, storage |
+| `papyr-ui.min.js` (UI Min) | 111.15 KB | 29.62 KB | Components, Layout, Design, styling |
+| `papyr-advanced.min.js` (Adv Min) | 78.62 KB | 23.09 KB | Physics, Charts, ML |
+| `papyr-complete.min.js` (Comp Min) | 157.07 KB | 44.55 KB | All features compiled |
+
+### Lazy-Loaded Dependencies
+Advanced features like 3D scenes lazy-load heavy external code (like Three.js) dynamically from CDNs only when used, keeping the baseline package sizes minimal.
 
 ---
 
@@ -343,13 +356,18 @@ let safeHTML = papyr.security.sanitize(userInput);
 ```
 
 2. **Be aware of encryption limitations:**
-```javascript
-// ⚠️ Current implementation uses XOR+Base64 (suitable for basic obfuscation)
-// For production with sensitive data, consider additional measures
-papyr.storage.secureSet("token", userToken, myPassword);
 
-// Future versions will support industry-standard encryption (AES-256)
-```
+> [!WARNING]
+> ### Storage "Secure" Sync Methods Are Obfuscation, NOT Encryption
+> The synchronous `secureSet()` and `secureGet()` methods use **XOR + Base64 obfuscation**, which provides **ZERO cryptographic security** against malicious memory inspection or storage extraction. This is suitable only for basic obfuscation.
+>
+> ### Real Encryption: Use Async Methods (AES-256-GCM)
+> For actual cryptographic security (e.g. session tokens or sensitive data), you **MUST** use the asynchronous methods which leverage browser-native Web Crypto API AES-GCM 256-bit with PBKDF2:
+> ```javascript
+> // ✅ Encrypted using AES-256-GCM
+> await papyr.storage.secureSetAsync("token", userToken, myPassword);
+> let userToken = await papyr.storage.secureGetAsync("token", myPassword);
+> ```
 
 3. **Set Content Security Policy headers:**
 ```
