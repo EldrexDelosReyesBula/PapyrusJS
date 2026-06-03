@@ -1,0 +1,26 @@
+{
+  "name": "@eldrex/papyr",
+  "version": "3.0.2",
+  "description": "Core reactivity, DOM mounting, and state management engine for Papyr.js",
+  "main": "dist/papyr.js",
+  "module": "dist/papyr.esm.js",
+  "types": "dist/papyr.d.ts",
+  "files": [
+    "dist/papyr.js",
+    "dist/papyr.esm.js",
+    "dist/papyr.d.ts",
+    "README.md",
+    "DOCS.md",
+    "TRANSLATION_GUIDE.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "reactive",
+    "vanilla-js",
+    "dom-builder",
+    "monorepo",
+    "papyr"
+  ],
+  "author": "Eldrex Bula & Papyr Contributors",
+  "license": "MIT"
+}

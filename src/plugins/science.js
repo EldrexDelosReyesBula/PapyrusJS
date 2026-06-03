@@ -16,7 +16,12 @@
         ctx.clearRect(0, 0, w, h);
 
         const equation = options.equation || ((x) => Math.sin(x));
-        const range = options.range || [-10, 10, -5, 5];
+        let range = options.range;
+        if (!range && options.scale) {
+            const sc = options.scale;
+            range = [-sc, sc, -sc * (h / w), sc * (h / w)];
+        }
+        range = range || [-10, 10, -5, 5];
         const [minX, maxX, minY, maxY] = range;
         
         const plotColor = options.color || '#10b981';
@@ -77,12 +82,13 @@
             try {
                 // Safe evaluation fallback for basic math expressions
                 eqFunc = (x) => {
-                    const cleanEq = equation.replace(/sin/g, 'Math.sin')
+                    let cleanEq = equation.replace(/sin/g, 'Math.sin')
                                             .replace(/cos/g, 'Math.cos')
                                             .replace(/tan/g, 'Math.tan')
                                             .replace(/pi/g, 'Math.PI')
                                             .replace(/exp/g, 'Math.exp')
                                             .replace(/pow/g, 'Math.pow');
+                    cleanEq = cleanEq.replace(/Math\.Math\./g, 'Math.');
                     return new Function('x', `return ${cleanEq}`)(x);
                 };
             } catch (e) {
@@ -136,7 +142,7 @@
                  * Renders standard mathematical equations onto a Canvas element.
                  * Supports both container-based scaffolding and direct (canvas, equation) plotting.
                  */
-                graph(optionsOrCanvas = {}, equationStr) {
+                graph(optionsOrCanvas = {}, equationStr, config = {}) {
                     const isElement = (x) => {
                         if (!x || typeof x !== 'object') return false;
                         return (typeof Element !== 'undefined' && x instanceof Element) || 
@@ -150,7 +156,7 @@
 
                     if (isElement(optionsOrCanvas) || (typeof optionsOrCanvas === 'string' && typeof document !== 'undefined' && document.querySelector(optionsOrCanvas))) {
                         targetCanvas = typeof optionsOrCanvas === 'string' ? document.querySelector(optionsOrCanvas) : optionsOrCanvas;
-                        drawOptions = typeof equationStr === 'object' ? equationStr : { equation: equationStr };
+                        drawOptions = typeof equationStr === 'object' ? equationStr : { equation: equationStr, ...config };
                         
                         if (targetCanvas) {
                             setTimeout(() => {

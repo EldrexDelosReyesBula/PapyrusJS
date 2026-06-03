@@ -1,6 +1,6 @@
 /**
- * PAPER STATIC SITE LIBRARY - Advanced Engineering Modular Bundle
- * v3.0 - Core Reactivity, AI/ML Toolkits, 3D Immersive Graphics, 2D Verlet Physics, and PDF Exporter
+ * PAPYR STATIC SITE LIBRARY - Advanced Engineering Modular Bundle
+ * v3.0.2 - Core Reactivity, AI/ML Toolkits, 3D Immersive Graphics, 2D Verlet Physics, and PDF Exporter
  * Released under MIT License.
  */
 
@@ -131,7 +131,7 @@ const isElement = (x) => {
 };
 
 // --- PAPYR UTILITY STYLING SYSTEM ---
-const paperUtilities = {
+const papyrUtilities = {
     'flex': { display: 'flex' },
     'block': { display: 'block' },
     'inline': { display: 'inline' },
@@ -199,19 +199,20 @@ const injectRule = (mediaQuery, ruleBody) => {
     }
 };
 
-const parsePaperUtilities = (el, utilities) => {
+const parsePapyrUtilities = (el, utilities) => {
     if (!utilities) return;
-    let list = Array.isArray(utilities) ? utilities : String(utilities).split(' ');
+    let list = Array.isArray(utilities) ? utilities : String(utilities).split(/\s+/);
     
     list.forEach(item => {
-        if (!item) return;
+        let trimmedItem = item.trim();
+        if (!trimmedItem) return;
         
         // Check if it's responsive (e.g. md:flex)
-        if (item.includes(':')) {
-            let parts = item.split(':');
+        if (trimmedItem.includes(':')) {
+            let parts = trimmedItem.split(':');
             if (parts.length === 2) {
-                let bp = parts[0]; // e.g. md
-                let ut = parts[1]; // e.g. flex
+                let bp = parts[0];
+                let ut = parts[1];
                 
                 let bpWidth = {
                     'sm': '640px',
@@ -220,15 +221,17 @@ const parsePaperUtilities = (el, utilities) => {
                     'xl': '1280px'
                 }[bp];
                 
-                if (bpWidth && paperUtilities[ut]) {
-                    let uniqueClass = el._paperUniqueClass;
+                let utilitySet = papyrUtilities[ut] ? papyrUtilities : (typeof paperUtilities !== 'undefined' ? paperUtilities : {});
+                
+                if (bpWidth && utilitySet[ut]) {
+                    let uniqueClass = el._papyrUniqueClass;
                     if (!uniqueClass) {
-                        uniqueClass = `paper-u-${Math.random().toString(36).substring(2, 8)}`;
+                        uniqueClass = `papyr-u-${Math.random().toString(36).substring(2, 8)}`;
                         el.classList.add(uniqueClass);
-                        el._paperUniqueClass = uniqueClass;
+                        el._papyrUniqueClass = uniqueClass;
                     }
                     
-                    let styleText = Object.entries(paperUtilities[ut])
+                    let styleText = Object.entries(utilitySet[ut])
                         .map(([k, v]) => `${k.replace(/[A-Z]/g, m => '-' + m.toLowerCase())}: ${v};`)
                         .join(' ');
                     
@@ -238,12 +241,13 @@ const parsePaperUtilities = (el, utilities) => {
             }
         } else {
             // Standard utility class
-            if (paperUtilities[item]) {
-                Object.entries(paperUtilities[item]).forEach(([k, v]) => {
+            let utilitySet = papyrUtilities[trimmedItem] ? papyrUtilities : (typeof paperUtilities !== 'undefined' ? paperUtilities : {});
+            if (utilitySet[trimmedItem]) {
+                Object.entries(utilitySet[trimmedItem]).forEach(([k, v]) => {
                     el.style[k] = v;
                 });
             } else {
-                el.classList.add(item);
+                el.classList.add(trimmedItem);
             }
         }
     });
@@ -598,9 +602,11 @@ function createPapyr() {
                     if (parts) {
                         parts.forEach(part => {
                             if (part.startsWith('#')) {
-                                el.id = part.slice(1);
+                                el.id = part.slice(1).trim();
                             } else if (part.startsWith('.')) {
-                                el.classList.add(part.slice(1));
+                                part.slice(1).trim().split(/\s+/).forEach(c => {
+                                    if (c) el.classList.add(c);
+                                });
                             }
                         });
                     }
@@ -692,9 +698,9 @@ function createPapyr() {
                     else if (k.startsWith('--')) {
                         el.style.setProperty(k, String(v));
                     }
-                    else if (k === 'paper') {
+                    else if (k === 'paper' || k === 'papyr') {
                         const updatePaper = (val) => {
-                            parsePaperUtilities(el, val);
+                            parsePapyrUtilities(el, val);
                         };
                         let unsubscribe;
                         if (v && typeof v.subscribe === 'function') {
@@ -1050,6 +1056,7 @@ function createPapyr() {
         }
         return component.innerHTML || String(component);
     };
+    papyrInstance.ssr.render = (component) => papyrInstance.ssr(component);
 
     // Run registered core initializers!
     coreInitializers.forEach(init => {
@@ -1125,14 +1132,14 @@ if (typeof module !== 'undefined' && module.exports) {
 /**
  * PAPYR SECURITY KERNEL
  * Enterprise-grade XSS Sanitization and Injection Prevention.
- * Web App Tracking Transparency (WATT) script and storage filter.
+ * Web Access Transparency Toolkit (WATT) script and storage filter.
  * Updated to run modularly inside the Papyr Kernel context.
  */
 
-(function() {
+(function () {
     let tempStorage = Object.create(null);
     const trackingKeys = ['_ga', '_gid', '_fbp', '_uid_tracking_id', 'tracking', 'analytics', 'pixel', 'adsense'];
-    
+
     let originalSetItem = null;
     let originalGetItem = null;
     let originalRemoveItem = null;
@@ -1168,7 +1175,7 @@ if (typeof module !== 'undefined' && module.exports) {
                             });
                         }
                         tempStorage = Object.create(null);
-                    } catch(e) {}
+                    } catch (e) { }
                 } else {
                     // Clear tracking keys from real localStorage in a single transactional pass to avoid index shift bugs
                     try {
@@ -1185,17 +1192,17 @@ if (typeof module !== 'undefined' && module.exports) {
                             }
                             keysToDelete.forEach(key => originalRemoveItem(key));
                         }
-                    } catch(e) {}
+                    } catch (e) { }
                 }
             },
 
             shouldBlockScript(src) {
                 if (this.currentTier === 'none') return false;
                 if (!src || typeof src !== 'string') return false;
-                
+
                 const trackingDomains = ['analytics', 'pixel', 'doubleclick', 'google-analytics', 'adsense', 'ad-tracker', 'facebook.net', 'adnxs'];
                 const isTracker = trackingDomains.some(d => src.toLowerCase().includes(d));
-                
+
                 if (this.currentTier === 'high' && isTracker) return true;
                 if (this.currentTier === 'default' && !this.hasConsent && isTracker) return true;
                 return false;
@@ -1205,13 +1212,13 @@ if (typeof module !== 'undefined' && module.exports) {
                 if (typeof document === 'undefined') return;
                 if (this._scriptsBlocked) return;
                 this._scriptsBlocked = true;
-                
+
                 const originalCreateElement = document.createElement;
-                document.createElement = function(tag, options) {
+                document.createElement = function (tag, options) {
                     const el = originalCreateElement.call(document, tag, options);
                     if (tag && tag.toLowerCase() === 'script') {
                         const originalSetAttribute = el.setAttribute;
-                        el.setAttribute = function(k, v) {
+                        el.setAttribute = function (k, v) {
                             if (k && k.toLowerCase() === 'src' && papyr.security.shouldBlockScript(v)) {
                                 console.warn(`Papyr Security Kernel: Blocked tracking script from ${v}`);
                                 return;
@@ -1248,7 +1255,7 @@ if (typeof module !== 'undefined' && module.exports) {
              */
             sanitize(html) {
                 if (!this._isActive || typeof html !== 'string') return html;
-                
+
                 let clean = html;
                 if (typeof window !== 'undefined' && typeof DOMParser !== 'undefined') {
                     try {
@@ -1256,7 +1263,7 @@ if (typeof module !== 'undefined' && module.exports) {
                         const doc = parser.parseFromString(html, 'text/html');
                         const allowedTags = ['div', 'span', 'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'button', 'a', 'img', 'ul', 'ol', 'li', 'table', 'thead', 'tbody', 'tr', 'td', 'th', 'form', 'label', 'input', 'textarea', 'select', 'option', 'pre', 'code', 'strong', 'em', 'small', 'hr', 'br', 'canvas', 'svg', 'path', 'rect', 'circle'];
                         const allowedAttrs = ['class', 'style', 'id', 'href', 'src', 'alt', 'title', 'placeholder', 'type', 'name', 'value', 'checked', 'disabled', 'rows', 'cols', 'width', 'height', 'viewBox', 'd', 'role', 'aria-live', 'aria-modal', 'aria-labelledby', 'tabindex', 'aria-label'];
-                        
+
                         const cleanNode = (node) => {
                             if (node.nodeType === 1) { // Element
                                 const tagName = node.tagName.toLowerCase();
@@ -1264,7 +1271,7 @@ if (typeof module !== 'undefined' && module.exports) {
                                     node.parentNode.removeChild(node);
                                     return;
                                 }
-                                
+
                                 const attrs = Array.from(node.attributes);
                                 attrs.forEach(attr => {
                                     const name = attr.name.toLowerCase();
@@ -1273,18 +1280,18 @@ if (typeof module !== 'undefined' && module.exports) {
                                         node.removeAttribute(attr.name);
                                     }
                                 });
-                                
+
                                 Array.from(node.childNodes).forEach(cleanNode);
                             }
                         };
-                        
+
                         Array.from(doc.body.childNodes).forEach(cleanNode);
                         clean = doc.body.innerHTML;
-                    } catch(e) {
+                    } catch (e) {
                         // fallback to regex below
                     }
                 }
-                
+
                 if (clean === html || typeof DOMParser === 'undefined') {
                     clean = html.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
                     clean = clean.replace(/\s+on\w+\s*=\s*"[^"]*"/gi, '');
@@ -1343,7 +1350,7 @@ if (typeof module !== 'undefined' && module.exports) {
                         keyFeedback = binaryStr.charCodeAt(i);
                     }
                     return typeof window !== 'undefined' ? decodeURIComponent(escape(result)) : Buffer.from(result, 'binary').toString('utf8');
-                } catch(e) {
+                } catch (e) {
                     if (papyr.warn) papyr.warn("Papyr Security: Decryption failed (invalid key or corrupted data).");
                     return null;
                 }
@@ -1360,15 +1367,15 @@ if (typeof module !== 'undefined' && module.exports) {
                     const encoder = new TextEncoder();
                     const salt = window.crypto.getRandomValues(new Uint8Array(16));
                     const iv = window.crypto.getRandomValues(new Uint8Array(12));
-                    
+
                     const keyMaterial = await window.crypto.subtle.importKey(
-                        "raw", 
-                        encoder.encode(password), 
-                        "PBKDF2", 
-                        false, 
+                        "raw",
+                        encoder.encode(password),
+                        "PBKDF2",
+                        false,
                         ["deriveKey"]
                     );
-                    
+
                     const key = await window.crypto.subtle.deriveKey(
                         {
                             name: "PBKDF2",
@@ -1381,18 +1388,18 @@ if (typeof module !== 'undefined' && module.exports) {
                         false,
                         ["encrypt"]
                     );
-                    
+
                     const ciphertext = await window.crypto.subtle.encrypt(
-                        { name: "AES-GCM", iv: iv }, 
-                        key, 
+                        { name: "AES-GCM", iv: iv },
+                        key,
                         encoder.encode(text)
                     );
-                    
+
                     const combined = new Uint8Array(salt.length + iv.length + ciphertext.byteLength);
                     combined.set(salt, 0);
                     combined.set(iv, salt.length);
                     combined.set(new Uint8Array(ciphertext), salt.length + iv.length);
-                    
+
                     let binary = '';
                     for (let i = 0; i < combined.byteLength; i++) {
                         binary += String.fromCharCode(combined[i]);
@@ -1414,20 +1421,20 @@ if (typeof module !== 'undefined' && module.exports) {
                     for (let i = 0; i < binaryStr.length; i++) {
                         combined[i] = binaryStr.charCodeAt(i);
                     }
-                    
+
                     const salt = combined.slice(0, 16);
                     const iv = combined.slice(16, 28);
                     const ciphertext = combined.slice(28);
-                    
+
                     const encoder = new TextEncoder();
                     const keyMaterial = await window.crypto.subtle.importKey(
-                        "raw", 
-                        encoder.encode(password), 
-                        "PBKDF2", 
-                        false, 
+                        "raw",
+                        encoder.encode(password),
+                        "PBKDF2",
+                        false,
                         ["deriveKey"]
                     );
-                    
+
                     const key = await window.crypto.subtle.deriveKey(
                         {
                             name: "PBKDF2",
@@ -1440,13 +1447,13 @@ if (typeof module !== 'undefined' && module.exports) {
                         false,
                         ["decrypt"]
                     );
-                    
+
                     const decrypted = await window.crypto.subtle.decrypt(
-                        { name: "AES-GCM", iv: iv }, 
-                        key, 
+                        { name: "AES-GCM", iv: iv },
+                        key,
                         ciphertext
                     );
-                    
+
                     return new TextDecoder().decode(decrypted);
                 } catch (e) {
                     console.error("Papyr Security: Async Decryption failed, falling back to sync.", e);
@@ -1454,11 +1461,20 @@ if (typeof module !== 'undefined' && module.exports) {
                 }
             }
         };
+
+        papyr.safeGet = (obj, key) => {
+            if (!obj || typeof obj !== 'object') return undefined;
+            if (key === '__proto__' || key === 'constructor' || key === 'prototype') {
+                throw new Error("Security Violation: Unsafe property access");
+            }
+            // eslint-disable-next-line security/detect-object-injection
+            return obj[key];
+        };
     });
 
     // Install LocalStorage Interception
     if (typeof window !== 'undefined' && window.localStorage) {
-        localStorage.setItem = function(key, val) {
+        localStorage.setItem = function (key, val) {
             if (window.papyr && window.papyr.security && window.papyr.security.shouldSandboxStorage(key)) {
                 if (key && key !== '__proto__' && key !== 'constructor' && key !== 'prototype') {
                     // eslint-disable-next-line security/detect-object-injection
@@ -1468,16 +1484,16 @@ if (typeof module !== 'undefined' && module.exports) {
             }
             if (originalSetItem) originalSetItem(key, val);
         };
-        
-        localStorage.getItem = function(key) {
+
+        localStorage.getItem = function (key) {
             if (window.papyr && window.papyr.security && window.papyr.security.shouldSandboxStorage(key)) {
                 // eslint-disable-next-line security/detect-object-injection
                 return (key && key !== '__proto__' && key !== 'constructor' && key !== 'prototype' && Object.prototype.hasOwnProperty.call(tempStorage, key)) ? tempStorage[key] : null;
             }
             return originalGetItem ? originalGetItem(key) : null;
         };
-        
-        localStorage.removeItem = function(key) {
+
+        localStorage.removeItem = function (key) {
             if (window.papyr && window.papyr.security && window.papyr.security.shouldSandboxStorage(key)) {
                 if (key && key !== '__proto__' && key !== 'constructor' && key !== 'prototype' && Object.prototype.hasOwnProperty.call(tempStorage, key)) {
                     // eslint-disable-next-line security/detect-object-injection
@@ -1505,7 +1521,7 @@ coreInitializers.push((papyr) => {
      * Creates an auto-tracking reactive state variable.
      * 
      * @param {*} val Initial reactive state value
-     * @returns {PaperState} Reactive State accessor interface
+     * @returns {PapyrState} Reactive State accessor interface
      */
     // Bulletproof Element detection helper inside reactivity context
     const isElement = (x) => {
@@ -1737,7 +1753,7 @@ coreInitializers.push((papyr) => {
     /**
      * Switches visual DOM subtrees reactively based on condition updates.
      * 
-     * @param {PaperState} conditionState Reactive condition state to track
+     * @param {PapyrState} conditionState Reactive condition state to track
      * @param {HTMLElement|function} trueVal Rendered target when state is truthy
      * @param {HTMLElement|function} [falseVal] Optional target when state is falsy
      * @returns {HTMLDivElement} Content container fragment
@@ -1785,7 +1801,7 @@ coreInitializers.push((papyr) => {
     /**
      * Reactively renders a list of DOM elements from an array state.
      * 
-     * @param {PaperState} arrayState Reactive state containing an array
+     * @param {PapyrState} arrayState Reactive state containing an array
      * @param {function} renderCallback Function returning an HTMLElement for each item
      * @returns {HTMLDivElement} Content container fragment
      */
@@ -2103,6 +2119,106 @@ coreInitializers.push((papyr) => {
 
         return routeNode;
     };
+
+    // Clean URL Page System Subsystem
+    let pageRoutes = [];
+    let currentPageView = papyr.state(null);
+    let pagePathParams = papyr.state({});
+
+    const matchPageRoute = () => {
+        if (typeof window === 'undefined') return;
+        let currentPath = window.location.pathname || '/';
+        let matchFound = false;
+
+        for (let route of pageRoutes) {
+            let match = currentPath.match(route.regex);
+            if (match) {
+                let params = {};
+                route.keys.forEach((key, index) => {
+                    params[key] = match[index + 1];
+                });
+                pagePathParams.value = params;
+                currentPageView.value = route.componentFn;
+                matchFound = true;
+                break;
+            }
+        }
+        if (!matchFound) {
+            currentPageView.value = () => papyr.div("404 - Page Not Found");
+        }
+    };
+
+    papyr.page = (path, componentFn) => {
+        if (typeof path === 'undefined') {
+            return papyr.pageRouter();
+        }
+
+        let cleanPath = path;
+        pageRoutes.push({
+            path: cleanPath,
+            // eslint-disable-next-line security/detect-non-literal-regexp
+            regex: new RegExp('^' + cleanPath.replace(/:\w+/g, '([^/]+)') + '$'),
+            keys: (cleanPath.match(/:\w+/g) || []).map(k => k.slice(1)),
+            componentFn
+        });
+
+        if (typeof window !== 'undefined' && pageRoutes.length > 0 && !currentPageView.value) {
+            setTimeout(matchPageRoute, 10);
+        }
+    };
+
+    papyr.page.navigate = (path) => {
+        if (typeof window !== 'undefined') {
+            window.history.pushState(null, '', path);
+            matchPageRoute();
+        }
+    };
+
+    papyr.usePageParams = () => pagePathParams;
+
+    papyr.pageRouter = () => {
+        if (typeof window !== 'undefined' && pageRoutes.length > 0 && !currentPageView.value) {
+            matchPageRoute();
+        }
+
+        let routeNode = papyr.if(
+            currentPageView,
+            () => {
+                let Component = currentPageView.value;
+                if (Component && Component.prototype && typeof papyr.component === 'function' && Component.prototype instanceof papyr.component) {
+                    return new Component().render();
+                }
+                if (typeof Component === 'function') {
+                    return Component();
+                }
+                return papyr.div();
+            },
+            () => papyr.div()
+        );
+
+        if (typeof document !== 'undefined') {
+            setTimeout(() => {
+                let mainShell = document.querySelector('.papyr-main-content');
+                if (mainShell && !mainShell.contains(routeNode)) {
+                    mainShell.innerHTML = '';
+                    mainShell.appendChild(routeNode);
+                }
+            }, 0);
+        }
+
+        return routeNode;
+    };
+
+    if (typeof window !== 'undefined') {
+        window.addEventListener('popstate', matchPageRoute);
+        window.addEventListener('click', (e) => {
+            let link = e.target.closest('a');
+            if (link && link.href && link.origin === window.location.origin && !link.hash && !link.getAttribute('download') && link.target !== '_blank') {
+                e.preventDefault();
+                papyr.page.navigate(link.pathname + link.search);
+            }
+        });
+    }
 });
 
 
@@ -2199,11 +2315,11 @@ coreInitializers.push((papyr) => {
 /**
  * PAPYR DATA SYSTEM (Unified DB API)
  * Seamlessly integrates LocalStorage, SessionStorage, IndexedDB, and SQLite endpoints.
- * Updated with transactional granular CRUD capabilities and zero mockups.
+ * Updated with transactional granular CRUD capabilities.
  */
 
 coreInitializers.push((papyr) => {
-    
+
     const getDB = (collectionName) => {
         return new Promise((resolve, reject) => {
             if (typeof window === 'undefined' || !window.indexedDB) return reject(new Error("IndexedDB not supported"));
@@ -2236,7 +2352,7 @@ coreInitializers.push((papyr) => {
     };
 
     papyr.db = (collectionName, engine = 'local') => {
-        
+
         // Engine Drivers with fully granular transaction-safe CRUD methods
         const drivers = {
             'local': {
@@ -2244,9 +2360,9 @@ coreInitializers.push((papyr) => {
                     try {
                         let val = localStorage.getItem(`papyr_db_${collectionName}`);
                         return val ? JSON.parse(val) : [];
-                    } catch(e) { 
+                    } catch (e) {
                         console.error("PapyrDB [local] get error:", e);
-                        return []; 
+                        return [];
                     }
                 },
                 insert: (item) => {
@@ -2254,17 +2370,17 @@ coreInitializers.push((papyr) => {
                         const items = drivers.local.get();
                         items.push(item);
                         localStorage.setItem(`papyr_db_${collectionName}`, JSON.stringify(items));
-                    } catch(e) {
+                    } catch (e) {
                         console.error("PapyrDB [local] insert error:", e);
                     }
                 },
                 update: (id, updates) => {
                     try {
-                        const items = drivers.local.get().map(item => 
+                        const items = drivers.local.get().map(item =>
                             item.id === id ? { ...item, ...updates } : item
                         );
                         localStorage.setItem(`papyr_db_${collectionName}`, JSON.stringify(items));
-                    } catch(e) {
+                    } catch (e) {
                         console.error("PapyrDB [local] update error:", e);
                     }
                 },
@@ -2272,14 +2388,14 @@ coreInitializers.push((papyr) => {
                     try {
                         const items = drivers.local.get().filter(item => item.id !== id);
                         localStorage.setItem(`papyr_db_${collectionName}`, JSON.stringify(items));
-                    } catch(e) {
+                    } catch (e) {
                         console.error("PapyrDB [local] delete error:", e);
                     }
                 },
                 clear: () => {
                     try {
                         localStorage.removeItem(`papyr_db_${collectionName}`);
-                    } catch(e) {
+                    } catch (e) {
                         console.error("PapyrDB [local] clear error:", e);
                     }
                 }
@@ -2289,9 +2405,9 @@ coreInitializers.push((papyr) => {
                     try {
                         let val = sessionStorage.getItem(`papyr_db_${collectionName}`);
                         return val ? JSON.parse(val) : [];
-                    } catch(e) { 
+                    } catch (e) {
                         console.error("PapyrDB [session] get error:", e);
-                        return []; 
+                        return [];
                     }
                 },
                 insert: (item) => {
@@ -2299,17 +2415,17 @@ coreInitializers.push((papyr) => {
                         const items = drivers.session.get();
                         items.push(item);
                         sessionStorage.setItem(`papyr_db_${collectionName}`, JSON.stringify(items));
-                    } catch(e) {
+                    } catch (e) {
                         console.error("PapyrDB [session] insert error:", e);
                     }
                 },
                 update: (id, updates) => {
                     try {
-                        const items = drivers.session.get().map(item => 
+                        const items = drivers.session.get().map(item =>
                             item.id === id ? { ...item, ...updates } : item
                         );
                         sessionStorage.setItem(`papyr_db_${collectionName}`, JSON.stringify(items));
-                    } catch(e) {
+                    } catch (e) {
                         console.error("PapyrDB [session] update error:", e);
                     }
                 },
@@ -2317,14 +2433,14 @@ coreInitializers.push((papyr) => {
                     try {
                         const items = drivers.session.get().filter(item => item.id !== id);
                         sessionStorage.setItem(`papyr_db_${collectionName}`, JSON.stringify(items));
-                    } catch(e) {
+                    } catch (e) {
                         console.error("PapyrDB [session] delete error:", e);
                     }
                 },
                 clear: () => {
                     try {
                         sessionStorage.removeItem(`papyr_db_${collectionName}`);
-                    } catch(e) {
+                    } catch (e) {
                         console.error("PapyrDB [session] clear error:", e);
                     }
                 }
@@ -2345,7 +2461,7 @@ coreInitializers.push((papyr) => {
                                     db.close();
                                     resolve([]);
                                 };
-                            } catch(err) {
+                            } catch (err) {
                                 db.close();
                                 resolve([]);
                             }
@@ -2366,7 +2482,7 @@ coreInitializers.push((papyr) => {
                                     db.close();
                                     resolve();
                                 };
-                            } catch(err) {
+                            } catch (err) {
                                 console.error("PapyrDB [indexeddb] insert error:", err);
                                 db.close();
                                 resolve();
@@ -2402,7 +2518,7 @@ coreInitializers.push((papyr) => {
                                     db.close();
                                     resolve();
                                 };
-                            } catch(err) {
+                            } catch (err) {
                                 console.error("PapyrDB [indexeddb] update error:", err);
                                 db.close();
                                 resolve();
@@ -2424,7 +2540,7 @@ coreInitializers.push((papyr) => {
                                     db.close();
                                     resolve();
                                 };
-                            } catch(err) {
+                            } catch (err) {
                                 console.error("PapyrDB [indexeddb] delete error:", err);
                                 db.close();
                                 resolve();
@@ -2446,7 +2562,7 @@ coreInitializers.push((papyr) => {
                                     db.close();
                                     resolve();
                                 };
-                            } catch(err) {
+                            } catch (err) {
                                 console.error("PapyrDB [indexeddb] clear error:", err);
                                 db.close();
                                 resolve();
@@ -2468,12 +2584,12 @@ coreInitializers.push((papyr) => {
                                         for (let i = 0; i < results.rows.length; i++) {
                                             try {
                                                 items.push(JSON.parse(results.rows.item(i).data));
-                                            } catch(e) {}
+                                            } catch (e) { }
                                         }
                                         resolve(items);
                                     }, () => resolve([]));
                                 }, () => resolve([]));
-                            } catch(e) { resolve([]); }
+                            } catch (e) { resolve([]); }
                         } else if (typeof window !== 'undefined' && window.SQL && window.papyrSQLiteDB) {
                             try {
                                 const db = window.papyrSQLiteDB;
@@ -2482,11 +2598,11 @@ coreInitializers.push((papyr) => {
                                 const items = [];
                                 if (res && res[0] && res[0].values) {
                                     res[0].values.forEach(row => {
-                                        try { items.push(JSON.parse(row[0])); } catch(e) {}
+                                        try { items.push(JSON.parse(row[0])); } catch (e) { }
                                     });
                                 }
                                 resolve(items);
-                            } catch(e) { resolve([]); }
+                            } catch (e) { resolve([]); }
                         } else {
                             resolve([]);
                         }
@@ -2501,14 +2617,14 @@ coreInitializers.push((papyr) => {
                                     tx.executeSql(`CREATE TABLE IF NOT EXISTS ${collectionName} (id TEXT PRIMARY KEY, data TEXT)`);
                                     tx.executeSql(`INSERT OR REPLACE INTO ${collectionName} (id, data) VALUES (?, ?)`, [item.id, JSON.stringify(item)]);
                                 }, () => resolve(), () => resolve());
-                            } catch(e) { resolve(); }
+                            } catch (e) { resolve(); }
                         } else if (typeof window !== 'undefined' && window.SQL && window.papyrSQLiteDB) {
                             try {
                                 const db = window.papyrSQLiteDB;
                                 db.run(`CREATE TABLE IF NOT EXISTS ${collectionName} (id TEXT PRIMARY KEY, data TEXT)`);
                                 db.run(`INSERT OR REPLACE INTO ${collectionName} (id, data) VALUES (?, ?)`, [item.id, JSON.stringify(item)]);
                                 resolve();
-                            } catch(e) { resolve(); }
+                            } catch (e) { resolve(); }
                         } else {
                             resolve();
                         }
@@ -2526,13 +2642,13 @@ coreInitializers.push((papyr) => {
                                                 const current = JSON.parse(results.rows.item(0).data);
                                                 const updated = { ...current, ...updates };
                                                 tx.executeSql(`INSERT OR REPLACE INTO ${collectionName} (id, data) VALUES (?, ?)`, [id, JSON.stringify(updated)], () => resolve());
-                                            } catch(e) { resolve(); }
+                                            } catch (e) { resolve(); }
                                         } else {
                                             resolve();
                                         }
                                     }, () => resolve());
                                 }, () => resolve());
-                            } catch(e) { resolve(); }
+                            } catch (e) { resolve(); }
                         } else if (typeof window !== 'undefined' && window.SQL && window.papyrSQLiteDB) {
                             try {
                                 const db = window.papyrSQLiteDB;
@@ -2543,7 +2659,7 @@ coreInitializers.push((papyr) => {
                                     db.run(`INSERT OR REPLACE INTO ${collectionName} (id, data) VALUES (?, ?)`, [id, JSON.stringify(updated)]);
                                 }
                                 resolve();
-                            } catch(e) { resolve(); }
+                            } catch (e) { resolve(); }
                         } else {
                             resolve();
                         }
@@ -2557,13 +2673,13 @@ coreInitializers.push((papyr) => {
                                 db.transaction((tx) => {
                                     tx.executeSql(`DELETE FROM ${collectionName} WHERE id = ?`, [id]);
                                 }, () => resolve(), () => resolve());
-                            } catch(e) { resolve(); }
+                            } catch (e) { resolve(); }
                         } else if (typeof window !== 'undefined' && window.SQL && window.papyrSQLiteDB) {
                             try {
                                 const db = window.papyrSQLiteDB;
                                 db.run(`DELETE FROM ${collectionName} WHERE id = ?`, [id]);
                                 resolve();
-                            } catch(e) { resolve(); }
+                            } catch (e) { resolve(); }
                         } else {
                             resolve();
                         }
@@ -2577,13 +2693,13 @@ coreInitializers.push((papyr) => {
                                 db.transaction((tx) => {
                                     tx.executeSql(`DELETE FROM ${collectionName}`);
                                 }, () => resolve(), () => resolve());
-                            } catch(e) { resolve(); }
+                            } catch (e) { resolve(); }
                         } else if (typeof window !== 'undefined' && window.SQL && window.papyrSQLiteDB) {
                             try {
                                 const db = window.papyrSQLiteDB;
                                 db.run(`DELETE FROM ${collectionName}`);
                                 resolve();
-                            } catch(e) { resolve(); }
+                            } catch (e) { resolve(); }
                         } else {
                             resolve();
                         }
@@ -2596,7 +2712,7 @@ coreInitializers.push((papyr) => {
         Object.keys(papyr.db.drivers).forEach(name => {
             try {
                 drivers[name] = papyr.db.drivers[name](collectionName);
-            } catch(e) {
+            } catch (e) {
                 console.error(`Failed to initialize custom db driver ${name}:`, e);
             }
         });
@@ -2604,7 +2720,7 @@ coreInitializers.push((papyr) => {
         const isAsync = engine !== 'local' && engine !== 'session' && drivers[engine];
         // eslint-disable-next-line security/detect-object-injection
         const driver = (engine && engine !== '__proto__' && engine !== 'constructor' && engine !== 'prototype' && Object.prototype.hasOwnProperty.call(drivers, engine)) ? drivers[engine] : drivers['local'];
-        
+
         let state = papyr.state([]);
         let watchers = [];
 
@@ -2624,11 +2740,11 @@ coreInitializers.push((papyr) => {
 
         return {
             state,
-            
+
             list() {
                 return state.value;
             },
-            
+
             async listAsync() {
                 if (isAsync) {
                     const data = await driver.getAsync();
@@ -2637,11 +2753,11 @@ coreInitializers.push((papyr) => {
                 }
                 return state.value;
             },
-            
+
             find(id) {
                 return state.value.find(record => record.id === id);
             },
-            
+
             async findAsync(id) {
                 if (isAsync) {
                     const data = await driver.getAsync();
@@ -2655,7 +2771,7 @@ coreInitializers.push((papyr) => {
                 if (typeof options.filter === 'function') {
                     result = result.filter(options.filter);
                 } else if (options.filter && typeof options.filter === 'object') {
-                    result = result.filter(item => 
+                    result = result.filter(item =>
                         Object.entries(options.filter).every(([k, v]) => {
                             if (k === '__proto__' || k === 'constructor' || k === 'prototype') return false;
                             return Object.prototype.hasOwnProperty.call(item, k) ? item[k] === v : false;
@@ -2687,7 +2803,7 @@ coreInitializers.push((papyr) => {
                 }
                 return this.query(options);
             },
-            
+
             insert(item) {
                 let record = { id: Date.now().toString(36) + Math.random().toString(36).substr(2, 5), createdAt: new Date().toISOString(), ...item };
                 state.value = [...state.value, record];
@@ -2699,7 +2815,7 @@ coreInitializers.push((papyr) => {
                 notifyWatchers();
                 return record;
             },
-            
+
             async insertAsync(item) {
                 let record = { id: Date.now().toString(36) + Math.random().toString(36).substr(2, 5), createdAt: new Date().toISOString(), ...item };
                 state.value = [...state.value, record];
@@ -2711,9 +2827,9 @@ coreInitializers.push((papyr) => {
                 notifyWatchers();
                 return record;
             },
-            
+
             update(id, data) {
-                state.value = state.value.map(record => 
+                state.value = state.value.map(record =>
                     record.id === id ? { ...record, ...data, updatedAt: new Date().toISOString() } : record
                 );
                 const updated = this.find(id);
@@ -2726,9 +2842,9 @@ coreInitializers.push((papyr) => {
                 }
                 notifyWatchers();
             },
-            
+
             async updateAsync(id, data) {
-                state.value = state.value.map(record => 
+                state.value = state.value.map(record =>
                     record.id === id ? { ...record, ...data, updatedAt: new Date().toISOString() } : record
                 );
                 const updated = this.find(id);
@@ -2741,7 +2857,7 @@ coreInitializers.push((papyr) => {
                 }
                 notifyWatchers();
             },
-            
+
             delete(id) {
                 state.value = state.value.filter(record => record.id !== id);
                 if (isAsync) {
@@ -2751,7 +2867,7 @@ coreInitializers.push((papyr) => {
                 }
                 notifyWatchers();
             },
-            
+
             async deleteAsync(id) {
                 state.value = state.value.filter(record => record.id !== id);
                 if (isAsync) {
@@ -2761,7 +2877,7 @@ coreInitializers.push((papyr) => {
                 }
                 notifyWatchers();
             },
-            
+
             clear() {
                 state.value = [];
                 if (isAsync) {
@@ -2771,7 +2887,7 @@ coreInitializers.push((papyr) => {
                 }
                 notifyWatchers();
             },
-            
+
             async clearAsync() {
                 state.value = [];
                 if (isAsync) {
@@ -2781,11 +2897,67 @@ coreInitializers.push((papyr) => {
                 }
                 notifyWatchers();
             },
-            
+
             watch(callback) {
                 watchers.push(callback);
                 callback(state.value); // immediate execution
                 return () => watchers = watchers.filter(cb => cb !== callback); // unsubscribe
+            },
+
+            async transaction(callback) {
+                const snapshot = JSON.stringify(state.value);
+                const tx = {
+                    _ops: [],
+                    insert(item) {
+                        let record = { id: Date.now().toString(36) + Math.random().toString(36).substr(2, 5), createdAt: new Date().toISOString(), ...item };
+                        this._ops.push({ type: 'insert', record });
+                        return record;
+                    },
+                    update(id, data) {
+                        this._ops.push({ type: 'update', id, data });
+                    },
+                    delete(id) {
+                        this._ops.push({ type: 'delete', id });
+                    }
+                };
+                
+                try {
+                    await callback(tx);
+                    for (const op of tx._ops) {
+                        if (op.type === 'insert') {
+                            if (isAsync) {
+                                await driver.insertAsync(op.record);
+                            } else {
+                                driver.insert(op.record);
+                            }
+                            state.value = [...state.value, op.record];
+                        } else if (op.type === 'update') {
+                            state.value = state.value.map(record =>
+                                record.id === op.id ? { ...record, ...op.data, updatedAt: new Date().toISOString() } : record
+                            );
+                            const updated = state.value.find(record => record.id === op.id);
+                            if (updated) {
+                                if (isAsync) {
+                                    await driver.updateAsync(op.id, updated);
+                                } else {
+                                    driver.update(op.id, updated);
+                                }
+                            }
+                        } else if (op.type === 'delete') {
+                            state.value = state.value.filter(record => record.id !== op.id);
+                            if (isAsync) {
+                                await driver.deleteAsync(op.id);
+                            } else {
+                                driver.delete(op.id);
+                            }
+                        }
+                    }
+                    notifyWatchers();
+                } catch (err) {
+                    state.value = JSON.parse(snapshot);
+                    notifyWatchers();
+                    throw err;
+                }
             }
         };
     };
@@ -2801,7 +2973,7 @@ coreInitializers.push((papyr) => {
         if (typeof val === 'undefined') {
             let data = localStorage.getItem(key);
             if (data === null || data === undefined) return null;
-            try { return JSON.parse(data); } catch(e) { return data; }
+            try { return JSON.parse(data); } catch (e) { return data; }
         }
         if (val === null) {
             localStorage.removeItem(key);
@@ -2821,7 +2993,7 @@ coreInitializers.push((papyr) => {
         if (!papyr.security) return console.error("PapyrError: Security module not loaded.");
         let enc = localStorage.getItem(k);
         if (!enc) return null;
-        try { return JSON.parse(papyr.security.decrypt(enc, password)); } catch(e) { return null; }
+        try { return JSON.parse(papyr.security.decrypt(enc, password)); } catch (e) { return null; }
     };
     storageFunc.secureSetAsync = async (k, v, password) => {
         if (!papyr.security || typeof papyr.security.encryptAsync !== 'function') {
@@ -2839,7 +3011,7 @@ coreInitializers.push((papyr) => {
         try {
             const dec = await papyr.security.decryptAsync(enc, password);
             return JSON.parse(dec);
-        } catch(e) { return null; }
+        } catch (e) { return null; }
     };
     papyr.storage = storageFunc;
 
@@ -2848,7 +3020,7 @@ coreInitializers.push((papyr) => {
         if (typeof val === 'undefined') {
             let data = sessionStorage.getItem(key);
             if (data === null || data === undefined) return null;
-            try { return JSON.parse(data); } catch(e) { return data; }
+            try { return JSON.parse(data); } catch (e) { return data; }
         }
         if (val === null) {
             sessionStorage.removeItem(key);
@@ -2868,7 +3040,7 @@ coreInitializers.push((papyr) => {
         if (!papyr.security) return console.error("PapyrError: Security module not loaded.");
         let enc = sessionStorage.getItem(k);
         if (!enc) return null;
-        try { return JSON.parse(papyr.security.decrypt(enc, password)); } catch(e) { return null; }
+        try { return JSON.parse(papyr.security.decrypt(enc, password)); } catch (e) { return null; }
     };
     sessionFunc.secureSetAsync = async (k, v, password) => {
         if (!papyr.security || typeof papyr.security.encryptAsync !== 'function') {
@@ -2886,9 +3058,182 @@ coreInitializers.push((papyr) => {
         try {
             const dec = await papyr.security.decryptAsync(enc, password);
             return JSON.parse(dec);
-        } catch(e) { return null; }
+        } catch (e) { return null; }
     };
     papyr.session = sessionFunc;
+
+    // ----------------------------------------------------
+    // PAPYR DATA SYSTEM 2.0
+    // ----------------------------------------------------
+    papyr.data = {
+        local: (collectionName) => papyr.db(collectionName, 'local'),
+        session: (collectionName) => papyr.db(collectionName, 'session'),
+        indexed: (collectionName) => papyr.db(collectionName, 'indexeddb'),
+        remote: (collectionName) => papyr.db(collectionName, 'firebase')
+    };
+
+    // ----------------------------------------------------
+    // CONTINUITY ENGINE & DRAFT MANAGEMENT
+    // ----------------------------------------------------
+    papyr.drafts = {
+        save(key, data) {
+            papyr.storage.set(`papyr_draft_${key}`, { data, timestamp: Date.now() });
+        },
+        restore(key) {
+            const record = papyr.storage.get(`papyr_draft_${key}`);
+            return record ? record.data : null;
+        },
+        clear(key) {
+            papyr.storage.remove(`papyr_draft_${key}`);
+        }
+    };
+
+    papyr.continuity = {
+        _intervals: new Map(),
+        enable(options = {}) {
+            const { key = 'default', target = null, interval = 5000, onSave = null } = options;
+            if (this._intervals.has(key)) return;
+            
+            const saveTask = () => {
+                let data = null;
+                if (typeof target === 'function') {
+                    data = target();
+                } else if (target && typeof target === 'object' && target.value !== undefined) {
+                    data = target.value;
+                } else if (target && typeof target === 'string') {
+                    const el = document.querySelector(target);
+                    if (el) {
+                        data = el.type === 'checkbox' ? el.checked : el.value;
+                    }
+                }
+                if (data !== null) {
+                    papyr.drafts.save(key, data);
+                    if (typeof onSave === 'function') onSave(data);
+                }
+            };
+            
+            saveTask();
+            const intervalId = setInterval(saveTask, interval);
+            this._intervals.set(key, intervalId);
+        },
+        
+        disable(key = 'default') {
+            const intervalId = this._intervals.get(key);
+            if (intervalId) {
+                clearInterval(intervalId);
+                this._intervals.delete(key);
+            }
+        },
+        
+        restore(options = {}) {
+            const { key = 'default', target = null, onRestore = null } = options;
+            const data = papyr.drafts.restore(key);
+            if (data !== null) {
+                if (typeof onRestore === 'function') {
+                    onRestore(data);
+                } else if (target && typeof target === 'object' && target.value !== undefined) {
+                    target.value = data;
+                } else if (target && typeof target === 'string') {
+                    const el = document.querySelector(target);
+                    if (el) {
+                        if (el.type === 'checkbox') {
+                            el.checked = !!data;
+                        } else {
+                            el.value = data;
+                        }
+                    }
+                }
+                return data;
+            }
+            return null;
+        }
+    };
+
+    // ----------------------------------------------------
+    // OFFLINE FIRST SUPPORT
+    // ----------------------------------------------------
+    papyr.offline = {
+        _queue: [],
+        _isOnline: typeof navigator !== 'undefined' ? navigator.onLine : true,
+        _syncListeners: new Set(),
+        
+        enable(options = {}) {
+            const { onSync = null } = options;
+            if (onSync) this._syncListeners.add(onSync);
+            
+            if (typeof window !== 'undefined') {
+                window.addEventListener('online', () => {
+                    this._isOnline = true;
+                    this.sync();
+                });
+                window.addEventListener('offline', () => {
+                    this._isOnline = false;
+                });
+            }
+            
+            const savedQueue = papyr.storage.get("papyr_offline_queue");
+            if (Array.isArray(savedQueue)) {
+                this._queue = savedQueue;
+            }
+            
+            if (this._isOnline) {
+                this.sync();
+            }
+        },
+        
+        queueWrite(action, collection, data) {
+            this._queue.push({
+                id: Date.now().toString(36) + Math.random().toString(36).substr(2, 5),
+                action,
+                collection,
+                data,
+                timestamp: Date.now()
+            });
+            papyr.storage.set("papyr_offline_queue", this._queue);
+            
+            if (this._isOnline) {
+                this.sync();
+            }
+        },
+        
+        async sync() {
+            if (!this._isOnline || this._queue.length === 0) return;
+            
+            const currentQueue = [...this._queue];
+            this._queue = [];
+            papyr.storage.remove("papyr_offline_queue");
+            
+            for (const item of currentQueue) {
+                for (const listener of this._syncListeners) {
+                    try {
+                        await listener(item);
+                    } catch (e) {
+                        console.error("Offline sync error, pushing back to queue:", e);
+                        this._queue.push(item);
+                        papyr.storage.set("papyr_offline_queue", this._queue);
+                    }
+                }
+            }
+        }
+    };
+
+    // ----------------------------------------------------
+    // RETRY ENGINE (RELIABILITY SUITE)
+    // ----------------------------------------------------
+    papyr.retry = async (fn, options = {}) => {
+        const { retries = 3, delay = 1000, factor = 2, onError = null } = options;
+        let currentDelay = delay;
+        for (let i = 0; i < retries; i++) {
+            try {
+                return await fn();
+            } catch (err) {
+                if (onError) onError(err, i + 1);
+                if (i === retries - 1) throw err;
+                await new Promise(resolve => setTimeout(resolve, currentDelay));
+                currentDelay *= factor;
+            }
+        }
+    };
 });
 
 
@@ -2916,7 +3261,7 @@ coreInitializers.push((papyr) => {
             try {
                 papyr.storage(name, items.value);
             } catch(e) {
-                console.warn("PaperStorageWarning: LocalStorage sync failed.", e);
+                console.warn("PapyrStorageWarning: LocalStorage sync failed.", e);
             }
         };
 
@@ -3136,6 +3481,11 @@ coreInitializers.push((papyr) => {
         
         _config: { provider: 'local' },
         _providers: {},
+
+        use(name) {
+            this._config.provider = name;
+            return this._providers[name] || this;
+        },
 
         registerProvider(name, providerInstance) {
             if (name === '__proto__' || name === 'constructor' || name === 'prototype') return;
@@ -3367,6 +3717,13 @@ coreInitializers.push((papyr) => {
 coreInitializers.push((papyr) => {
     papyr.payments = {
         _gateways: {},
+        _config: { provider: 'stripe' },
+
+        use(name) {
+            this._config = this._config || {};
+            this._config.provider = name;
+            return this._gateways[name] || this;
+        },
 
         /**
          * Register a custom third-party payment gateway provider.
@@ -3456,6 +3813,20 @@ coreInitializers.push((papyr) => {
                 if (papyr.warn) papyr.warn(`papyr.api.post failed for ${url}`, error);
                 throw error;
             }
+        }
+    };
+
+    papyr.cloud = {
+        _providers: {},
+        _config: { provider: 'vercel' },
+        register(name, providerInstance) {
+            if (name === '__proto__' || name === 'constructor' || name === 'prototype') return;
+            this._providers[name] = providerInstance;
+        },
+        use(name) {
+            this._config = this._config || {};
+            this._config.provider = name;
+            return this._providers[name] || this;
         }
     };
 });
@@ -5275,12 +5646,51 @@ if (typeof window !== 'undefined' && !window.papyr) {
                     return extract(element);
                 },
 
+                use(name) {
+                    this._config = this._config || {};
+                    this._config.provider = name;
+                    return this;
+                },
+
+                normalizeResponse(provider, data) {
+                    const prov = (provider || 'openai').toLowerCase();
+                    if (prov === 'openai') {
+                        const message = data.choices?.[0]?.message;
+                        if (!message) {
+                            return { success: false, content: null, refusal: "No response returned" };
+                        }
+                        if (message.refusal) {
+                            return { success: false, content: null, refusal: message.refusal };
+                        }
+                        return { success: true, content: message.content, refusal: null };
+                    } else if (prov === 'anthropic') {
+                        const text = data.content?.[0]?.text;
+                        if (!text) {
+                            return { success: false, content: null, refusal: "No response returned" };
+                        }
+                        return { success: true, content: text, refusal: null };
+                    } else if (prov === 'gemini') {
+                        const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+                        if (!text) {
+                            return { success: false, content: null, refusal: "No response returned" };
+                        }
+                        return { success: true, content: text, refusal: null };
+                    } else if (prov === 'ollama') {
+                        const content = data.message?.content || data.response || '';
+                        if (!content) {
+                            return { success: false, content: null, refusal: "No response returned" };
+                        }
+                        return { success: true, content: content, refusal: null };
+                    }
+                    return { success: false, content: null, refusal: `Unknown provider: ${provider}` };
+                },
+
                 /**
                  * Unified AI Provider interface mapping OpenAI, Anthropic, Gemini, and Ollama endpoints.
                  * Enforces strict real-world connections, API key validations, and secure data privacy protocols.
                  */
                 chat(options = {}) {
-                    const provider = (options.provider || 'openai').toLowerCase();
+                    const provider = (options.provider || (this._config && this._config.provider) || 'openai').toLowerCase();
                     const apiKey = options.apiKey || '';
                     const messages = options.messages || [];
                     const model = options.model;
@@ -5363,16 +5773,10 @@ if (typeof window !== 'undefined' && !window.papyr) {
                         return res.json();
                     })
                     .then(data => {
-                        let parsedText = '';
-                        if (provider === 'openai' || provider === 'ollama') {
-                            parsedText = data.choices ? data.choices[0].message.content : (data.message ? data.message.content : '');
-                        } else if (provider === 'anthropic') {
-                            parsedText = data.content ? data.content[0].text : '';
-                        } else if (provider === 'gemini') {
-                            parsedText = (data.candidates && data.candidates[0].content) ? data.candidates[0].content.parts[0].text : '';
-                        }
+                        const norm = this.normalizeResponse(provider, data);
                         return {
-                            text: parsedText,
+                            ...norm,
+                            text: norm.content || '',
                             provider: provider,
                             simulated: false,
                             raw: data
@@ -5586,7 +5990,12 @@ if (typeof window !== 'undefined' && !window.papyr) {
         ctx.clearRect(0, 0, w, h);
 
         const equation = options.equation || ((x) => Math.sin(x));
-        const range = options.range || [-10, 10, -5, 5];
+        let range = options.range;
+        if (!range && options.scale) {
+            const sc = options.scale;
+            range = [-sc, sc, -sc * (h / w), sc * (h / w)];
+        }
+        range = range || [-10, 10, -5, 5];
         const [minX, maxX, minY, maxY] = range;
         
         const plotColor = options.color || '#10b981';
@@ -5647,12 +6056,13 @@ if (typeof window !== 'undefined' && !window.papyr) {
             try {
                 // Safe evaluation fallback for basic math expressions
                 eqFunc = (x) => {
-                    const cleanEq = equation.replace(/sin/g, 'Math.sin')
+                    let cleanEq = equation.replace(/sin/g, 'Math.sin')
                                             .replace(/cos/g, 'Math.cos')
                                             .replace(/tan/g, 'Math.tan')
                                             .replace(/pi/g, 'Math.PI')
                                             .replace(/exp/g, 'Math.exp')
                                             .replace(/pow/g, 'Math.pow');
+                    cleanEq = cleanEq.replace(/Math\.Math\./g, 'Math.');
                     return new Function('x', `return ${cleanEq}`)(x);
                 };
             } catch (e) {
@@ -5706,7 +6116,7 @@ if (typeof window !== 'undefined' && !window.papyr) {
                  * Renders standard mathematical equations onto a Canvas element.
                  * Supports both container-based scaffolding and direct (canvas, equation) plotting.
                  */
-                graph(optionsOrCanvas = {}, equationStr) {
+                graph(optionsOrCanvas = {}, equationStr, config = {}) {
                     const isElement = (x) => {
                         if (!x || typeof x !== 'object') return false;
                         return (typeof Element !== 'undefined' && x instanceof Element) || 
@@ -5720,7 +6130,7 @@ if (typeof window !== 'undefined' && !window.papyr) {
 
                     if (isElement(optionsOrCanvas) || (typeof optionsOrCanvas === 'string' && typeof document !== 'undefined' && document.querySelector(optionsOrCanvas))) {
                         targetCanvas = typeof optionsOrCanvas === 'string' ? document.querySelector(optionsOrCanvas) : optionsOrCanvas;
-                        drawOptions = typeof equationStr === 'object' ? equationStr : { equation: equationStr };
+                        drawOptions = typeof equationStr === 'object' ? equationStr : { equation: equationStr, ...config };
                         
                         if (targetCanvas) {
                             setTimeout(() => {

@@ -14,6 +14,13 @@
 coreInitializers.push((papyr) => {
     papyr.payments = {
         _gateways: {},
+        _config: { provider: 'stripe' },
+
+        use(name) {
+            this._config = this._config || {};
+            this._config.provider = name;
+            return this._gateways[name] || this;
+        },
 
         /**
          * Register a custom third-party payment gateway provider.

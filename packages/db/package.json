@@ -1,0 +1,25 @@
+{
+  "name": "@eldrex/papyr-db",
+  "version": "3.0.2",
+  "description": "Multi-engine local database and CRUD wrapper for Papyr.js",
+  "main": "dist/papyr-db.js",
+  "module": "dist/papyr-db.esm.js",
+  "files": [
+    "dist/papyr-db.js",
+    "dist/papyr-db.esm.js",
+    "README.md",
+    "LICENSE"
+  ],
+  "peerDependencies": {
+    "@eldrex/papyr": "^3.0.2"
+  },
+  "keywords": [
+    "db",
+    "indexeddb",
+    "crud",
+    "sqlite",
+    "papyr"
+  ],
+  "author": "Eldrex Bula & Papyr Contributors",
+  "license": "MIT"
+}

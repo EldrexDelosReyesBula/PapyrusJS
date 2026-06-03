@@ -1,5 +1,5 @@
 /**
- * PAPYR WATT SYSTEM (Web App Tracking Transparency)
+ * PAPYR WATT SYSTEM (Web Access Transparency Toolkit)
  * 
  * Hard runtime gatekeeper that intercepts browser tracking and hardware APIs at the kernel level.
  * Pops up a custom, accessible glassmorphic consent dashboard before native browser triggers execute.
@@ -23,7 +23,7 @@
             branding: { title: "Privacy Guard", primaryColor: "#6366f1" },
             reason: "This app requires secure access to fulfill its baseline function.",
             labels: { accept: "Allow Access", deny: "Ask App Not to Track", linkText: "Learn more about our privacy commitment" },
-            link: "https://eldrex.landecs.org/privacy"
+            link: "https://example.com/privacy"
         },
 
         configure(customSettings) {
@@ -84,13 +84,43 @@
                     });
                 };
             }
+
+            // 3. Plugin Registration Interception
+            if (typeof papyr !== 'undefined' && papyr.plugins && typeof papyr.plugins.register === 'function') {
+                const self = this;
+                const originalRegister = papyr.plugins.register;
+                papyr.plugins.register = function (plugin) {
+                    if (plugin.permissions && plugin.permissions.length > 0) {
+                        self.triggerWattPrompt(`Plugin Requests for [${plugin.name}]`, () => {
+                            originalRegister.call(papyr.plugins, plugin);
+                        }, () => {
+                            console.warn(`[WATT] Plugin registration blocked: ${plugin.name} due to denied permissions.`);
+                        }, plugin.permissions);
+                    } else {
+                        originalRegister.call(papyr.plugins, plugin);
+                    }
+                };
+            }
         },
 
-        triggerWattPrompt(capabilityName, onAllow, onDeny) {
+        triggerWattPrompt(capabilityName, onAllow, onDeny, permissions = null) {
             console.log(`[WATT Alert]: Intercepted unauthorized request for: ${capabilityName}`);
             if (typeof document === 'undefined') {
                 onDeny();
                 return;
+            }
+
+            let bodyContent = [];
+            if (permissions && Array.isArray(permissions)) {
+                let listItems = permissions.map(p => papyr.li(`✓ ${p.charAt(0).toUpperCase() + p.slice(1)}`, { style: "color: #10b981; margin: 4px 0; text-align: left; list-style: none;" }));
+                bodyContent = [
+                    papyr.muted(`Requests the following permissions:`, { style: "color: #cbd5e1; font-size: 0.95rem; line-height: 1.5; font-weight: bold; text-align: left;" }),
+                    papyr.ul({ style: "margin: 8px 0; padding-left: 0;" }, ...listItems)
+                ];
+            } else {
+                bodyContent = [
+                    papyr.muted(`wants to access your **${capabilityName}**. ${this.config.reason}`, { style: "color: #cbd5e1; font-size: 0.95rem; line-height: 1.5;" })
+                ];
             }
 
             // Construct the modal dynamically utilizing standard Papyr UI tags
@@ -113,7 +143,7 @@
                 `
             },
                 papyr.h3(`🔒 ${this.config.branding.title}`, { style: "font-size: 20px; margin-bottom: 12px; font-weight: 700; color: #fff;" }),
-                papyr.muted(`wants to access your **${capabilityName}**. ${this.config.reason}`, { style: "color: #cbd5e1; font-size: 0.95rem; line-height: 1.5;" }),
+                ...bodyContent,
 
                 papyr.flex.row({ style: "margin-top: 24px; justify-content: flex-end; gap: 12px;" },
                     papyr.button(this.config.labels.deny, {

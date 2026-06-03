@@ -11,7 +11,7 @@ coreInitializers.push((papyr) => {
      * Creates an auto-tracking reactive state variable.
      * 
      * @param {*} val Initial reactive state value
-     * @returns {PaperState} Reactive State accessor interface
+     * @returns {PapyrState} Reactive State accessor interface
      */
     // Bulletproof Element detection helper inside reactivity context
     const isElement = (x) => {
@@ -243,7 +243,7 @@ coreInitializers.push((papyr) => {
     /**
      * Switches visual DOM subtrees reactively based on condition updates.
      * 
-     * @param {PaperState} conditionState Reactive condition state to track
+     * @param {PapyrState} conditionState Reactive condition state to track
      * @param {HTMLElement|function} trueVal Rendered target when state is truthy
      * @param {HTMLElement|function} [falseVal] Optional target when state is falsy
      * @returns {HTMLDivElement} Content container fragment
@@ -291,7 +291,7 @@ coreInitializers.push((papyr) => {
     /**
      * Reactively renders a list of DOM elements from an array state.
      * 
-     * @param {PaperState} arrayState Reactive state containing an array
+     * @param {PapyrState} arrayState Reactive state containing an array
      * @param {function} renderCallback Function returning an HTMLElement for each item
      * @returns {HTMLDivElement} Content container fragment
      */

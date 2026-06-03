@@ -12,6 +12,11 @@ coreInitializers.push((papyr) => {
         _config: { provider: 'local' },
         _providers: {},
 
+        use(name) {
+            this._config.provider = name;
+            return this._providers[name] || this;
+        },
+
         registerProvider(name, providerInstance) {
             if (name === '__proto__' || name === 'constructor' || name === 'prototype') return;
             this._providers[name] = providerInstance;

@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Papyr.js - Science & Charts Sandbox</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600&display=swap" rel="stylesheet">
+    <script src="../public/papyr-complete.js"></script>
+    <style>
+        :root {
+            --bg-color: #0b0f19;
+            --surface-color: rgba(255, 255, 255, 0.03);
+            --border-color: rgba(255, 255, 255, 0.08);
+            --primary: #f59e0b;
+            --text-main: #f3f4f6;
+            --text-muted: #9ca3af;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            font-family: 'Outfit', sans-serif;
+            margin: 0;
+            padding: 40px 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            box-sizing: border-box;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 520px;
+            background: var(--surface-color);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 32px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+            backdrop-filter: blur(10px);
+            margin-bottom: 20px;
+        }
+
+        h2 { margin-top: 0; margin-bottom: 8px; font-weight: 600; letter-spacing: -0.5px; }
+        .subtitle { color: var(--text-muted); font-size: 14px; margin-bottom: 24px; }
+        
+        .tab-box {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 16px;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 10px;
+        }
+
+        .tab-btn {
+            background: none; border: none; color: var(--text-muted); padding: 6px 12px; cursor: pointer; font-family: inherit; font-size: 14px; font-weight: 600;
+        }
+        .tab-btn.active { color: var(--primary); border-bottom: 2px solid var(--primary); }
+
+        .canvas-area {
+            background: #020617;
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .calc-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+
+        .calc-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .calc-row label { color: var(--text-muted); font-size: 14px; }
+        .calc-row input { background: rgba(0,0,0,0.2); border: 1px solid var(--border-color); color: white; padding: 8px; border-radius: 6px; width: 100px; text-align: right; outline: none; font-family: inherit; }
+
+        .calc-result {
+            background: rgba(245, 158, 11, 0.08);
+            border: 1px dashed rgba(245, 158, 11, 0.3);
+            padding: 16px;
+            border-radius: 8px;
+            text-align: center;
+            margin-top: 10px;
+        }
+
+        .logger { width: 100%; max-width: 520px; background: #020617; border: 1px solid var(--border-color); border-radius: 12px; padding: 20px; box-sizing: border-box; }
+        .logger h3 { margin-top: 0; font-size: 14px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px; }
+        .log-terminal { font-family: monospace; font-size: 12px; color: #f59e0b; max-height: 120px; overflow-y: auto; }
+        .log-line { margin-bottom: 4px; }
+    </style>
+</head>
+<body>
+    <div id="science-app-mount"></div>
+
+    <div class="logger">
+        <h3>Science Engine Log</h3>
+        <div id="terminal" class="log-terminal">
+            <div class="log-line">[ScienceEngine] Science plotter initialized.</div>
+        </div>
+    </div>
+
+    <script>
+        const logTerminal = document.getElementById("terminal");
+        const log = (...args) => {
+            const time = new Date().toLocaleTimeString();
+            const formatted = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : arg).join(" ");
+            const line = document.createElement("div");
+            line.className = "log-line";
+            line.textContent = `[${time}] ${formatted}`;
+            logTerminal.appendChild(line);
+            logTerminal.scrollTop = logTerminal.scrollHeight;
+        };
+
+        // 1. Initial States
+        let activeTab = papyr.state("plotting"); // 'plotting', 'calculator'
+        let formula = papyr.state("Math.sin(x)");
+        
+        // Calculator Input States
+        let valA = papyr.state(20);
+        let valB = papyr.state(5);
+        let valC = papyr.state(1.15); // Tax rate multiplier
+
+        // 2. Computed Calculator logic tree
+        let subtotal = papyr.math.sum(valA, valB);
+        let grossTax = papyr.math.mul(subtotal, valC);
+        let roundedTotal = papyr.math.round(grossTax, 2);
+
+        // 3. Canvas Plottings functions
+        let canvasRef = null;
+
+        const updateGraph = () => {
+            if (!canvasRef || activeTab.value !== 'plotting') return;
+            try {
+                log(`Plotting equation: ${formula.value}`);
+                papyr.science.graph(canvasRef, formula.value, { color: '#f59e0b', scale: 25 });
+            } catch(e) {
+                log(`Plotting Error: ${e.message}`);
+            }
+        };
+
+        // Watch equation modifications
+        papyr.watch(formula, updateGraph);
+        papyr.watch(activeTab, () => {
+            setTimeout(updateGraph, 50);
+        });
+
+        // 4. Sub-components templates
+        const PlottingComponent = () => {
+            canvasRef = papyr.canvas({ id: "graph-canvas", width: 440, height: 180 });
+            
+            return papyr.div(
+                papyr.flex.row({ style: { gap: '10px', marginBottom: '16px', alignItems: 'center' } },
+                    papyr.span("Equation: ", { style: { fontSize: '14px', color: 'var(--text-muted)' } }),
+                    papyr.select({
+                        style: { flexGrow: '1', padding: '8px', background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border-color)', color: 'white', borderRadius: '6px' },
+                        onchange: (e) => { formula.value = e.target.value; }
+                    },
+                        papyr.option("Sine Wave: Math.sin(x)", { value: "Math.sin(x)" }),
+                        papyr.option("Cosine Wave: Math.cos(x)", { value: "Math.cos(x)" }),
+                        papyr.option("Hyperbolic Tangent: Math.tanh(x)", { value: "Math.tanh(x)" }),
+                        papyr.option("Quadratic Curve: x * x / 10", { value: "x * x / 10" })
+                    )
+                ),
+                papyr.div(".canvas-area", canvasRef, {
+                    onMounted: () => {
+                        updateGraph();
+                    }
+                })
+            );
+        };
+
+        const CalculatorComponent = () => {
+            return papyr.div(".calc-panel",
+                papyr.div(".calc-row",
+                    papyr.label("Salary / Base"),
+                    papyr.input("number", { ...papyr.model(valA) })
+                ),
+                papyr.div(".calc-row",
+                    papyr.label("Bonus Allowance"),
+                    papyr.input("number", { ...papyr.model(valB) })
+                ),
+                papyr.div(".calc-row",
+                    papyr.label("Tax Rate Multiplier"),
+                    papyr.input("number", { step: '0.01', ...papyr.model(valC) })
+                ),
+
+                // Calculation results
+                papyr.div(".calc-result",
+                    papyr.div({ style: { fontSize: '13px', color: 'var(--text-muted)', marginBottom: '8px' } }, "Auto-Updating Calculations Tree"),
+                    papyr.h4({ style: { margin: '4px 0' } }, () => `Subtotal (Base + Bonus): $${subtotal.value.toFixed(2)}`),
+                    papyr.h3({ style: { margin: '4px 0', color: 'var(--primary)' } }, () => `Grand Total (Taxed & Rounded): $${roundedTotal.value.toFixed(2)}`)
+                )
+            );
+        };
+
+        // 5. Scaffold main UI
+        let UI = papyr.div(".container",
+            papyr.h2("📈 Science & Calculations"),
+            papyr.div(".subtitle", "Validate mathematical equation compilers and canvas graphing coordinates."),
+
+            // Tab bar
+            papyr.div(".tab-box",
+                papyr.button("Canvas Plotter", {
+                    class: () => `tab-btn ${activeTab.value === 'plotting' ? 'active' : ''}`,
+                    onclick: () => activeTab.value = 'plotting'
+                }),
+                papyr.button("Calculations Tree", {
+                    class: () => `tab-btn ${activeTab.value === 'calculator' ? 'active' : ''}`,
+                    onclick: () => activeTab.value = 'calculator'
+                })
+            ),
+
+            // Tab views
+            papyr.div(
+                papyr.if(() => activeTab.value === 'plotting',
+                    () => PlottingComponent(),
+                    () => CalculatorComponent()
+                )
+            )
+        );
+
+        papyr.mount("#science-app-mount", UI);
+    </script>
+</body>
+</html>

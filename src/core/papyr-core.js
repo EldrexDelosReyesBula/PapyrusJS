@@ -120,7 +120,7 @@ const isElement = (x) => {
 };
 
 // --- PAPYR UTILITY STYLING SYSTEM ---
-const paperUtilities = {
+const papyrUtilities = {
     'flex': { display: 'flex' },
     'block': { display: 'block' },
     'inline': { display: 'inline' },
@@ -188,19 +188,20 @@ const injectRule = (mediaQuery, ruleBody) => {
     }
 };
 
-const parsePaperUtilities = (el, utilities) => {
+const parsePapyrUtilities = (el, utilities) => {
     if (!utilities) return;
-    let list = Array.isArray(utilities) ? utilities : String(utilities).split(' ');
+    let list = Array.isArray(utilities) ? utilities : String(utilities).split(/\s+/);
     
     list.forEach(item => {
-        if (!item) return;
+        let trimmedItem = item.trim();
+        if (!trimmedItem) return;
         
         // Check if it's responsive (e.g. md:flex)
-        if (item.includes(':')) {
-            let parts = item.split(':');
+        if (trimmedItem.includes(':')) {
+            let parts = trimmedItem.split(':');
             if (parts.length === 2) {
-                let bp = parts[0]; // e.g. md
-                let ut = parts[1]; // e.g. flex
+                let bp = parts[0];
+                let ut = parts[1];
                 
                 let bpWidth = {
                     'sm': '640px',
@@ -209,15 +210,17 @@ const parsePaperUtilities = (el, utilities) => {
                     'xl': '1280px'
                 }[bp];
                 
-                if (bpWidth && paperUtilities[ut]) {
-                    let uniqueClass = el._paperUniqueClass;
+                let utilitySet = papyrUtilities[ut] ? papyrUtilities : (typeof paperUtilities !== 'undefined' ? paperUtilities : {});
+                
+                if (bpWidth && utilitySet[ut]) {
+                    let uniqueClass = el._papyrUniqueClass;
                     if (!uniqueClass) {
-                        uniqueClass = `paper-u-${Math.random().toString(36).substring(2, 8)}`;
+                        uniqueClass = `papyr-u-${Math.random().toString(36).substring(2, 8)}`;
                         el.classList.add(uniqueClass);
-                        el._paperUniqueClass = uniqueClass;
+                        el._papyrUniqueClass = uniqueClass;
                     }
                     
-                    let styleText = Object.entries(paperUtilities[ut])
+                    let styleText = Object.entries(utilitySet[ut])
                         .map(([k, v]) => `${k.replace(/[A-Z]/g, m => '-' + m.toLowerCase())}: ${v};`)
                         .join(' ');
                     
@@ -227,12 +230,13 @@ const parsePaperUtilities = (el, utilities) => {
             }
         } else {
             // Standard utility class
-            if (paperUtilities[item]) {
-                Object.entries(paperUtilities[item]).forEach(([k, v]) => {
+            let utilitySet = papyrUtilities[trimmedItem] ? papyrUtilities : (typeof paperUtilities !== 'undefined' ? paperUtilities : {});
+            if (utilitySet[trimmedItem]) {
+                Object.entries(utilitySet[trimmedItem]).forEach(([k, v]) => {
                     el.style[k] = v;
                 });
             } else {
-                el.classList.add(item);
+                el.classList.add(trimmedItem);
             }
         }
     });
@@ -587,9 +591,11 @@ function createPapyr() {
                     if (parts) {
                         parts.forEach(part => {
                             if (part.startsWith('#')) {
-                                el.id = part.slice(1);
+                                el.id = part.slice(1).trim();
                             } else if (part.startsWith('.')) {
-                                el.classList.add(part.slice(1));
+                                part.slice(1).trim().split(/\s+/).forEach(c => {
+                                    if (c) el.classList.add(c);
+                                });
                             }
                         });
                     }
@@ -681,9 +687,9 @@ function createPapyr() {
                     else if (k.startsWith('--')) {
                         el.style.setProperty(k, String(v));
                     }
-                    else if (k === 'paper') {
+                    else if (k === 'paper' || k === 'papyr') {
                         const updatePaper = (val) => {
-                            parsePaperUtilities(el, val);
+                            parsePapyrUtilities(el, val);
                         };
                         let unsubscribe;
                         if (v && typeof v.subscribe === 'function') {
@@ -1039,6 +1045,7 @@ function createPapyr() {
         }
         return component.innerHTML || String(component);
     };
+    papyrInstance.ssr.render = (component) => papyrInstance.ssr(component);
 
     // Run registered core initializers!
     coreInitializers.forEach(init => {

@@ -48,4 +48,18 @@ coreInitializers.push((papyr) => {
             }
         }
     };
+
+    papyr.cloud = {
+        _providers: {},
+        _config: { provider: 'vercel' },
+        register(name, providerInstance) {
+            if (name === '__proto__' || name === 'constructor' || name === 'prototype') return;
+            this._providers[name] = providerInstance;
+        },
+        use(name) {
+            this._config = this._config || {};
+            this._config.provider = name;
+            return this._providers[name] || this;
+        }
+    };
 });

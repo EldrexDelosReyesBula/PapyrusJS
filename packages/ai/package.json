@@ -1,0 +1,25 @@
+{
+  "name": "@eldrex/papyr-ai",
+  "version": "3.0.2",
+  "description": "Speech recognition, text-to-speech, camera and semantic AI utilities for Papyr.js",
+  "main": "dist/papyr-ai.js",
+  "module": "dist/papyr-ai.esm.js",
+  "files": [
+    "dist/papyr-ai.js",
+    "dist/papyr-ai.esm.js",
+    "README.md",
+    "LICENSE"
+  ],
+  "peerDependencies": {
+    "@eldrex/papyr": "^3.0.2"
+  },
+  "keywords": [
+    "ai",
+    "speech",
+    "vision",
+    "camera",
+    "papyr"
+  ],
+  "author": "Eldrex Bula & Papyr Contributors",
+  "license": "MIT"
+}

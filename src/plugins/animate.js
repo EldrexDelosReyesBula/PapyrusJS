@@ -188,12 +188,44 @@
         if (!el || typeof window === 'undefined') return el;
         const { tension = 170, friction = 26, mass = 1 } = config;
 
+        if (el._springCancel) {
+            el._springCancel();
+        }
+        let cancelled = false;
+        el._springCancel = () => { cancelled = true; };
+
+        // Parse current transform values
+        let currentX = 0;
+        let currentY = 0;
+        let currentScale = 1;
+
+        const transformStr = el.style.transform || '';
+        const translateMatch = transformStr.match(/translate\(([^,]+),\s*([^)]+)\)/) || 
+                               transformStr.match(/translate3d\(([^,]+),\s*([^,]+)/);
+        if (translateMatch) {
+            currentX = parseFloat(translateMatch[1]) || 0;
+            currentY = parseFloat(translateMatch[2]) || 0;
+        } else {
+            const translateXMatch = transformStr.match(/translateX\(([^)]+)\)/);
+            if (translateXMatch) currentX = parseFloat(translateXMatch[1]) || 0;
+            const translateYMatch = transformStr.match(/translateY\(([^)]+)\)/);
+            if (translateYMatch) currentY = parseFloat(translateYMatch[1]) || 0;
+        }
+
+        const scaleMatch = transformStr.match(/scale\(([^)]+)\)/);
+        if (scaleMatch) {
+            currentScale = parseFloat(scaleMatch[1]) || 1;
+        }
+
         const anims = {};
         Object.entries(properties).forEach(([prop, targetVal]) => {
             if (prop === '__proto__' || prop === 'constructor' || prop === 'prototype') return;
-            // eslint-disable-next-line security/detect-object-injection
-            let currentVal = parseFloat(el.style[prop]) || 0;
-            // eslint-disable-next-line security/detect-object-injection
+            let currentVal = 0;
+            if (prop === 'x') currentVal = currentX;
+            else if (prop === 'y') currentVal = currentY;
+            else if (prop === 'scale') currentVal = currentScale;
+            else currentVal = parseFloat(el.style[prop]) || 0;
+
             anims[prop] = {
                 current: currentVal,
                 velocity: 0,
@@ -202,6 +234,7 @@
         });
 
         const step = () => {
+            if (cancelled) return;
             let done = true;
             Object.entries(anims).forEach(([prop, anim]) => {
                 let force = -tension * (anim.current - anim.target) - friction * anim.velocity;
@@ -214,14 +247,40 @@
                 } else {
                     anim.current = anim.target;
                 }
+            });
 
-                if (prop === 'scale') {
-                    el.style.transform = `scale(${anim.current})`;
-                } else if (['x', 'y'].includes(prop)) {
-                    el.style.transform = `translate${prop.toUpperCase()}(${anim.current}px)`;
-                } else if (prop !== '__proto__' && prop !== 'constructor' && prop !== 'prototype') {
-                    // eslint-disable-next-line security/detect-object-injection
-                    el.style[prop] = prop === 'opacity' ? anim.current : `${anim.current}px`;
+            // Rebuild the transform string to apply x, y, and scale together
+            let transformParts = [];
+            let hasX = 'x' in anims;
+            let hasY = 'y' in anims;
+            if (hasX || hasY) {
+                let xVal = hasX ? anims.x.current : currentX;
+                let yVal = hasY ? anims.y.current : currentY;
+                transformParts.push(`translate(${xVal}px, ${yVal}px)`);
+            } else {
+                if (currentX !== 0 || currentY !== 0) {
+                    transformParts.push(`translate(${currentX}px, ${currentY}px)`);
+                }
+            }
+            
+            if ('scale' in anims) {
+                transformParts.push(`scale(${anims.scale.current})`);
+            } else {
+                if (currentScale !== 1) {
+                    transformParts.push(`scale(${currentScale})`);
+                }
+            }
+
+            if (transformParts.length > 0) {
+                el.style.transform = transformParts.join(' ');
+            }
+
+            // Apply other non-transform properties
+            Object.entries(anims).forEach(([prop, anim]) => {
+                if (prop !== 'x' && prop !== 'y' && prop !== 'scale') {
+                    if (prop !== '__proto__' && prop !== 'constructor' && prop !== 'prototype') {
+                        el.style[prop] = prop === 'opacity' ? anim.current : `${anim.current}px`;
+                    }
                 }
             });
 
@@ -237,7 +296,7 @@
     // Gesture swipe controls and dynamic touch trackers
     papyr.animate.gesture = (el, options = {}) => {
         if (!el || typeof window === 'undefined') return el;
-        const { onSwipeLeft, onSwipeRight, onDrag } = options;
+        const { onSwipeLeft, onSwipeRight, onDrag, onRelease } = options;
         let startX = 0, startY = 0, currentX = 0, currentY = 0;
         let isDragging = false;
 
@@ -261,14 +320,18 @@
         const end = () => {
             if (!isDragging) return;
             isDragging = false;
-            el.style.transition = 'transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)';
 
-            if (currentX > 100 && onSwipeRight) {
-                onSwipeRight(el);
-            } else if (currentX < -100 && onSwipeLeft) {
-                onSwipeLeft(el);
+            if (onRelease) {
+                onRelease(currentX, currentY, el);
             } else {
-                el.style.transform = 'translate(0px, 0px)';
+                el.style.transition = 'transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)';
+                if (currentX > 100 && onSwipeRight) {
+                    onSwipeRight(el);
+                } else if (currentX < -100 && onSwipeLeft) {
+                    onSwipeLeft(el);
+                } else {
+                    el.style.transform = 'translate(0px, 0px)';
+                }
             }
             currentX = 0;
             currentY = 0;
@@ -285,7 +348,7 @@
         return el;
     };
 
-    // PAPER PARALLAX ENGINE
+    // PAPYR PARALLAX ENGINE
     papyr.parallax = (selector, speed = 0.5) => {
         if (typeof window === 'undefined') return;
         window.addEventListener('scroll', () => {
@@ -298,7 +361,7 @@
         });
     };
 
-    // PAPER PHYSICS ENGINE
+    // PAPYR PHYSICS ENGINE
     papyr.physics = (options = {}) => {
         const { gravity = 0.98, bounce = 0.8, friction = 0.95 } = options;
         return (el) => {

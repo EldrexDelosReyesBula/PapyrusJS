@@ -1,14 +1,14 @@
 /**
  * PAPYR SECURITY KERNEL
  * Enterprise-grade XSS Sanitization and Injection Prevention.
- * Web App Tracking Transparency (WATT) script and storage filter.
+ * Web Access Transparency Toolkit (WATT) script and storage filter.
  * Updated to run modularly inside the Papyr Kernel context.
  */
 
-(function() {
+(function () {
     let tempStorage = Object.create(null);
     const trackingKeys = ['_ga', '_gid', '_fbp', '_uid_tracking_id', 'tracking', 'analytics', 'pixel', 'adsense'];
-    
+
     let originalSetItem = null;
     let originalGetItem = null;
     let originalRemoveItem = null;
@@ -44,7 +44,7 @@
                             });
                         }
                         tempStorage = Object.create(null);
-                    } catch(e) {}
+                    } catch (e) { }
                 } else {
                     // Clear tracking keys from real localStorage in a single transactional pass to avoid index shift bugs
                     try {
@@ -61,17 +61,17 @@
                             }
                             keysToDelete.forEach(key => originalRemoveItem(key));
                         }
-                    } catch(e) {}
+                    } catch (e) { }
                 }
             },
 
             shouldBlockScript(src) {
                 if (this.currentTier === 'none') return false;
                 if (!src || typeof src !== 'string') return false;
-                
+
                 const trackingDomains = ['analytics', 'pixel', 'doubleclick', 'google-analytics', 'adsense', 'ad-tracker', 'facebook.net', 'adnxs'];
                 const isTracker = trackingDomains.some(d => src.toLowerCase().includes(d));
-                
+
                 if (this.currentTier === 'high' && isTracker) return true;
                 if (this.currentTier === 'default' && !this.hasConsent && isTracker) return true;
                 return false;
@@ -81,13 +81,13 @@
                 if (typeof document === 'undefined') return;
                 if (this._scriptsBlocked) return;
                 this._scriptsBlocked = true;
-                
+
                 const originalCreateElement = document.createElement;
-                document.createElement = function(tag, options) {
+                document.createElement = function (tag, options) {
                     const el = originalCreateElement.call(document, tag, options);
                     if (tag && tag.toLowerCase() === 'script') {
                         const originalSetAttribute = el.setAttribute;
-                        el.setAttribute = function(k, v) {
+                        el.setAttribute = function (k, v) {
                             if (k && k.toLowerCase() === 'src' && papyr.security.shouldBlockScript(v)) {
                                 console.warn(`Papyr Security Kernel: Blocked tracking script from ${v}`);
                                 return;
@@ -124,7 +124,7 @@
              */
             sanitize(html) {
                 if (!this._isActive || typeof html !== 'string') return html;
-                
+
                 let clean = html;
                 if (typeof window !== 'undefined' && typeof DOMParser !== 'undefined') {
                     try {
@@ -132,7 +132,7 @@
                         const doc = parser.parseFromString(html, 'text/html');
                         const allowedTags = ['div', 'span', 'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'button', 'a', 'img', 'ul', 'ol', 'li', 'table', 'thead', 'tbody', 'tr', 'td', 'th', 'form', 'label', 'input', 'textarea', 'select', 'option', 'pre', 'code', 'strong', 'em', 'small', 'hr', 'br', 'canvas', 'svg', 'path', 'rect', 'circle'];
                         const allowedAttrs = ['class', 'style', 'id', 'href', 'src', 'alt', 'title', 'placeholder', 'type', 'name', 'value', 'checked', 'disabled', 'rows', 'cols', 'width', 'height', 'viewBox', 'd', 'role', 'aria-live', 'aria-modal', 'aria-labelledby', 'tabindex', 'aria-label'];
-                        
+
                         const cleanNode = (node) => {
                             if (node.nodeType === 1) { // Element
                                 const tagName = node.tagName.toLowerCase();
@@ -140,7 +140,7 @@
                                     node.parentNode.removeChild(node);
                                     return;
                                 }
-                                
+
                                 const attrs = Array.from(node.attributes);
                                 attrs.forEach(attr => {
                                     const name = attr.name.toLowerCase();
@@ -149,18 +149,18 @@
                                         node.removeAttribute(attr.name);
                                     }
                                 });
-                                
+
                                 Array.from(node.childNodes).forEach(cleanNode);
                             }
                         };
-                        
+
                         Array.from(doc.body.childNodes).forEach(cleanNode);
                         clean = doc.body.innerHTML;
-                    } catch(e) {
+                    } catch (e) {
                         // fallback to regex below
                     }
                 }
-                
+
                 if (clean === html || typeof DOMParser === 'undefined') {
                     clean = html.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
                     clean = clean.replace(/\s+on\w+\s*=\s*"[^"]*"/gi, '');
@@ -219,7 +219,7 @@
                         keyFeedback = binaryStr.charCodeAt(i);
                     }
                     return typeof window !== 'undefined' ? decodeURIComponent(escape(result)) : Buffer.from(result, 'binary').toString('utf8');
-                } catch(e) {
+                } catch (e) {
                     if (papyr.warn) papyr.warn("Papyr Security: Decryption failed (invalid key or corrupted data).");
                     return null;
                 }
@@ -236,15 +236,15 @@
                     const encoder = new TextEncoder();
                     const salt = window.crypto.getRandomValues(new Uint8Array(16));
                     const iv = window.crypto.getRandomValues(new Uint8Array(12));
-                    
+
                     const keyMaterial = await window.crypto.subtle.importKey(
-                        "raw", 
-                        encoder.encode(password), 
-                        "PBKDF2", 
-                        false, 
+                        "raw",
+                        encoder.encode(password),
+                        "PBKDF2",
+                        false,
                         ["deriveKey"]
                     );
-                    
+
                     const key = await window.crypto.subtle.deriveKey(
                         {
                             name: "PBKDF2",
@@ -257,18 +257,18 @@
                         false,
                         ["encrypt"]
                     );
-                    
+
                     const ciphertext = await window.crypto.subtle.encrypt(
-                        { name: "AES-GCM", iv: iv }, 
-                        key, 
+                        { name: "AES-GCM", iv: iv },
+                        key,
                         encoder.encode(text)
                     );
-                    
+
                     const combined = new Uint8Array(salt.length + iv.length + ciphertext.byteLength);
                     combined.set(salt, 0);
                     combined.set(iv, salt.length);
                     combined.set(new Uint8Array(ciphertext), salt.length + iv.length);
-                    
+
                     let binary = '';
                     for (let i = 0; i < combined.byteLength; i++) {
                         binary += String.fromCharCode(combined[i]);
@@ -290,20 +290,20 @@
                     for (let i = 0; i < binaryStr.length; i++) {
                         combined[i] = binaryStr.charCodeAt(i);
                     }
-                    
+
                     const salt = combined.slice(0, 16);
                     const iv = combined.slice(16, 28);
                     const ciphertext = combined.slice(28);
-                    
+
                     const encoder = new TextEncoder();
                     const keyMaterial = await window.crypto.subtle.importKey(
-                        "raw", 
-                        encoder.encode(password), 
-                        "PBKDF2", 
-                        false, 
+                        "raw",
+                        encoder.encode(password),
+                        "PBKDF2",
+                        false,
                         ["deriveKey"]
                     );
-                    
+
                     const key = await window.crypto.subtle.deriveKey(
                         {
                             name: "PBKDF2",
@@ -316,13 +316,13 @@
                         false,
                         ["decrypt"]
                     );
-                    
+
                     const decrypted = await window.crypto.subtle.decrypt(
-                        { name: "AES-GCM", iv: iv }, 
-                        key, 
+                        { name: "AES-GCM", iv: iv },
+                        key,
                         ciphertext
                     );
-                    
+
                     return new TextDecoder().decode(decrypted);
                 } catch (e) {
                     console.error("Papyr Security: Async Decryption failed, falling back to sync.", e);
@@ -330,11 +330,20 @@
                 }
             }
         };
+
+        papyr.safeGet = (obj, key) => {
+            if (!obj || typeof obj !== 'object') return undefined;
+            if (key === '__proto__' || key === 'constructor' || key === 'prototype') {
+                throw new Error("Security Violation: Unsafe property access");
+            }
+            // eslint-disable-next-line security/detect-object-injection
+            return obj[key];
+        };
     });
 
     // Install LocalStorage Interception
     if (typeof window !== 'undefined' && window.localStorage) {
-        localStorage.setItem = function(key, val) {
+        localStorage.setItem = function (key, val) {
             if (window.papyr && window.papyr.security && window.papyr.security.shouldSandboxStorage(key)) {
                 if (key && key !== '__proto__' && key !== 'constructor' && key !== 'prototype') {
                     // eslint-disable-next-line security/detect-object-injection
@@ -344,16 +353,16 @@
             }
             if (originalSetItem) originalSetItem(key, val);
         };
-        
-        localStorage.getItem = function(key) {
+
+        localStorage.getItem = function (key) {
             if (window.papyr && window.papyr.security && window.papyr.security.shouldSandboxStorage(key)) {
                 // eslint-disable-next-line security/detect-object-injection
                 return (key && key !== '__proto__' && key !== 'constructor' && key !== 'prototype' && Object.prototype.hasOwnProperty.call(tempStorage, key)) ? tempStorage[key] : null;
             }
             return originalGetItem ? originalGetItem(key) : null;
         };
-        
-        localStorage.removeItem = function(key) {
+
+        localStorage.removeItem = function (key) {
             if (window.papyr && window.papyr.security && window.papyr.security.shouldSandboxStorage(key)) {
                 if (key && key !== '__proto__' && key !== 'constructor' && key !== 'prototype' && Object.prototype.hasOwnProperty.call(tempStorage, key)) {
                     // eslint-disable-next-line security/detect-object-injection

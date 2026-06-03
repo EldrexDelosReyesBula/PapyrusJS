@@ -1,11 +1,11 @@
 /**
  * PAPYR DATA SYSTEM (Unified DB API)
  * Seamlessly integrates LocalStorage, SessionStorage, IndexedDB, and SQLite endpoints.
- * Updated with transactional granular CRUD capabilities and zero mockups.
+ * Updated with transactional granular CRUD capabilities.
  */
 
 coreInitializers.push((papyr) => {
-    
+
     const getDB = (collectionName) => {
         return new Promise((resolve, reject) => {
             if (typeof window === 'undefined' || !window.indexedDB) return reject(new Error("IndexedDB not supported"));
@@ -38,7 +38,7 @@ coreInitializers.push((papyr) => {
     };
 
     papyr.db = (collectionName, engine = 'local') => {
-        
+
         // Engine Drivers with fully granular transaction-safe CRUD methods
         const drivers = {
             'local': {
@@ -46,9 +46,9 @@ coreInitializers.push((papyr) => {
                     try {
                         let val = localStorage.getItem(`papyr_db_${collectionName}`);
                         return val ? JSON.parse(val) : [];
-                    } catch(e) { 
+                    } catch (e) {
                         console.error("PapyrDB [local] get error:", e);
-                        return []; 
+                        return [];
                     }
                 },
                 insert: (item) => {
@@ -56,17 +56,17 @@ coreInitializers.push((papyr) => {
                         const items = drivers.local.get();
                         items.push(item);
                         localStorage.setItem(`papyr_db_${collectionName}`, JSON.stringify(items));
-                    } catch(e) {
+                    } catch (e) {
                         console.error("PapyrDB [local] insert error:", e);
                     }
                 },
                 update: (id, updates) => {
                     try {
-                        const items = drivers.local.get().map(item => 
+                        const items = drivers.local.get().map(item =>
                             item.id === id ? { ...item, ...updates } : item
                         );
                         localStorage.setItem(`papyr_db_${collectionName}`, JSON.stringify(items));
-                    } catch(e) {
+                    } catch (e) {
                         console.error("PapyrDB [local] update error:", e);
                     }
                 },
@@ -74,14 +74,14 @@ coreInitializers.push((papyr) => {
                     try {
                         const items = drivers.local.get().filter(item => item.id !== id);
                         localStorage.setItem(`papyr_db_${collectionName}`, JSON.stringify(items));
-                    } catch(e) {
+                    } catch (e) {
                         console.error("PapyrDB [local] delete error:", e);
                     }
                 },
                 clear: () => {
                     try {
                         localStorage.removeItem(`papyr_db_${collectionName}`);
-                    } catch(e) {
+                    } catch (e) {
                         console.error("PapyrDB [local] clear error:", e);
                     }
                 }
@@ -91,9 +91,9 @@ coreInitializers.push((papyr) => {
                     try {
                         let val = sessionStorage.getItem(`papyr_db_${collectionName}`);
                         return val ? JSON.parse(val) : [];
-                    } catch(e) { 
+                    } catch (e) {
                         console.error("PapyrDB [session] get error:", e);
-                        return []; 
+                        return [];
                     }
                 },
                 insert: (item) => {
@@ -101,17 +101,17 @@ coreInitializers.push((papyr) => {
                         const items = drivers.session.get();
                         items.push(item);
                         sessionStorage.setItem(`papyr_db_${collectionName}`, JSON.stringify(items));
-                    } catch(e) {
+                    } catch (e) {
                         console.error("PapyrDB [session] insert error:", e);
                     }
                 },
                 update: (id, updates) => {
                     try {
-                        const items = drivers.session.get().map(item => 
+                        const items = drivers.session.get().map(item =>
                             item.id === id ? { ...item, ...updates } : item
                         );
                         sessionStorage.setItem(`papyr_db_${collectionName}`, JSON.stringify(items));
-                    } catch(e) {
+                    } catch (e) {
                         console.error("PapyrDB [session] update error:", e);
                     }
                 },
@@ -119,14 +119,14 @@ coreInitializers.push((papyr) => {
                     try {
                         const items = drivers.session.get().filter(item => item.id !== id);
                         sessionStorage.setItem(`papyr_db_${collectionName}`, JSON.stringify(items));
-                    } catch(e) {
+                    } catch (e) {
                         console.error("PapyrDB [session] delete error:", e);
                     }
                 },
                 clear: () => {
                     try {
                         sessionStorage.removeItem(`papyr_db_${collectionName}`);
-                    } catch(e) {
+                    } catch (e) {
                         console.error("PapyrDB [session] clear error:", e);
                     }
                 }
@@ -147,7 +147,7 @@ coreInitializers.push((papyr) => {
                                     db.close();
                                     resolve([]);
                                 };
-                            } catch(err) {
+                            } catch (err) {
                                 db.close();
                                 resolve([]);
                             }
@@ -168,7 +168,7 @@ coreInitializers.push((papyr) => {
                                     db.close();
                                     resolve();
                                 };
-                            } catch(err) {
+                            } catch (err) {
                                 console.error("PapyrDB [indexeddb] insert error:", err);
                                 db.close();
                                 resolve();
@@ -204,7 +204,7 @@ coreInitializers.push((papyr) => {
                                     db.close();
                                     resolve();
                                 };
-                            } catch(err) {
+                            } catch (err) {
                                 console.error("PapyrDB [indexeddb] update error:", err);
                                 db.close();
                                 resolve();
@@ -226,7 +226,7 @@ coreInitializers.push((papyr) => {
                                     db.close();
                                     resolve();
                                 };
-                            } catch(err) {
+                            } catch (err) {
                                 console.error("PapyrDB [indexeddb] delete error:", err);
                                 db.close();
                                 resolve();
@@ -248,7 +248,7 @@ coreInitializers.push((papyr) => {
                                     db.close();
                                     resolve();
                                 };
-                            } catch(err) {
+                            } catch (err) {
                                 console.error("PapyrDB [indexeddb] clear error:", err);
                                 db.close();
                                 resolve();
@@ -270,12 +270,12 @@ coreInitializers.push((papyr) => {
                                         for (let i = 0; i < results.rows.length; i++) {
                                             try {
                                                 items.push(JSON.parse(results.rows.item(i).data));
-                                            } catch(e) {}
+                                            } catch (e) { }
                                         }
                                         resolve(items);
                                     }, () => resolve([]));
                                 }, () => resolve([]));
-                            } catch(e) { resolve([]); }
+                            } catch (e) { resolve([]); }
                         } else if (typeof window !== 'undefined' && window.SQL && window.papyrSQLiteDB) {
                             try {
                                 const db = window.papyrSQLiteDB;
@@ -284,11 +284,11 @@ coreInitializers.push((papyr) => {
                                 const items = [];
                                 if (res && res[0] && res[0].values) {
                                     res[0].values.forEach(row => {
-                                        try { items.push(JSON.parse(row[0])); } catch(e) {}
+                                        try { items.push(JSON.parse(row[0])); } catch (e) { }
                                     });
                                 }
                                 resolve(items);
-                            } catch(e) { resolve([]); }
+                            } catch (e) { resolve([]); }
                         } else {
                             resolve([]);
                         }
@@ -303,14 +303,14 @@ coreInitializers.push((papyr) => {
                                     tx.executeSql(`CREATE TABLE IF NOT EXISTS ${collectionName} (id TEXT PRIMARY KEY, data TEXT)`);
                                     tx.executeSql(`INSERT OR REPLACE INTO ${collectionName} (id, data) VALUES (?, ?)`, [item.id, JSON.stringify(item)]);
                                 }, () => resolve(), () => resolve());
-                            } catch(e) { resolve(); }
+                            } catch (e) { resolve(); }
                         } else if (typeof window !== 'undefined' && window.SQL && window.papyrSQLiteDB) {
                             try {
                                 const db = window.papyrSQLiteDB;
                                 db.run(`CREATE TABLE IF NOT EXISTS ${collectionName} (id TEXT PRIMARY KEY, data TEXT)`);
                                 db.run(`INSERT OR REPLACE INTO ${collectionName} (id, data) VALUES (?, ?)`, [item.id, JSON.stringify(item)]);
                                 resolve();
-                            } catch(e) { resolve(); }
+                            } catch (e) { resolve(); }
                         } else {
                             resolve();
                         }
@@ -328,13 +328,13 @@ coreInitializers.push((papyr) => {
                                                 const current = JSON.parse(results.rows.item(0).data);
                                                 const updated = { ...current, ...updates };
                                                 tx.executeSql(`INSERT OR REPLACE INTO ${collectionName} (id, data) VALUES (?, ?)`, [id, JSON.stringify(updated)], () => resolve());
-                                            } catch(e) { resolve(); }
+                                            } catch (e) { resolve(); }
                                         } else {
                                             resolve();
                                         }
                                     }, () => resolve());
                                 }, () => resolve());
-                            } catch(e) { resolve(); }
+                            } catch (e) { resolve(); }
                         } else if (typeof window !== 'undefined' && window.SQL && window.papyrSQLiteDB) {
                             try {
                                 const db = window.papyrSQLiteDB;
@@ -345,7 +345,7 @@ coreInitializers.push((papyr) => {
                                     db.run(`INSERT OR REPLACE INTO ${collectionName} (id, data) VALUES (?, ?)`, [id, JSON.stringify(updated)]);
                                 }
                                 resolve();
-                            } catch(e) { resolve(); }
+                            } catch (e) { resolve(); }
                         } else {
                             resolve();
                         }
@@ -359,13 +359,13 @@ coreInitializers.push((papyr) => {
                                 db.transaction((tx) => {
                                     tx.executeSql(`DELETE FROM ${collectionName} WHERE id = ?`, [id]);
                                 }, () => resolve(), () => resolve());
-                            } catch(e) { resolve(); }
+                            } catch (e) { resolve(); }
                         } else if (typeof window !== 'undefined' && window.SQL && window.papyrSQLiteDB) {
                             try {
                                 const db = window.papyrSQLiteDB;
                                 db.run(`DELETE FROM ${collectionName} WHERE id = ?`, [id]);
                                 resolve();
-                            } catch(e) { resolve(); }
+                            } catch (e) { resolve(); }
                         } else {
                             resolve();
                         }
@@ -379,13 +379,13 @@ coreInitializers.push((papyr) => {
                                 db.transaction((tx) => {
                                     tx.executeSql(`DELETE FROM ${collectionName}`);
                                 }, () => resolve(), () => resolve());
-                            } catch(e) { resolve(); }
+                            } catch (e) { resolve(); }
                         } else if (typeof window !== 'undefined' && window.SQL && window.papyrSQLiteDB) {
                             try {
                                 const db = window.papyrSQLiteDB;
                                 db.run(`DELETE FROM ${collectionName}`);
                                 resolve();
-                            } catch(e) { resolve(); }
+                            } catch (e) { resolve(); }
                         } else {
                             resolve();
                         }
@@ -398,7 +398,7 @@ coreInitializers.push((papyr) => {
         Object.keys(papyr.db.drivers).forEach(name => {
             try {
                 drivers[name] = papyr.db.drivers[name](collectionName);
-            } catch(e) {
+            } catch (e) {
                 console.error(`Failed to initialize custom db driver ${name}:`, e);
             }
         });
@@ -406,7 +406,7 @@ coreInitializers.push((papyr) => {
         const isAsync = engine !== 'local' && engine !== 'session' && drivers[engine];
         // eslint-disable-next-line security/detect-object-injection
         const driver = (engine && engine !== '__proto__' && engine !== 'constructor' && engine !== 'prototype' && Object.prototype.hasOwnProperty.call(drivers, engine)) ? drivers[engine] : drivers['local'];
-        
+
         let state = papyr.state([]);
         let watchers = [];
 
@@ -426,11 +426,11 @@ coreInitializers.push((papyr) => {
 
         return {
             state,
-            
+
             list() {
                 return state.value;
             },
-            
+
             async listAsync() {
                 if (isAsync) {
                     const data = await driver.getAsync();
@@ -439,11 +439,11 @@ coreInitializers.push((papyr) => {
                 }
                 return state.value;
             },
-            
+
             find(id) {
                 return state.value.find(record => record.id === id);
             },
-            
+
             async findAsync(id) {
                 if (isAsync) {
                     const data = await driver.getAsync();
@@ -457,7 +457,7 @@ coreInitializers.push((papyr) => {
                 if (typeof options.filter === 'function') {
                     result = result.filter(options.filter);
                 } else if (options.filter && typeof options.filter === 'object') {
-                    result = result.filter(item => 
+                    result = result.filter(item =>
                         Object.entries(options.filter).every(([k, v]) => {
                             if (k === '__proto__' || k === 'constructor' || k === 'prototype') return false;
                             return Object.prototype.hasOwnProperty.call(item, k) ? item[k] === v : false;
@@ -489,7 +489,7 @@ coreInitializers.push((papyr) => {
                 }
                 return this.query(options);
             },
-            
+
             insert(item) {
                 let record = { id: Date.now().toString(36) + Math.random().toString(36).substr(2, 5), createdAt: new Date().toISOString(), ...item };
                 state.value = [...state.value, record];
@@ -501,7 +501,7 @@ coreInitializers.push((papyr) => {
                 notifyWatchers();
                 return record;
             },
-            
+
             async insertAsync(item) {
                 let record = { id: Date.now().toString(36) + Math.random().toString(36).substr(2, 5), createdAt: new Date().toISOString(), ...item };
                 state.value = [...state.value, record];
@@ -513,9 +513,9 @@ coreInitializers.push((papyr) => {
                 notifyWatchers();
                 return record;
             },
-            
+
             update(id, data) {
-                state.value = state.value.map(record => 
+                state.value = state.value.map(record =>
                     record.id === id ? { ...record, ...data, updatedAt: new Date().toISOString() } : record
                 );
                 const updated = this.find(id);
@@ -528,9 +528,9 @@ coreInitializers.push((papyr) => {
                 }
                 notifyWatchers();
             },
-            
+
             async updateAsync(id, data) {
-                state.value = state.value.map(record => 
+                state.value = state.value.map(record =>
                     record.id === id ? { ...record, ...data, updatedAt: new Date().toISOString() } : record
                 );
                 const updated = this.find(id);
@@ -543,7 +543,7 @@ coreInitializers.push((papyr) => {
                 }
                 notifyWatchers();
             },
-            
+
             delete(id) {
                 state.value = state.value.filter(record => record.id !== id);
                 if (isAsync) {
@@ -553,7 +553,7 @@ coreInitializers.push((papyr) => {
                 }
                 notifyWatchers();
             },
-            
+
             async deleteAsync(id) {
                 state.value = state.value.filter(record => record.id !== id);
                 if (isAsync) {
@@ -563,7 +563,7 @@ coreInitializers.push((papyr) => {
                 }
                 notifyWatchers();
             },
-            
+
             clear() {
                 state.value = [];
                 if (isAsync) {
@@ -573,7 +573,7 @@ coreInitializers.push((papyr) => {
                 }
                 notifyWatchers();
             },
-            
+
             async clearAsync() {
                 state.value = [];
                 if (isAsync) {
@@ -583,11 +583,67 @@ coreInitializers.push((papyr) => {
                 }
                 notifyWatchers();
             },
-            
+
             watch(callback) {
                 watchers.push(callback);
                 callback(state.value); // immediate execution
                 return () => watchers = watchers.filter(cb => cb !== callback); // unsubscribe
+            },
+
+            async transaction(callback) {
+                const snapshot = JSON.stringify(state.value);
+                const tx = {
+                    _ops: [],
+                    insert(item) {
+                        let record = { id: Date.now().toString(36) + Math.random().toString(36).substr(2, 5), createdAt: new Date().toISOString(), ...item };
+                        this._ops.push({ type: 'insert', record });
+                        return record;
+                    },
+                    update(id, data) {
+                        this._ops.push({ type: 'update', id, data });
+                    },
+                    delete(id) {
+                        this._ops.push({ type: 'delete', id });
+                    }
+                };
+                
+                try {
+                    await callback(tx);
+                    for (const op of tx._ops) {
+                        if (op.type === 'insert') {
+                            if (isAsync) {
+                                await driver.insertAsync(op.record);
+                            } else {
+                                driver.insert(op.record);
+                            }
+                            state.value = [...state.value, op.record];
+                        } else if (op.type === 'update') {
+                            state.value = state.value.map(record =>
+                                record.id === op.id ? { ...record, ...op.data, updatedAt: new Date().toISOString() } : record
+                            );
+                            const updated = state.value.find(record => record.id === op.id);
+                            if (updated) {
+                                if (isAsync) {
+                                    await driver.updateAsync(op.id, updated);
+                                } else {
+                                    driver.update(op.id, updated);
+                                }
+                            }
+                        } else if (op.type === 'delete') {
+                            state.value = state.value.filter(record => record.id !== op.id);
+                            if (isAsync) {
+                                await driver.deleteAsync(op.id);
+                            } else {
+                                driver.delete(op.id);
+                            }
+                        }
+                    }
+                    notifyWatchers();
+                } catch (err) {
+                    state.value = JSON.parse(snapshot);
+                    notifyWatchers();
+                    throw err;
+                }
             }
         };
     };
@@ -603,7 +659,7 @@ coreInitializers.push((papyr) => {
         if (typeof val === 'undefined') {
             let data = localStorage.getItem(key);
             if (data === null || data === undefined) return null;
-            try { return JSON.parse(data); } catch(e) { return data; }
+            try { return JSON.parse(data); } catch (e) { return data; }
         }
         if (val === null) {
             localStorage.removeItem(key);
@@ -623,7 +679,7 @@ coreInitializers.push((papyr) => {
         if (!papyr.security) return console.error("PapyrError: Security module not loaded.");
         let enc = localStorage.getItem(k);
         if (!enc) return null;
-        try { return JSON.parse(papyr.security.decrypt(enc, password)); } catch(e) { return null; }
+        try { return JSON.parse(papyr.security.decrypt(enc, password)); } catch (e) { return null; }
     };
     storageFunc.secureSetAsync = async (k, v, password) => {
         if (!papyr.security || typeof papyr.security.encryptAsync !== 'function') {
@@ -641,7 +697,7 @@ coreInitializers.push((papyr) => {
         try {
             const dec = await papyr.security.decryptAsync(enc, password);
             return JSON.parse(dec);
-        } catch(e) { return null; }
+        } catch (e) { return null; }
     };
     papyr.storage = storageFunc;
 
@@ -650,7 +706,7 @@ coreInitializers.push((papyr) => {
         if (typeof val === 'undefined') {
             let data = sessionStorage.getItem(key);
             if (data === null || data === undefined) return null;
-            try { return JSON.parse(data); } catch(e) { return data; }
+            try { return JSON.parse(data); } catch (e) { return data; }
         }
         if (val === null) {
             sessionStorage.removeItem(key);
@@ -670,7 +726,7 @@ coreInitializers.push((papyr) => {
         if (!papyr.security) return console.error("PapyrError: Security module not loaded.");
         let enc = sessionStorage.getItem(k);
         if (!enc) return null;
-        try { return JSON.parse(papyr.security.decrypt(enc, password)); } catch(e) { return null; }
+        try { return JSON.parse(papyr.security.decrypt(enc, password)); } catch (e) { return null; }
     };
     sessionFunc.secureSetAsync = async (k, v, password) => {
         if (!papyr.security || typeof papyr.security.encryptAsync !== 'function') {
@@ -688,7 +744,180 @@ coreInitializers.push((papyr) => {
         try {
             const dec = await papyr.security.decryptAsync(enc, password);
             return JSON.parse(dec);
-        } catch(e) { return null; }
+        } catch (e) { return null; }
     };
     papyr.session = sessionFunc;
+
+    // ----------------------------------------------------
+    // PAPYR DATA SYSTEM 2.0
+    // ----------------------------------------------------
+    papyr.data = {
+        local: (collectionName) => papyr.db(collectionName, 'local'),
+        session: (collectionName) => papyr.db(collectionName, 'session'),
+        indexed: (collectionName) => papyr.db(collectionName, 'indexeddb'),
+        remote: (collectionName) => papyr.db(collectionName, 'firebase')
+    };
+
+    // ----------------------------------------------------
+    // CONTINUITY ENGINE & DRAFT MANAGEMENT
+    // ----------------------------------------------------
+    papyr.drafts = {
+        save(key, data) {
+            papyr.storage.set(`papyr_draft_${key}`, { data, timestamp: Date.now() });
+        },
+        restore(key) {
+            const record = papyr.storage.get(`papyr_draft_${key}`);
+            return record ? record.data : null;
+        },
+        clear(key) {
+            papyr.storage.remove(`papyr_draft_${key}`);
+        }
+    };
+
+    papyr.continuity = {
+        _intervals: new Map(),
+        enable(options = {}) {
+            const { key = 'default', target = null, interval = 5000, onSave = null } = options;
+            if (this._intervals.has(key)) return;
+            
+            const saveTask = () => {
+                let data = null;
+                if (typeof target === 'function') {
+                    data = target();
+                } else if (target && typeof target === 'object' && target.value !== undefined) {
+                    data = target.value;
+                } else if (target && typeof target === 'string') {
+                    const el = document.querySelector(target);
+                    if (el) {
+                        data = el.type === 'checkbox' ? el.checked : el.value;
+                    }
+                }
+                if (data !== null) {
+                    papyr.drafts.save(key, data);
+                    if (typeof onSave === 'function') onSave(data);
+                }
+            };
+            
+            saveTask();
+            const intervalId = setInterval(saveTask, interval);
+            this._intervals.set(key, intervalId);
+        },
+        
+        disable(key = 'default') {
+            const intervalId = this._intervals.get(key);
+            if (intervalId) {
+                clearInterval(intervalId);
+                this._intervals.delete(key);
+            }
+        },
+        
+        restore(options = {}) {
+            const { key = 'default', target = null, onRestore = null } = options;
+            const data = papyr.drafts.restore(key);
+            if (data !== null) {
+                if (typeof onRestore === 'function') {
+                    onRestore(data);
+                } else if (target && typeof target === 'object' && target.value !== undefined) {
+                    target.value = data;
+                } else if (target && typeof target === 'string') {
+                    const el = document.querySelector(target);
+                    if (el) {
+                        if (el.type === 'checkbox') {
+                            el.checked = !!data;
+                        } else {
+                            el.value = data;
+                        }
+                    }
+                }
+                return data;
+            }
+            return null;
+        }
+    };
+
+    // ----------------------------------------------------
+    // OFFLINE FIRST SUPPORT
+    // ----------------------------------------------------
+    papyr.offline = {
+        _queue: [],
+        _isOnline: typeof navigator !== 'undefined' ? navigator.onLine : true,
+        _syncListeners: new Set(),
+        
+        enable(options = {}) {
+            const { onSync = null } = options;
+            if (onSync) this._syncListeners.add(onSync);
+            
+            if (typeof window !== 'undefined') {
+                window.addEventListener('online', () => {
+                    this._isOnline = true;
+                    this.sync();
+                });
+                window.addEventListener('offline', () => {
+                    this._isOnline = false;
+                });
+            }
+            
+            const savedQueue = papyr.storage.get("papyr_offline_queue");
+            if (Array.isArray(savedQueue)) {
+                this._queue = savedQueue;
+            }
+            
+            if (this._isOnline) {
+                this.sync();
+            }
+        },
+        
+        queueWrite(action, collection, data) {
+            this._queue.push({
+                id: Date.now().toString(36) + Math.random().toString(36).substr(2, 5),
+                action,
+                collection,
+                data,
+                timestamp: Date.now()
+            });
+            papyr.storage.set("papyr_offline_queue", this._queue);
+            
+            if (this._isOnline) {
+                this.sync();
+            }
+        },
+        
+        async sync() {
+            if (!this._isOnline || this._queue.length === 0) return;
+            
+            const currentQueue = [...this._queue];
+            this._queue = [];
+            papyr.storage.remove("papyr_offline_queue");
+            
+            for (const item of currentQueue) {
+                for (const listener of this._syncListeners) {
+                    try {
+                        await listener(item);
+                    } catch (e) {
+                        console.error("Offline sync error, pushing back to queue:", e);
+                        this._queue.push(item);
+                        papyr.storage.set("papyr_offline_queue", this._queue);
+                    }
+                }
+            }
+        }
+    };
+
+    // ----------------------------------------------------
+    // RETRY ENGINE (RELIABILITY SUITE)
+    // ----------------------------------------------------
+    papyr.retry = async (fn, options = {}) => {
+        const { retries = 3, delay = 1000, factor = 2, onError = null } = options;
+        let currentDelay = delay;
+        for (let i = 0; i < retries; i++) {
+            try {
+                return await fn();
+            } catch (err) {
+                if (onError) onError(err, i + 1);
+                if (i === retries - 1) throw err;
+                await new Promise(resolve => setTimeout(resolve, currentDelay));
+                currentDelay *= factor;
+            }
+        }
+    };
 });

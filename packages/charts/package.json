@@ -1,0 +1,23 @@
+{
+  "name": "@eldrex/papyr-charts",
+  "version": "3.0.2",
+  "description": "Reactive charts plugin for Papyr.js",
+  "main": "dist/papyr-charts.js",
+  "module": "dist/papyr-charts.esm.js",
+  "files": [
+    "dist/papyr-charts.js",
+    "dist/papyr-charts.esm.js",
+    "README.md",
+    "LICENSE"
+  ],
+  "peerDependencies": {
+    "@eldrex/papyr": "^3.0.2"
+  },
+  "keywords": [
+    "charts",
+    "reactive",
+    "papyr"
+  ],
+  "author": "Eldrex Bula & Papyr Contributors",
+  "license": "MIT"
+}

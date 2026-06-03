@@ -1,0 +1,24 @@
+{
+  "name": "@eldrex/papyr-ssr",
+  "version": "3.0.2",
+  "description": "Zero-dependency Server-Side Renderer (SSR) and Express connector for Papyr.js",
+  "main": "dist/papyr-ssr.js",
+  "module": "dist/papyr-ssr.esm.js",
+  "files": [
+    "dist/papyr-ssr.js",
+    "dist/papyr-ssr.esm.js",
+    "README.md",
+    "LICENSE"
+  ],
+  "peerDependencies": {
+    "@eldrex/papyr": "^3.0.2"
+  },
+  "keywords": [
+    "ssr",
+    "server-render",
+    "express",
+    "papyr"
+  ],
+  "author": "Eldrex Bula & Papyr Contributors",
+  "license": "MIT"
+}

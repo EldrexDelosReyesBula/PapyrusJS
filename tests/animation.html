@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Papyr.js - Animations Sandbox</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600&display=swap" rel="stylesheet">
+    <script src="../public/papyr-complete.js"></script>
+    <style>
+        :root {
+            --bg-color: #0b0f19;
+            --surface-color: rgba(255, 255, 255, 0.03);
+            --border-color: rgba(255, 255, 255, 0.08);
+            --primary: #818cf8;
+            --text-main: #f3f4f6;
+            --text-muted: #9ca3af;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            font-family: 'Outfit', sans-serif;
+            margin: 0;
+            padding: 40px 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            box-sizing: border-box;
+            overflow-x: hidden;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 500px;
+            background: var(--surface-color);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 32px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+            backdrop-filter: blur(10px);
+            margin-bottom: 20px;
+        }
+
+        h2 { margin-top: 0; margin-bottom: 8px; font-weight: 600; letter-spacing: -0.5px; }
+        .subtitle { color: var(--text-muted); font-size: 14px; margin-bottom: 24px; }
+        
+        .sandbox-area {
+            height: 180px;
+            border: 1px dashed var(--border-color);
+            border-radius: 12px;
+            background: rgba(0,0,0,0.15);
+            position: relative;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+
+        .animate-box {
+            width: 60px;
+            height: 60px;
+            border-radius: 12px;
+            background: linear-gradient(135deg, #6366f1, #a855f7);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 600;
+            font-size: 24px;
+            cursor: grab;
+            user-select: none;
+            box-shadow: 0 8px 16px rgba(99, 102, 241, 0.3);
+            position: absolute;
+        }
+
+        .animate-box:active { cursor: grabbing; }
+
+        .slider-group {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-bottom: 24px;
+            font-size: 14px;
+        }
+
+        .slider-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .slider-row label { width: 80px; color: var(--text-muted); }
+        .slider-row input { flex-grow: 1; accent-color: var(--primary); }
+        .slider-row span { width: 30px; text-align: right; font-weight: 600; }
+
+        .btn-row { display: flex; gap: 10px; margin-bottom: 20px; }
+        .btn-action { flex-grow: 1; background: var(--primary); color: white; border: none; padding: 10px 16px; border-radius: 8px; font-family: inherit; font-weight: 600; cursor: pointer; transition: background 0.2s; }
+        .btn-action:hover { background: #4f46e5; }
+
+        .logger { width: 100%; max-width: 500px; background: #020617; border: 1px solid var(--border-color); border-radius: 12px; padding: 20px; box-sizing: border-box; }
+        .logger h3 { margin-top: 0; font-size: 14px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px; }
+        .log-terminal { font-family: monospace; font-size: 12px; color: #a855f7; max-height: 120px; overflow-y: auto; }
+        .log-line { margin-bottom: 4px; }
+    </style>
+</head>
+<body>
+    <div id="anim-app-mount"></div>
+
+    <div class="logger">
+        <h3>Spring Physics Telemetry Log</h3>
+        <div id="terminal" class="log-terminal">
+            <div class="log-line">[PapyrAnimate] Physics loops configured. Ready to transition.</div>
+        </div>
+    </div>
+
+    <script>
+        const logTerminal = document.getElementById("terminal");
+        const log = (...args) => {
+            const time = new Date().toLocaleTimeString();
+            const formatted = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : arg).join(" ");
+            const line = document.createElement("div");
+            line.className = "log-line";
+            line.textContent = `[${time}] ${formatted}`;
+            logTerminal.appendChild(line);
+            logTerminal.scrollTop = logTerminal.scrollHeight;
+        };
+
+        // 1. Parameter States
+        let tension = papyr.state(170);
+        let friction = papyr.state(26);
+        let gestureActive = papyr.state(false);
+
+        // Box element reference placeholder
+        let boxRef = null;
+
+        // 2. Action triggers
+        const triggerSpring = () => {
+            if (!boxRef) return;
+            log(`Running Spring Physics - Tension: ${tension.value}, Friction: ${friction.value}`);
+            
+            // Random translations
+            const randomX = Math.floor(Math.random() * 200 - 100);
+            const randomY = Math.floor(Math.random() * 80 - 40);
+            
+            papyr.animate.spring(boxRef, 
+                { x: randomX, y: randomY, scale: 1.2 },
+                { tension: Number(tension.value), friction: Number(friction.value) }
+            );
+        };
+
+        const resetBox = () => {
+            if (!boxRef) return;
+            log("Resetting box position to origin.");
+            papyr.animate.spring(boxRef, 
+                { x: 0, y: 0, scale: 1.0 },
+                { tension: Number(tension.value), friction: Number(friction.value) }
+            );
+        };
+
+        // 3. Render View UI
+        let UI = papyr.div(".container",
+            papyr.h2("🎬 Physics & Gestures"),
+            papyr.div(".subtitle", "Validate Verlet integrations, spring values, and gesture displacements."),
+
+            // Animation box area
+            papyr.div(".sandbox-area",
+                papyr.div(".animate-box", "🎁", {
+                    onMounted: (el) => {
+                        boxRef = el;
+                        // Attach gesture controller to box
+                        papyr.animate.gesture(el, {
+                            onDrag: (x, y) => {
+                                gestureActive.value = true;
+                                el.style.transform = `translate(${x}px, ${y}px) scale(1.15)`;
+                            },
+                            onRelease: (x, y) => {
+                                gestureActive.value = false;
+                                log(`Released gesture at offset coordinates: X=${x.toFixed(1)}, Y=${y.toFixed(1)}`);
+                                resetBox(); // Return back safely using spring
+                            }
+                        });
+                    }
+                })
+            ),
+
+            // Spring Sliders configuration
+            papyr.div(".slider-group",
+                papyr.div(".slider-row",
+                    papyr.label("Tension"),
+                    papyr.input("range", { min: 10, max: 400, ...papyr.model(tension) }),
+                    papyr.span(() => tension.value)
+                ),
+                papyr.div(".slider-row",
+                    papyr.label("Friction"),
+                    papyr.input("range", { min: 2, max: 80, ...papyr.model(friction) }),
+                    papyr.span(() => friction.value)
+                )
+            ),
+
+            // Controls row
+            papyr.div(".btn-row",
+                papyr.button("Trigger Spring", { class: "btn-action", onclick: triggerSpring }),
+                papyr.button("Reset Origin", { class: "btn-action", onclick: resetBox })
+            ),
+
+            papyr.div({ style: { fontSize: '13px', color: 'var(--text-muted)', textAlign: 'center' } },
+                () => gestureActive.value ? "Status: 🫱 Dragging gesture active..." : "Status: 💤 Sandbox Idle"
+            )
+        );
+
+        papyr.mount("#anim-app-mount", UI);
+    </script>
+</body>
+</html>

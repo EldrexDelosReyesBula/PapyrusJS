@@ -130,12 +130,51 @@
                     return extract(element);
                 },
 
+                use(name) {
+                    this._config = this._config || {};
+                    this._config.provider = name;
+                    return this;
+                },
+
+                normalizeResponse(provider, data) {
+                    const prov = (provider || 'openai').toLowerCase();
+                    if (prov === 'openai') {
+                        const message = data.choices?.[0]?.message;
+                        if (!message) {
+                            return { success: false, content: null, refusal: "No response returned" };
+                        }
+                        if (message.refusal) {
+                            return { success: false, content: null, refusal: message.refusal };
+                        }
+                        return { success: true, content: message.content, refusal: null };
+                    } else if (prov === 'anthropic') {
+                        const text = data.content?.[0]?.text;
+                        if (!text) {
+                            return { success: false, content: null, refusal: "No response returned" };
+                        }
+                        return { success: true, content: text, refusal: null };
+                    } else if (prov === 'gemini') {
+                        const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+                        if (!text) {
+                            return { success: false, content: null, refusal: "No response returned" };
+                        }
+                        return { success: true, content: text, refusal: null };
+                    } else if (prov === 'ollama') {
+                        const content = data.message?.content || data.response || '';
+                        if (!content) {
+                            return { success: false, content: null, refusal: "No response returned" };
+                        }
+                        return { success: true, content: content, refusal: null };
+                    }
+                    return { success: false, content: null, refusal: `Unknown provider: ${provider}` };
+                },
+
                 /**
                  * Unified AI Provider interface mapping OpenAI, Anthropic, Gemini, and Ollama endpoints.
                  * Enforces strict real-world connections, API key validations, and secure data privacy protocols.
                  */
                 chat(options = {}) {
-                    const provider = (options.provider || 'openai').toLowerCase();
+                    const provider = (options.provider || (this._config && this._config.provider) || 'openai').toLowerCase();
                     const apiKey = options.apiKey || '';
                     const messages = options.messages || [];
                     const model = options.model;
@@ -218,16 +257,10 @@
                         return res.json();
                     })
                     .then(data => {
-                        let parsedText = '';
-                        if (provider === 'openai' || provider === 'ollama') {
-                            parsedText = data.choices ? data.choices[0].message.content : (data.message ? data.message.content : '');
-                        } else if (provider === 'anthropic') {
-                            parsedText = data.content ? data.content[0].text : '';
-                        } else if (provider === 'gemini') {
-                            parsedText = (data.candidates && data.candidates[0].content) ? data.candidates[0].content.parts[0].text : '';
-                        }
+                        const norm = this.normalizeResponse(provider, data);
                         return {
-                            text: parsedText,
+                            ...norm,
+                            text: norm.content || '',
                             provider: provider,
                             simulated: false,
                             raw: data

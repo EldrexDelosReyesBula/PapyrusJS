@@ -21,7 +21,7 @@ coreInitializers.push((papyr) => {
             try {
                 papyr.storage(name, items.value);
             } catch(e) {
-                console.warn("PaperStorageWarning: LocalStorage sync failed.", e);
+                console.warn("PapyrStorageWarning: LocalStorage sync failed.", e);
             }
         };
 

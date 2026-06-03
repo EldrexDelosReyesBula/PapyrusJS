@@ -105,4 +105,104 @@ coreInitializers.push((papyr) => {
 
         return routeNode;
     };
+
+    // Clean URL Page System Subsystem
+    let pageRoutes = [];
+    let currentPageView = papyr.state(null);
+    let pagePathParams = papyr.state({});
+
+    const matchPageRoute = () => {
+        if (typeof window === 'undefined') return;
+        let currentPath = window.location.pathname || '/';
+        let matchFound = false;
+
+        for (let route of pageRoutes) {
+            let match = currentPath.match(route.regex);
+            if (match) {
+                let params = {};
+                route.keys.forEach((key, index) => {
+                    params[key] = match[index + 1];
+                });
+                pagePathParams.value = params;
+                currentPageView.value = route.componentFn;
+                matchFound = true;
+                break;
+            }
+        }
+        if (!matchFound) {
+            currentPageView.value = () => papyr.div("404 - Page Not Found");
+        }
+    };
+
+    papyr.page = (path, componentFn) => {
+        if (typeof path === 'undefined') {
+            return papyr.pageRouter();
+        }
+
+        let cleanPath = path;
+        pageRoutes.push({
+            path: cleanPath,
+            // eslint-disable-next-line security/detect-non-literal-regexp
+            regex: new RegExp('^' + cleanPath.replace(/:\w+/g, '([^/]+)') + '$'),
+            keys: (cleanPath.match(/:\w+/g) || []).map(k => k.slice(1)),
+            componentFn
+        });
+
+        if (typeof window !== 'undefined' && pageRoutes.length > 0 && !currentPageView.value) {
+            setTimeout(matchPageRoute, 10);
+        }
+    };
+
+    papyr.page.navigate = (path) => {
+        if (typeof window !== 'undefined') {
+            window.history.pushState(null, '', path);
+            matchPageRoute();
+        }
+    };
+
+    papyr.usePageParams = () => pagePathParams;
+
+    papyr.pageRouter = () => {
+        if (typeof window !== 'undefined' && pageRoutes.length > 0 && !currentPageView.value) {
+            matchPageRoute();
+        }
+
+        let routeNode = papyr.if(
+            currentPageView,
+            () => {
+                let Component = currentPageView.value;
+                if (Component && Component.prototype && typeof papyr.component === 'function' && Component.prototype instanceof papyr.component) {
+                    return new Component().render();
+                }
+                if (typeof Component === 'function') {
+                    return Component();
+                }
+                return papyr.div();
+            },
+            () => papyr.div()
+        );
+
+        if (typeof document !== 'undefined') {
+            setTimeout(() => {
+                let mainShell = document.querySelector('.papyr-main-content');
+                if (mainShell && !mainShell.contains(routeNode)) {
+                    mainShell.innerHTML = '';
+                    mainShell.appendChild(routeNode);
+                }
+            }, 0);
+        }
+
+        return routeNode;
+    };
+
+    if (typeof window !== 'undefined') {
+        window.addEventListener('popstate', matchPageRoute);
+        window.addEventListener('click', (e) => {
+            let link = e.target.closest('a');
+            if (link && link.href && link.origin === window.location.origin && !link.hash && !link.getAttribute('download') && link.target !== '_blank') {
+                e.preventDefault();
+                papyr.page.navigate(link.pathname + link.search);
+            }
+        });
+    }
 });

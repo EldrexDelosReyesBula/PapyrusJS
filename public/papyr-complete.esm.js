@@ -1,6 +1,6 @@
 /**
- * PAPER STATIC SITE LIBRARY - Complete Showcase Bundle (ESM)
- * v3.0 - Core Reactivity, SPA Routing, Reactive Math Logic, Persistent Local CRUD Database, Responsive Widgets
+ * PAPYR STATIC SITE LIBRARY - Complete Showcase Bundle (ESM)
+ * v3.0.1 - Core Reactivity, SPA Routing, Reactive Math Logic, Persistent Local CRUD Database, Responsive Widgets
  * Released under MIT License.
  */
 
@@ -130,7 +130,7 @@ const isElement = (x) => {
 };
 
 // --- PAPYR UTILITY STYLING SYSTEM ---
-const paperUtilities = {
+const papyrUtilities = {
     'flex': { display: 'flex' },
     'block': { display: 'block' },
     'inline': { display: 'inline' },
@@ -198,19 +198,20 @@ const injectRule = (mediaQuery, ruleBody) => {
     }
 };
 
-const parsePaperUtilities = (el, utilities) => {
+const parsePapyrUtilities = (el, utilities) => {
     if (!utilities) return;
-    let list = Array.isArray(utilities) ? utilities : String(utilities).split(' ');
+    let list = Array.isArray(utilities) ? utilities : String(utilities).split(/\s+/);
     
     list.forEach(item => {
-        if (!item) return;
+        let trimmedItem = item.trim();
+        if (!trimmedItem) return;
         
         // Check if it's responsive (e.g. md:flex)
-        if (item.includes(':')) {
-            let parts = item.split(':');
+        if (trimmedItem.includes(':')) {
+            let parts = trimmedItem.split(':');
             if (parts.length === 2) {
-                let bp = parts[0]; // e.g. md
-                let ut = parts[1]; // e.g. flex
+                let bp = parts[0];
+                let ut = parts[1];
                 
                 let bpWidth = {
                     'sm': '640px',
@@ -219,15 +220,17 @@ const parsePaperUtilities = (el, utilities) => {
                     'xl': '1280px'
                 }[bp];
                 
-                if (bpWidth && paperUtilities[ut]) {
-                    let uniqueClass = el._paperUniqueClass;
+                let utilitySet = papyrUtilities[ut] ? papyrUtilities : (typeof paperUtilities !== 'undefined' ? paperUtilities : {});
+                
+                if (bpWidth && utilitySet[ut]) {
+                    let uniqueClass = el._papyrUniqueClass;
                     if (!uniqueClass) {
-                        uniqueClass = `paper-u-${Math.random().toString(36).substring(2, 8)}`;
+                        uniqueClass = `papyr-u-${Math.random().toString(36).substring(2, 8)}`;
                         el.classList.add(uniqueClass);
-                        el._paperUniqueClass = uniqueClass;
+                        el._papyrUniqueClass = uniqueClass;
                     }
                     
-                    let styleText = Object.entries(paperUtilities[ut])
+                    let styleText = Object.entries(utilitySet[ut])
                         .map(([k, v]) => `${k.replace(/[A-Z]/g, m => '-' + m.toLowerCase())}: ${v};`)
                         .join(' ');
                     
@@ -237,12 +240,13 @@ const parsePaperUtilities = (el, utilities) => {
             }
         } else {
             // Standard utility class
-            if (paperUtilities[item]) {
-                Object.entries(paperUtilities[item]).forEach(([k, v]) => {
+            let utilitySet = papyrUtilities[trimmedItem] ? papyrUtilities : (typeof paperUtilities !== 'undefined' ? paperUtilities : {});
+            if (utilitySet[trimmedItem]) {
+                Object.entries(utilitySet[trimmedItem]).forEach(([k, v]) => {
                     el.style[k] = v;
                 });
             } else {
-                el.classList.add(item);
+                el.classList.add(trimmedItem);
             }
         }
     });
@@ -597,9 +601,11 @@ function createPapyr() {
                     if (parts) {
                         parts.forEach(part => {
                             if (part.startsWith('#')) {
-                                el.id = part.slice(1);
+                                el.id = part.slice(1).trim();
                             } else if (part.startsWith('.')) {
-                                el.classList.add(part.slice(1));
+                                part.slice(1).trim().split(/\s+/).forEach(c => {
+                                    if (c) el.classList.add(c);
+                                });
                             }
                         });
                     }
@@ -691,9 +697,9 @@ function createPapyr() {
                     else if (k.startsWith('--')) {
                         el.style.setProperty(k, String(v));
                     }
-                    else if (k === 'paper') {
+                    else if (k === 'paper' || k === 'papyr') {
                         const updatePaper = (val) => {
-                            parsePaperUtilities(el, val);
+                            parsePapyrUtilities(el, val);
                         };
                         let unsubscribe;
                         if (v && typeof v.subscribe === 'function') {
@@ -1049,6 +1055,7 @@ function createPapyr() {
         }
         return component.innerHTML || String(component);
     };
+    papyrInstance.ssr.render = (component) => papyrInstance.ssr(component);
 
     // Run registered core initializers!
     coreInitializers.forEach(init => {
@@ -1124,14 +1131,14 @@ if (typeof module !== 'undefined' && module.exports) {
 /**
  * PAPYR SECURITY KERNEL
  * Enterprise-grade XSS Sanitization and Injection Prevention.
- * Web App Tracking Transparency (WATT) script and storage filter.
+ * Web Access Transparency Toolkit (WATT) script and storage filter.
  * Updated to run modularly inside the Papyr Kernel context.
  */
 
-(function() {
+(function () {
     let tempStorage = Object.create(null);
     const trackingKeys = ['_ga', '_gid', '_fbp', '_uid_tracking_id', 'tracking', 'analytics', 'pixel', 'adsense'];
-    
+
     let originalSetItem = null;
     let originalGetItem = null;
     let originalRemoveItem = null;
@@ -1167,7 +1174,7 @@ if (typeof module !== 'undefined' && module.exports) {
                             });
                         }
                         tempStorage = Object.create(null);
-                    } catch(e) {}
+                    } catch (e) { }
                 } else {
                     // Clear tracking keys from real localStorage in a single transactional pass to avoid index shift bugs
                     try {
@@ -1184,17 +1191,17 @@ if (typeof module !== 'undefined' && module.exports) {
                             }
                             keysToDelete.forEach(key => originalRemoveItem(key));
                         }
-                    } catch(e) {}
+                    } catch (e) { }
                 }
             },
 
             shouldBlockScript(src) {
                 if (this.currentTier === 'none') return false;
                 if (!src || typeof src !== 'string') return false;
-                
+
                 const trackingDomains = ['analytics', 'pixel', 'doubleclick', 'google-analytics', 'adsense', 'ad-tracker', 'facebook.net', 'adnxs'];
                 const isTracker = trackingDomains.some(d => src.toLowerCase().includes(d));
-                
+
                 if (this.currentTier === 'high' && isTracker) return true;
                 if (this.currentTier === 'default' && !this.hasConsent && isTracker) return true;
                 return false;
@@ -1204,13 +1211,13 @@ if (typeof module !== 'undefined' && module.exports) {
                 if (typeof document === 'undefined') return;
                 if (this._scriptsBlocked) return;
                 this._scriptsBlocked = true;
-                
+
                 const originalCreateElement = document.createElement;
-                document.createElement = function(tag, options) {
+                document.createElement = function (tag, options) {
                     const el = originalCreateElement.call(document, tag, options);
                     if (tag && tag.toLowerCase() === 'script') {
                         const originalSetAttribute = el.setAttribute;
-                        el.setAttribute = function(k, v) {
+                        el.setAttribute = function (k, v) {
                             if (k && k.toLowerCase() === 'src' && papyr.security.shouldBlockScript(v)) {
                                 console.warn(`Papyr Security Kernel: Blocked tracking script from ${v}`);
                                 return;
@@ -1247,7 +1254,7 @@ if (typeof module !== 'undefined' && module.exports) {
              */
             sanitize(html) {
                 if (!this._isActive || typeof html !== 'string') return html;
-                
+
                 let clean = html;
                 if (typeof window !== 'undefined' && typeof DOMParser !== 'undefined') {
                     try {
@@ -1255,7 +1262,7 @@ if (typeof module !== 'undefined' && module.exports) {
                         const doc = parser.parseFromString(html, 'text/html');
                         const allowedTags = ['div', 'span', 'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'button', 'a', 'img', 'ul', 'ol', 'li', 'table', 'thead', 'tbody', 'tr', 'td', 'th', 'form', 'label', 'input', 'textarea', 'select', 'option', 'pre', 'code', 'strong', 'em', 'small', 'hr', 'br', 'canvas', 'svg', 'path', 'rect', 'circle'];
                         const allowedAttrs = ['class', 'style', 'id', 'href', 'src', 'alt', 'title', 'placeholder', 'type', 'name', 'value', 'checked', 'disabled', 'rows', 'cols', 'width', 'height', 'viewBox', 'd', 'role', 'aria-live', 'aria-modal', 'aria-labelledby', 'tabindex', 'aria-label'];
-                        
+
                         const cleanNode = (node) => {
                             if (node.nodeType === 1) { // Element
                                 const tagName = node.tagName.toLowerCase();
@@ -1263,7 +1270,7 @@ if (typeof module !== 'undefined' && module.exports) {
                                     node.parentNode.removeChild(node);
                                     return;
                                 }
-                                
+
                                 const attrs = Array.from(node.attributes);
                                 attrs.forEach(attr => {
                                     const name = attr.name.toLowerCase();
@@ -1272,18 +1279,18 @@ if (typeof module !== 'undefined' && module.exports) {
                                         node.removeAttribute(attr.name);
                                     }
                                 });
-                                
+
                                 Array.from(node.childNodes).forEach(cleanNode);
                             }
                         };
-                        
+
                         Array.from(doc.body.childNodes).forEach(cleanNode);
                         clean = doc.body.innerHTML;
-                    } catch(e) {
+                    } catch (e) {
                         // fallback to regex below
                     }
                 }
-                
+
                 if (clean === html || typeof DOMParser === 'undefined') {
                     clean = html.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
                     clean = clean.replace(/\s+on\w+\s*=\s*"[^"]*"/gi, '');
@@ -1342,7 +1349,7 @@ if (typeof module !== 'undefined' && module.exports) {
                         keyFeedback = binaryStr.charCodeAt(i);
                     }
                     return typeof window !== 'undefined' ? decodeURIComponent(escape(result)) : Buffer.from(result, 'binary').toString('utf8');
-                } catch(e) {
+                } catch (e) {
                     if (papyr.warn) papyr.warn("Papyr Security: Decryption failed (invalid key or corrupted data).");
                     return null;
                 }
@@ -1359,15 +1366,15 @@ if (typeof module !== 'undefined' && module.exports) {
                     const encoder = new TextEncoder();
                     const salt = window.crypto.getRandomValues(new Uint8Array(16));
                     const iv = window.crypto.getRandomValues(new Uint8Array(12));
-                    
+
                     const keyMaterial = await window.crypto.subtle.importKey(
-                        "raw", 
-                        encoder.encode(password), 
-                        "PBKDF2", 
-                        false, 
+                        "raw",
+                        encoder.encode(password),
+                        "PBKDF2",
+                        false,
                         ["deriveKey"]
                     );
-                    
+
                     const key = await window.crypto.subtle.deriveKey(
                         {
                             name: "PBKDF2",
@@ -1380,18 +1387,18 @@ if (typeof module !== 'undefined' && module.exports) {
                         false,
                         ["encrypt"]
                     );
-                    
+
                     const ciphertext = await window.crypto.subtle.encrypt(
-                        { name: "AES-GCM", iv: iv }, 
-                        key, 
+                        { name: "AES-GCM", iv: iv },
+                        key,
                         encoder.encode(text)
                     );
-                    
+
                     const combined = new Uint8Array(salt.length + iv.length + ciphertext.byteLength);
                     combined.set(salt, 0);
                     combined.set(iv, salt.length);
                     combined.set(new Uint8Array(ciphertext), salt.length + iv.length);
-                    
+
                     let binary = '';
                     for (let i = 0; i < combined.byteLength; i++) {
                         binary += String.fromCharCode(combined[i]);
@@ -1413,20 +1420,20 @@ if (typeof module !== 'undefined' && module.exports) {
                     for (let i = 0; i < binaryStr.length; i++) {
                         combined[i] = binaryStr.charCodeAt(i);
                     }
-                    
+
                     const salt = combined.slice(0, 16);
                     const iv = combined.slice(16, 28);
                     const ciphertext = combined.slice(28);
-                    
+
                     const encoder = new TextEncoder();
                     const keyMaterial = await window.crypto.subtle.importKey(
-                        "raw", 
-                        encoder.encode(password), 
-                        "PBKDF2", 
-                        false, 
+                        "raw",
+                        encoder.encode(password),
+                        "PBKDF2",
+                        false,
                         ["deriveKey"]
                     );
-                    
+
                     const key = await window.crypto.subtle.deriveKey(
                         {
                             name: "PBKDF2",
@@ -1439,13 +1446,13 @@ if (typeof module !== 'undefined' && module.exports) {
                         false,
                         ["decrypt"]
                     );
-                    
+
                     const decrypted = await window.crypto.subtle.decrypt(
-                        { name: "AES-GCM", iv: iv }, 
-                        key, 
+                        { name: "AES-GCM", iv: iv },
+                        key,
                         ciphertext
                     );
-                    
+
                     return new TextDecoder().decode(decrypted);
                 } catch (e) {
                     console.error("Papyr Security: Async Decryption failed, falling back to sync.", e);
@@ -1453,11 +1460,20 @@ if (typeof module !== 'undefined' && module.exports) {
                 }
             }
         };
+
+        papyr.safeGet = (obj, key) => {
+            if (!obj || typeof obj !== 'object') return undefined;
+            if (key === '__proto__' || key === 'constructor' || key === 'prototype') {
+                throw new Error("Security Violation: Unsafe property access");
+            }
+            // eslint-disable-next-line security/detect-object-injection
+            return obj[key];
+        };
     });
 
     // Install LocalStorage Interception
     if (typeof window !== 'undefined' && window.localStorage) {
-        localStorage.setItem = function(key, val) {
+        localStorage.setItem = function (key, val) {
             if (window.papyr && window.papyr.security && window.papyr.security.shouldSandboxStorage(key)) {
                 if (key && key !== '__proto__' && key !== 'constructor' && key !== 'prototype') {
                     // eslint-disable-next-line security/detect-object-injection
@@ -1467,16 +1483,16 @@ if (typeof module !== 'undefined' && module.exports) {
             }
             if (originalSetItem) originalSetItem(key, val);
         };
-        
-        localStorage.getItem = function(key) {
+
+        localStorage.getItem = function (key) {
             if (window.papyr && window.papyr.security && window.papyr.security.shouldSandboxStorage(key)) {
                 // eslint-disable-next-line security/detect-object-injection
                 return (key && key !== '__proto__' && key !== 'constructor' && key !== 'prototype' && Object.prototype.hasOwnProperty.call(tempStorage, key)) ? tempStorage[key] : null;
             }
             return originalGetItem ? originalGetItem(key) : null;
         };
-        
-        localStorage.removeItem = function(key) {
+
+        localStorage.removeItem = function (key) {
             if (window.papyr && window.papyr.security && window.papyr.security.shouldSandboxStorage(key)) {
                 if (key && key !== '__proto__' && key !== 'constructor' && key !== 'prototype' && Object.prototype.hasOwnProperty.call(tempStorage, key)) {
                     // eslint-disable-next-line security/detect-object-injection
@@ -1504,7 +1520,7 @@ coreInitializers.push((papyr) => {
      * Creates an auto-tracking reactive state variable.
      * 
      * @param {*} val Initial reactive state value
-     * @returns {PaperState} Reactive State accessor interface
+     * @returns {PapyrState} Reactive State accessor interface
      */
     // Bulletproof Element detection helper inside reactivity context
     const isElement = (x) => {
@@ -1736,7 +1752,7 @@ coreInitializers.push((papyr) => {
     /**
      * Switches visual DOM subtrees reactively based on condition updates.
      * 
-     * @param {PaperState} conditionState Reactive condition state to track
+     * @param {PapyrState} conditionState Reactive condition state to track
      * @param {HTMLElement|function} trueVal Rendered target when state is truthy
      * @param {HTMLElement|function} [falseVal] Optional target when state is falsy
      * @returns {HTMLDivElement} Content container fragment
@@ -1784,7 +1800,7 @@ coreInitializers.push((papyr) => {
     /**
      * Reactively renders a list of DOM elements from an array state.
      * 
-     * @param {PaperState} arrayState Reactive state containing an array
+     * @param {PapyrState} arrayState Reactive state containing an array
      * @param {function} renderCallback Function returning an HTMLElement for each item
      * @returns {HTMLDivElement} Content container fragment
      */
@@ -2102,6 +2118,106 @@ coreInitializers.push((papyr) => {
 
         return routeNode;
     };
+
+    // Clean URL Page System Subsystem
+    let pageRoutes = [];
+    let currentPageView = papyr.state(null);
+    let pagePathParams = papyr.state({});
+
+    const matchPageRoute = () => {
+        if (typeof window === 'undefined') return;
+        let currentPath = window.location.pathname || '/';
+        let matchFound = false;
+
+        for (let route of pageRoutes) {
+            let match = currentPath.match(route.regex);
+            if (match) {
+                let params = {};
+                route.keys.forEach((key, index) => {
+                    params[key] = match[index + 1];
+                });
+                pagePathParams.value = params;
+                currentPageView.value = route.componentFn;
+                matchFound = true;
+                break;
+            }
+        }
+        if (!matchFound) {
+            currentPageView.value = () => papyr.div("404 - Page Not Found");
+        }
+    };
+
+    papyr.page = (path, componentFn) => {
+        if (typeof path === 'undefined') {
+            return papyr.pageRouter();
+        }
+
+        let cleanPath = path;
+        pageRoutes.push({
+            path: cleanPath,
+            // eslint-disable-next-line security/detect-non-literal-regexp
+            regex: new RegExp('^' + cleanPath.replace(/:\w+/g, '([^/]+)') + '$'),
+            keys: (cleanPath.match(/:\w+/g) || []).map(k => k.slice(1)),
+            componentFn
+        });
+
+        if (typeof window !== 'undefined' && pageRoutes.length > 0 && !currentPageView.value) {
+            setTimeout(matchPageRoute, 10);
+        }
+    };
+
+    papyr.page.navigate = (path) => {
+        if (typeof window !== 'undefined') {
+            window.history.pushState(null, '', path);
+            matchPageRoute();
+        }
+    };
+
+    papyr.usePageParams = () => pagePathParams;
+
+    papyr.pageRouter = () => {
+        if (typeof window !== 'undefined' && pageRoutes.length > 0 && !currentPageView.value) {
+            matchPageRoute();
+        }
+
+        let routeNode = papyr.if(
+            currentPageView,
+            () => {
+                let Component = currentPageView.value;
+                if (Component && Component.prototype && typeof papyr.component === 'function' && Component.prototype instanceof papyr.component) {
+                    return new Component().render();
+                }
+                if (typeof Component === 'function') {
+                    return Component();
+                }
+                return papyr.div();
+            },
+            () => papyr.div()
+        );
+
+        if (typeof document !== 'undefined') {
+            setTimeout(() => {
+                let mainShell = document.querySelector('.papyr-main-content');
+                if (mainShell && !mainShell.contains(routeNode)) {
+                    mainShell.innerHTML = '';
+                    mainShell.appendChild(routeNode);
+                }
+            }, 0);
+        }
+
+        return routeNode;
+    };
+
+    if (typeof window !== 'undefined') {
+        window.addEventListener('popstate', matchPageRoute);
+        window.addEventListener('click', (e) => {
+            let link = e.target.closest('a');
+            if (link && link.href && link.origin === window.location.origin && !link.hash && !link.getAttribute('download') && link.target !== '_blank') {
+                e.preventDefault();
+                papyr.page.navigate(link.pathname + link.search);
+            }
+        });
+    }
 });
 
 
@@ -2198,11 +2314,11 @@ coreInitializers.push((papyr) => {
 /**
  * PAPYR DATA SYSTEM (Unified DB API)
  * Seamlessly integrates LocalStorage, SessionStorage, IndexedDB, and SQLite endpoints.
- * Updated with transactional granular CRUD capabilities and zero mockups.
+ * Updated with transactional granular CRUD capabilities.
  */
 
 coreInitializers.push((papyr) => {
-    
+
     const getDB = (collectionName) => {
         return new Promise((resolve, reject) => {
             if (typeof window === 'undefined' || !window.indexedDB) return reject(new Error("IndexedDB not supported"));
@@ -2235,7 +2351,7 @@ coreInitializers.push((papyr) => {
     };
 
     papyr.db = (collectionName, engine = 'local') => {
-        
+
         // Engine Drivers with fully granular transaction-safe CRUD methods
         const drivers = {
             'local': {
@@ -2243,9 +2359,9 @@ coreInitializers.push((papyr) => {
                     try {
                         let val = localStorage.getItem(`papyr_db_${collectionName}`);
                         return val ? JSON.parse(val) : [];
-                    } catch(e) { 
+                    } catch (e) {
                         console.error("PapyrDB [local] get error:", e);
-                        return []; 
+                        return [];
                     }
                 },
                 insert: (item) => {
@@ -2253,17 +2369,17 @@ coreInitializers.push((papyr) => {
                         const items = drivers.local.get();
                         items.push(item);
                         localStorage.setItem(`papyr_db_${collectionName}`, JSON.stringify(items));
-                    } catch(e) {
+                    } catch (e) {
                         console.error("PapyrDB [local] insert error:", e);
                     }
                 },
                 update: (id, updates) => {
                     try {
-                        const items = drivers.local.get().map(item => 
+                        const items = drivers.local.get().map(item =>
                             item.id === id ? { ...item, ...updates } : item
                         );
                         localStorage.setItem(`papyr_db_${collectionName}`, JSON.stringify(items));
-                    } catch(e) {
+                    } catch (e) {
                         console.error("PapyrDB [local] update error:", e);
                     }
                 },
@@ -2271,14 +2387,14 @@ coreInitializers.push((papyr) => {
                     try {
                         const items = drivers.local.get().filter(item => item.id !== id);
                         localStorage.setItem(`papyr_db_${collectionName}`, JSON.stringify(items));
-                    } catch(e) {
+                    } catch (e) {
                         console.error("PapyrDB [local] delete error:", e);
                     }
                 },
                 clear: () => {
                     try {
                         localStorage.removeItem(`papyr_db_${collectionName}`);
-                    } catch(e) {
+                    } catch (e) {
                         console.error("PapyrDB [local] clear error:", e);
                     }
                 }
@@ -2288,9 +2404,9 @@ coreInitializers.push((papyr) => {
                     try {
                         let val = sessionStorage.getItem(`papyr_db_${collectionName}`);
                         return val ? JSON.parse(val) : [];
-                    } catch(e) { 
+                    } catch (e) {
                         console.error("PapyrDB [session] get error:", e);
-                        return []; 
+                        return [];
                     }
                 },
                 insert: (item) => {
@@ -2298,17 +2414,17 @@ coreInitializers.push((papyr) => {
                         const items = drivers.session.get();
                         items.push(item);
                         sessionStorage.setItem(`papyr_db_${collectionName}`, JSON.stringify(items));
-                    } catch(e) {
+                    } catch (e) {
                         console.error("PapyrDB [session] insert error:", e);
                     }
                 },
                 update: (id, updates) => {
                     try {
-                        const items = drivers.session.get().map(item => 
+                        const items = drivers.session.get().map(item =>
                             item.id === id ? { ...item, ...updates } : item
                         );
                         sessionStorage.setItem(`papyr_db_${collectionName}`, JSON.stringify(items));
-                    } catch(e) {
+                    } catch (e) {
                         console.error("PapyrDB [session] update error:", e);
                     }
                 },
@@ -2316,14 +2432,14 @@ coreInitializers.push((papyr) => {
                     try {
                         const items = drivers.session.get().filter(item => item.id !== id);
                         sessionStorage.setItem(`papyr_db_${collectionName}`, JSON.stringify(items));
-                    } catch(e) {
+                    } catch (e) {
                         console.error("PapyrDB [session] delete error:", e);
                     }
                 },
                 clear: () => {
                     try {
                         sessionStorage.removeItem(`papyr_db_${collectionName}`);
-                    } catch(e) {
+                    } catch (e) {
                         console.error("PapyrDB [session] clear error:", e);
                     }
                 }
@@ -2344,7 +2460,7 @@ coreInitializers.push((papyr) => {
                                     db.close();
                                     resolve([]);
                                 };
-                            } catch(err) {
+                            } catch (err) {
                                 db.close();
                                 resolve([]);
                             }
@@ -2365,7 +2481,7 @@ coreInitializers.push((papyr) => {
                                     db.close();
                                     resolve();
                                 };
-                            } catch(err) {
+                            } catch (err) {
                                 console.error("PapyrDB [indexeddb] insert error:", err);
                                 db.close();
                                 resolve();
@@ -2401,7 +2517,7 @@ coreInitializers.push((papyr) => {
                                     db.close();
                                     resolve();
                                 };
-                            } catch(err) {
+                            } catch (err) {
                                 console.error("PapyrDB [indexeddb] update error:", err);
                                 db.close();
                                 resolve();
@@ -2423,7 +2539,7 @@ coreInitializers.push((papyr) => {
                                     db.close();
                                     resolve();
                                 };
-                            } catch(err) {
+                            } catch (err) {
                                 console.error("PapyrDB [indexeddb] delete error:", err);
                                 db.close();
                                 resolve();
@@ -2445,7 +2561,7 @@ coreInitializers.push((papyr) => {
                                     db.close();
                                     resolve();
                                 };
-                            } catch(err) {
+                            } catch (err) {
                                 console.error("PapyrDB [indexeddb] clear error:", err);
                                 db.close();
                                 resolve();
@@ -2467,12 +2583,12 @@ coreInitializers.push((papyr) => {
                                         for (let i = 0; i < results.rows.length; i++) {
                                             try {
                                                 items.push(JSON.parse(results.rows.item(i).data));
-                                            } catch(e) {}
+                                            } catch (e) { }
                                         }
                                         resolve(items);
                                     }, () => resolve([]));
                                 }, () => resolve([]));
-                            } catch(e) { resolve([]); }
+                            } catch (e) { resolve([]); }
                         } else if (typeof window !== 'undefined' && window.SQL && window.papyrSQLiteDB) {
                             try {
                                 const db = window.papyrSQLiteDB;
@@ -2481,11 +2597,11 @@ coreInitializers.push((papyr) => {
                                 const items = [];
                                 if (res && res[0] && res[0].values) {
                                     res[0].values.forEach(row => {
-                                        try { items.push(JSON.parse(row[0])); } catch(e) {}
+                                        try { items.push(JSON.parse(row[0])); } catch (e) { }
                                     });
                                 }
                                 resolve(items);
-                            } catch(e) { resolve([]); }
+                            } catch (e) { resolve([]); }
                         } else {
                             resolve([]);
                         }
@@ -2500,14 +2616,14 @@ coreInitializers.push((papyr) => {
                                     tx.executeSql(`CREATE TABLE IF NOT EXISTS ${collectionName} (id TEXT PRIMARY KEY, data TEXT)`);
                                     tx.executeSql(`INSERT OR REPLACE INTO ${collectionName} (id, data) VALUES (?, ?)`, [item.id, JSON.stringify(item)]);
                                 }, () => resolve(), () => resolve());
-                            } catch(e) { resolve(); }
+                            } catch (e) { resolve(); }
                         } else if (typeof window !== 'undefined' && window.SQL && window.papyrSQLiteDB) {
                             try {
                                 const db = window.papyrSQLiteDB;
                                 db.run(`CREATE TABLE IF NOT EXISTS ${collectionName} (id TEXT PRIMARY KEY, data TEXT)`);
                                 db.run(`INSERT OR REPLACE INTO ${collectionName} (id, data) VALUES (?, ?)`, [item.id, JSON.stringify(item)]);
                                 resolve();
-                            } catch(e) { resolve(); }
+                            } catch (e) { resolve(); }
                         } else {
                             resolve();
                         }
@@ -2525,13 +2641,13 @@ coreInitializers.push((papyr) => {
                                                 const current = JSON.parse(results.rows.item(0).data);
                                                 const updated = { ...current, ...updates };
                                                 tx.executeSql(`INSERT OR REPLACE INTO ${collectionName} (id, data) VALUES (?, ?)`, [id, JSON.stringify(updated)], () => resolve());
-                                            } catch(e) { resolve(); }
+                                            } catch (e) { resolve(); }
                                         } else {
                                             resolve();
                                         }
                                     }, () => resolve());
                                 }, () => resolve());
-                            } catch(e) { resolve(); }
+                            } catch (e) { resolve(); }
                         } else if (typeof window !== 'undefined' && window.SQL && window.papyrSQLiteDB) {
                             try {
                                 const db = window.papyrSQLiteDB;
@@ -2542,7 +2658,7 @@ coreInitializers.push((papyr) => {
                                     db.run(`INSERT OR REPLACE INTO ${collectionName} (id, data) VALUES (?, ?)`, [id, JSON.stringify(updated)]);
                                 }
                                 resolve();
-                            } catch(e) { resolve(); }
+                            } catch (e) { resolve(); }
                         } else {
                             resolve();
                         }
@@ -2556,13 +2672,13 @@ coreInitializers.push((papyr) => {
                                 db.transaction((tx) => {
                                     tx.executeSql(`DELETE FROM ${collectionName} WHERE id = ?`, [id]);
                                 }, () => resolve(), () => resolve());
-                            } catch(e) { resolve(); }
+                            } catch (e) { resolve(); }
                         } else if (typeof window !== 'undefined' && window.SQL && window.papyrSQLiteDB) {
                             try {
                                 const db = window.papyrSQLiteDB;
                                 db.run(`DELETE FROM ${collectionName} WHERE id = ?`, [id]);
                                 resolve();
-                            } catch(e) { resolve(); }
+                            } catch (e) { resolve(); }
                         } else {
                             resolve();
                         }
@@ -2576,13 +2692,13 @@ coreInitializers.push((papyr) => {
                                 db.transaction((tx) => {
                                     tx.executeSql(`DELETE FROM ${collectionName}`);
                                 }, () => resolve(), () => resolve());
-                            } catch(e) { resolve(); }
+                            } catch (e) { resolve(); }
                         } else if (typeof window !== 'undefined' && window.SQL && window.papyrSQLiteDB) {
                             try {
                                 const db = window.papyrSQLiteDB;
                                 db.run(`DELETE FROM ${collectionName}`);
                                 resolve();
-                            } catch(e) { resolve(); }
+                            } catch (e) { resolve(); }
                         } else {
                             resolve();
                         }
@@ -2595,7 +2711,7 @@ coreInitializers.push((papyr) => {
         Object.keys(papyr.db.drivers).forEach(name => {
             try {
                 drivers[name] = papyr.db.drivers[name](collectionName);
-            } catch(e) {
+            } catch (e) {
                 console.error(`Failed to initialize custom db driver ${name}:`, e);
             }
         });
@@ -2603,7 +2719,7 @@ coreInitializers.push((papyr) => {
         const isAsync = engine !== 'local' && engine !== 'session' && drivers[engine];
         // eslint-disable-next-line security/detect-object-injection
         const driver = (engine && engine !== '__proto__' && engine !== 'constructor' && engine !== 'prototype' && Object.prototype.hasOwnProperty.call(drivers, engine)) ? drivers[engine] : drivers['local'];
-        
+
         let state = papyr.state([]);
         let watchers = [];
 
@@ -2623,11 +2739,11 @@ coreInitializers.push((papyr) => {
 
         return {
             state,
-            
+
             list() {
                 return state.value;
             },
-            
+
             async listAsync() {
                 if (isAsync) {
                     const data = await driver.getAsync();
@@ -2636,11 +2752,11 @@ coreInitializers.push((papyr) => {
                 }
                 return state.value;
             },
-            
+
             find(id) {
                 return state.value.find(record => record.id === id);
             },
-            
+
             async findAsync(id) {
                 if (isAsync) {
                     const data = await driver.getAsync();
@@ -2654,7 +2770,7 @@ coreInitializers.push((papyr) => {
                 if (typeof options.filter === 'function') {
                     result = result.filter(options.filter);
                 } else if (options.filter && typeof options.filter === 'object') {
-                    result = result.filter(item => 
+                    result = result.filter(item =>
                         Object.entries(options.filter).every(([k, v]) => {
                             if (k === '__proto__' || k === 'constructor' || k === 'prototype') return false;
                             return Object.prototype.hasOwnProperty.call(item, k) ? item[k] === v : false;
@@ -2686,7 +2802,7 @@ coreInitializers.push((papyr) => {
                 }
                 return this.query(options);
             },
-            
+
             insert(item) {
                 let record = { id: Date.now().toString(36) + Math.random().toString(36).substr(2, 5), createdAt: new Date().toISOString(), ...item };
                 state.value = [...state.value, record];
@@ -2698,7 +2814,7 @@ coreInitializers.push((papyr) => {
                 notifyWatchers();
                 return record;
             },
-            
+
             async insertAsync(item) {
                 let record = { id: Date.now().toString(36) + Math.random().toString(36).substr(2, 5), createdAt: new Date().toISOString(), ...item };
                 state.value = [...state.value, record];
@@ -2710,9 +2826,9 @@ coreInitializers.push((papyr) => {
                 notifyWatchers();
                 return record;
             },
-            
+
             update(id, data) {
-                state.value = state.value.map(record => 
+                state.value = state.value.map(record =>
                     record.id === id ? { ...record, ...data, updatedAt: new Date().toISOString() } : record
                 );
                 const updated = this.find(id);
@@ -2725,9 +2841,9 @@ coreInitializers.push((papyr) => {
                 }
                 notifyWatchers();
             },
-            
+
             async updateAsync(id, data) {
-                state.value = state.value.map(record => 
+                state.value = state.value.map(record =>
                     record.id === id ? { ...record, ...data, updatedAt: new Date().toISOString() } : record
                 );
                 const updated = this.find(id);
@@ -2740,7 +2856,7 @@ coreInitializers.push((papyr) => {
                 }
                 notifyWatchers();
             },
-            
+
             delete(id) {
                 state.value = state.value.filter(record => record.id !== id);
                 if (isAsync) {
@@ -2750,7 +2866,7 @@ coreInitializers.push((papyr) => {
                 }
                 notifyWatchers();
             },
-            
+
             async deleteAsync(id) {
                 state.value = state.value.filter(record => record.id !== id);
                 if (isAsync) {
@@ -2760,7 +2876,7 @@ coreInitializers.push((papyr) => {
                 }
                 notifyWatchers();
             },
-            
+
             clear() {
                 state.value = [];
                 if (isAsync) {
@@ -2770,7 +2886,7 @@ coreInitializers.push((papyr) => {
                 }
                 notifyWatchers();
             },
-            
+
             async clearAsync() {
                 state.value = [];
                 if (isAsync) {
@@ -2780,11 +2896,67 @@ coreInitializers.push((papyr) => {
                 }
                 notifyWatchers();
             },
-            
+
             watch(callback) {
                 watchers.push(callback);
                 callback(state.value); // immediate execution
                 return () => watchers = watchers.filter(cb => cb !== callback); // unsubscribe
+            },
+
+            async transaction(callback) {
+                const snapshot = JSON.stringify(state.value);
+                const tx = {
+                    _ops: [],
+                    insert(item) {
+                        let record = { id: Date.now().toString(36) + Math.random().toString(36).substr(2, 5), createdAt: new Date().toISOString(), ...item };
+                        this._ops.push({ type: 'insert', record });
+                        return record;
+                    },
+                    update(id, data) {
+                        this._ops.push({ type: 'update', id, data });
+                    },
+                    delete(id) {
+                        this._ops.push({ type: 'delete', id });
+                    }
+                };
+                
+                try {
+                    await callback(tx);
+                    for (const op of tx._ops) {
+                        if (op.type === 'insert') {
+                            if (isAsync) {
+                                await driver.insertAsync(op.record);
+                            } else {
+                                driver.insert(op.record);
+                            }
+                            state.value = [...state.value, op.record];
+                        } else if (op.type === 'update') {
+                            state.value = state.value.map(record =>
+                                record.id === op.id ? { ...record, ...op.data, updatedAt: new Date().toISOString() } : record
+                            );
+                            const updated = state.value.find(record => record.id === op.id);
+                            if (updated) {
+                                if (isAsync) {
+                                    await driver.updateAsync(op.id, updated);
+                                } else {
+                                    driver.update(op.id, updated);
+                                }
+                            }
+                        } else if (op.type === 'delete') {
+                            state.value = state.value.filter(record => record.id !== op.id);
+                            if (isAsync) {
+                                await driver.deleteAsync(op.id);
+                            } else {
+                                driver.delete(op.id);
+                            }
+                        }
+                    }
+                    notifyWatchers();
+                } catch (err) {
+                    state.value = JSON.parse(snapshot);
+                    notifyWatchers();
+                    throw err;
+                }
             }
         };
     };
@@ -2800,7 +2972,7 @@ coreInitializers.push((papyr) => {
         if (typeof val === 'undefined') {
             let data = localStorage.getItem(key);
             if (data === null || data === undefined) return null;
-            try { return JSON.parse(data); } catch(e) { return data; }
+            try { return JSON.parse(data); } catch (e) { return data; }
         }
         if (val === null) {
             localStorage.removeItem(key);
@@ -2820,7 +2992,7 @@ coreInitializers.push((papyr) => {
         if (!papyr.security) return console.error("PapyrError: Security module not loaded.");
         let enc = localStorage.getItem(k);
         if (!enc) return null;
-        try { return JSON.parse(papyr.security.decrypt(enc, password)); } catch(e) { return null; }
+        try { return JSON.parse(papyr.security.decrypt(enc, password)); } catch (e) { return null; }
     };
     storageFunc.secureSetAsync = async (k, v, password) => {
         if (!papyr.security || typeof papyr.security.encryptAsync !== 'function') {
@@ -2838,7 +3010,7 @@ coreInitializers.push((papyr) => {
         try {
             const dec = await papyr.security.decryptAsync(enc, password);
             return JSON.parse(dec);
-        } catch(e) { return null; }
+        } catch (e) { return null; }
     };
     papyr.storage = storageFunc;
 
@@ -2847,7 +3019,7 @@ coreInitializers.push((papyr) => {
         if (typeof val === 'undefined') {
             let data = sessionStorage.getItem(key);
             if (data === null || data === undefined) return null;
-            try { return JSON.parse(data); } catch(e) { return data; }
+            try { return JSON.parse(data); } catch (e) { return data; }
         }
         if (val === null) {
             sessionStorage.removeItem(key);
@@ -2867,7 +3039,7 @@ coreInitializers.push((papyr) => {
         if (!papyr.security) return console.error("PapyrError: Security module not loaded.");
         let enc = sessionStorage.getItem(k);
         if (!enc) return null;
-        try { return JSON.parse(papyr.security.decrypt(enc, password)); } catch(e) { return null; }
+        try { return JSON.parse(papyr.security.decrypt(enc, password)); } catch (e) { return null; }
     };
     sessionFunc.secureSetAsync = async (k, v, password) => {
         if (!papyr.security || typeof papyr.security.encryptAsync !== 'function') {
@@ -2885,9 +3057,182 @@ coreInitializers.push((papyr) => {
         try {
             const dec = await papyr.security.decryptAsync(enc, password);
             return JSON.parse(dec);
-        } catch(e) { return null; }
+        } catch (e) { return null; }
     };
     papyr.session = sessionFunc;
+
+    // ----------------------------------------------------
+    // PAPYR DATA SYSTEM 2.0
+    // ----------------------------------------------------
+    papyr.data = {
+        local: (collectionName) => papyr.db(collectionName, 'local'),
+        session: (collectionName) => papyr.db(collectionName, 'session'),
+        indexed: (collectionName) => papyr.db(collectionName, 'indexeddb'),
+        remote: (collectionName) => papyr.db(collectionName, 'firebase')
+    };
+
+    // ----------------------------------------------------
+    // CONTINUITY ENGINE & DRAFT MANAGEMENT
+    // ----------------------------------------------------
+    papyr.drafts = {
+        save(key, data) {
+            papyr.storage.set(`papyr_draft_${key}`, { data, timestamp: Date.now() });
+        },
+        restore(key) {
+            const record = papyr.storage.get(`papyr_draft_${key}`);
+            return record ? record.data : null;
+        },
+        clear(key) {
+            papyr.storage.remove(`papyr_draft_${key}`);
+        }
+    };
+
+    papyr.continuity = {
+        _intervals: new Map(),
+        enable(options = {}) {
+            const { key = 'default', target = null, interval = 5000, onSave = null } = options;
+            if (this._intervals.has(key)) return;
+            
+            const saveTask = () => {
+                let data = null;
+                if (typeof target === 'function') {
+                    data = target();
+                } else if (target && typeof target === 'object' && target.value !== undefined) {
+                    data = target.value;
+                } else if (target && typeof target === 'string') {
+                    const el = document.querySelector(target);
+                    if (el) {
+                        data = el.type === 'checkbox' ? el.checked : el.value;
+                    }
+                }
+                if (data !== null) {
+                    papyr.drafts.save(key, data);
+                    if (typeof onSave === 'function') onSave(data);
+                }
+            };
+            
+            saveTask();
+            const intervalId = setInterval(saveTask, interval);
+            this._intervals.set(key, intervalId);
+        },
+        
+        disable(key = 'default') {
+            const intervalId = this._intervals.get(key);
+            if (intervalId) {
+                clearInterval(intervalId);
+                this._intervals.delete(key);
+            }
+        },
+        
+        restore(options = {}) {
+            const { key = 'default', target = null, onRestore = null } = options;
+            const data = papyr.drafts.restore(key);
+            if (data !== null) {
+                if (typeof onRestore === 'function') {
+                    onRestore(data);
+                } else if (target && typeof target === 'object' && target.value !== undefined) {
+                    target.value = data;
+                } else if (target && typeof target === 'string') {
+                    const el = document.querySelector(target);
+                    if (el) {
+                        if (el.type === 'checkbox') {
+                            el.checked = !!data;
+                        } else {
+                            el.value = data;
+                        }
+                    }
+                }
+                return data;
+            }
+            return null;
+        }
+    };
+
+    // ----------------------------------------------------
+    // OFFLINE FIRST SUPPORT
+    // ----------------------------------------------------
+    papyr.offline = {
+        _queue: [],
+        _isOnline: typeof navigator !== 'undefined' ? navigator.onLine : true,
+        _syncListeners: new Set(),
+        
+        enable(options = {}) {
+            const { onSync = null } = options;
+            if (onSync) this._syncListeners.add(onSync);
+            
+            if (typeof window !== 'undefined') {
+                window.addEventListener('online', () => {
+                    this._isOnline = true;
+                    this.sync();
+                });
+                window.addEventListener('offline', () => {
+                    this._isOnline = false;
+                });
+            }
+            
+            const savedQueue = papyr.storage.get("papyr_offline_queue");
+            if (Array.isArray(savedQueue)) {
+                this._queue = savedQueue;
+            }
+            
+            if (this._isOnline) {
+                this.sync();
+            }
+        },
+        
+        queueWrite(action, collection, data) {
+            this._queue.push({
+                id: Date.now().toString(36) + Math.random().toString(36).substr(2, 5),
+                action,
+                collection,
+                data,
+                timestamp: Date.now()
+            });
+            papyr.storage.set("papyr_offline_queue", this._queue);
+            
+            if (this._isOnline) {
+                this.sync();
+            }
+        },
+        
+        async sync() {
+            if (!this._isOnline || this._queue.length === 0) return;
+            
+            const currentQueue = [...this._queue];
+            this._queue = [];
+            papyr.storage.remove("papyr_offline_queue");
+            
+            for (const item of currentQueue) {
+                for (const listener of this._syncListeners) {
+                    try {
+                        await listener(item);
+                    } catch (e) {
+                        console.error("Offline sync error, pushing back to queue:", e);
+                        this._queue.push(item);
+                        papyr.storage.set("papyr_offline_queue", this._queue);
+                    }
+                }
+            }
+        }
+    };
+
+    // ----------------------------------------------------
+    // RETRY ENGINE (RELIABILITY SUITE)
+    // ----------------------------------------------------
+    papyr.retry = async (fn, options = {}) => {
+        const { retries = 3, delay = 1000, factor = 2, onError = null } = options;
+        let currentDelay = delay;
+        for (let i = 0; i < retries; i++) {
+            try {
+                return await fn();
+            } catch (err) {
+                if (onError) onError(err, i + 1);
+                if (i === retries - 1) throw err;
+                await new Promise(resolve => setTimeout(resolve, currentDelay));
+                currentDelay *= factor;
+            }
+        }
+    };
 });
 
 
@@ -2915,7 +3260,7 @@ coreInitializers.push((papyr) => {
             try {
                 papyr.storage(name, items.value);
             } catch(e) {
-                console.warn("PaperStorageWarning: LocalStorage sync failed.", e);
+                console.warn("PapyrStorageWarning: LocalStorage sync failed.", e);
             }
         };
 
@@ -3135,6 +3480,11 @@ coreInitializers.push((papyr) => {
         
         _config: { provider: 'local' },
         _providers: {},
+
+        use(name) {
+            this._config.provider = name;
+            return this._providers[name] || this;
+        },
 
         registerProvider(name, providerInstance) {
             if (name === '__proto__' || name === 'constructor' || name === 'prototype') return;
@@ -3366,6 +3716,13 @@ coreInitializers.push((papyr) => {
 coreInitializers.push((papyr) => {
     papyr.payments = {
         _gateways: {},
+        _config: { provider: 'stripe' },
+
+        use(name) {
+            this._config = this._config || {};
+            this._config.provider = name;
+            return this._gateways[name] || this;
+        },
 
         /**
          * Register a custom third-party payment gateway provider.
@@ -3455,6 +3812,20 @@ coreInitializers.push((papyr) => {
                 if (papyr.warn) papyr.warn(`papyr.api.post failed for ${url}`, error);
                 throw error;
             }
+        }
+    };
+
+    papyr.cloud = {
+        _providers: {},
+        _config: { provider: 'vercel' },
+        register(name, providerInstance) {
+            if (name === '__proto__' || name === 'constructor' || name === 'prototype') return;
+            this._providers[name] = providerInstance;
+        },
+        use(name) {
+            this._config = this._config || {};
+            this._config.provider = name;
+            return this._providers[name] || this;
         }
     };
 });
@@ -4849,12 +5220,44 @@ if (typeof window !== 'undefined') {
         if (!el || typeof window === 'undefined') return el;
         const { tension = 170, friction = 26, mass = 1 } = config;
 
+        if (el._springCancel) {
+            el._springCancel();
+        }
+        let cancelled = false;
+        el._springCancel = () => { cancelled = true; };
+
+        // Parse current transform values
+        let currentX = 0;
+        let currentY = 0;
+        let currentScale = 1;
+
+        const transformStr = el.style.transform || '';
+        const translateMatch = transformStr.match(/translate\(([^,]+),\s*([^)]+)\)/) || 
+                               transformStr.match(/translate3d\(([^,]+),\s*([^,]+)/);
+        if (translateMatch) {
+            currentX = parseFloat(translateMatch[1]) || 0;
+            currentY = parseFloat(translateMatch[2]) || 0;
+        } else {
+            const translateXMatch = transformStr.match(/translateX\(([^)]+)\)/);
+            if (translateXMatch) currentX = parseFloat(translateXMatch[1]) || 0;
+            const translateYMatch = transformStr.match(/translateY\(([^)]+)\)/);
+            if (translateYMatch) currentY = parseFloat(translateYMatch[1]) || 0;
+        }
+
+        const scaleMatch = transformStr.match(/scale\(([^)]+)\)/);
+        if (scaleMatch) {
+            currentScale = parseFloat(scaleMatch[1]) || 1;
+        }
+
         const anims = {};
         Object.entries(properties).forEach(([prop, targetVal]) => {
             if (prop === '__proto__' || prop === 'constructor' || prop === 'prototype') return;
-            // eslint-disable-next-line security/detect-object-injection
-            let currentVal = parseFloat(el.style[prop]) || 0;
-            // eslint-disable-next-line security/detect-object-injection
+            let currentVal = 0;
+            if (prop === 'x') currentVal = currentX;
+            else if (prop === 'y') currentVal = currentY;
+            else if (prop === 'scale') currentVal = currentScale;
+            else currentVal = parseFloat(el.style[prop]) || 0;
+
             anims[prop] = {
                 current: currentVal,
                 velocity: 0,
@@ -4863,6 +5266,7 @@ if (typeof window !== 'undefined') {
         });
 
         const step = () => {
+            if (cancelled) return;
             let done = true;
             Object.entries(anims).forEach(([prop, anim]) => {
                 let force = -tension * (anim.current - anim.target) - friction * anim.velocity;
@@ -4875,14 +5279,40 @@ if (typeof window !== 'undefined') {
                 } else {
                     anim.current = anim.target;
                 }
+            });
 
-                if (prop === 'scale') {
-                    el.style.transform = `scale(${anim.current})`;
-                } else if (['x', 'y'].includes(prop)) {
-                    el.style.transform = `translate${prop.toUpperCase()}(${anim.current}px)`;
-                } else if (prop !== '__proto__' && prop !== 'constructor' && prop !== 'prototype') {
-                    // eslint-disable-next-line security/detect-object-injection
-                    el.style[prop] = prop === 'opacity' ? anim.current : `${anim.current}px`;
+            // Rebuild the transform string to apply x, y, and scale together
+            let transformParts = [];
+            let hasX = 'x' in anims;
+            let hasY = 'y' in anims;
+            if (hasX || hasY) {
+                let xVal = hasX ? anims.x.current : currentX;
+                let yVal = hasY ? anims.y.current : currentY;
+                transformParts.push(`translate(${xVal}px, ${yVal}px)`);
+            } else {
+                if (currentX !== 0 || currentY !== 0) {
+                    transformParts.push(`translate(${currentX}px, ${currentY}px)`);
+                }
+            }
+            
+            if ('scale' in anims) {
+                transformParts.push(`scale(${anims.scale.current})`);
+            } else {
+                if (currentScale !== 1) {
+                    transformParts.push(`scale(${currentScale})`);
+                }
+            }
+
+            if (transformParts.length > 0) {
+                el.style.transform = transformParts.join(' ');
+            }
+
+            // Apply other non-transform properties
+            Object.entries(anims).forEach(([prop, anim]) => {
+                if (prop !== 'x' && prop !== 'y' && prop !== 'scale') {
+                    if (prop !== '__proto__' && prop !== 'constructor' && prop !== 'prototype') {
+                        el.style[prop] = prop === 'opacity' ? anim.current : `${anim.current}px`;
+                    }
                 }
             });
 
@@ -4898,7 +5328,7 @@ if (typeof window !== 'undefined') {
     // Gesture swipe controls and dynamic touch trackers
     papyr.animate.gesture = (el, options = {}) => {
         if (!el || typeof window === 'undefined') return el;
-        const { onSwipeLeft, onSwipeRight, onDrag } = options;
+        const { onSwipeLeft, onSwipeRight, onDrag, onRelease } = options;
         let startX = 0, startY = 0, currentX = 0, currentY = 0;
         let isDragging = false;
 
@@ -4922,14 +5352,18 @@ if (typeof window !== 'undefined') {
         const end = () => {
             if (!isDragging) return;
             isDragging = false;
-            el.style.transition = 'transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)';
 
-            if (currentX > 100 && onSwipeRight) {
-                onSwipeRight(el);
-            } else if (currentX < -100 && onSwipeLeft) {
-                onSwipeLeft(el);
+            if (onRelease) {
+                onRelease(currentX, currentY, el);
             } else {
-                el.style.transform = 'translate(0px, 0px)';
+                el.style.transition = 'transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)';
+                if (currentX > 100 && onSwipeRight) {
+                    onSwipeRight(el);
+                } else if (currentX < -100 && onSwipeLeft) {
+                    onSwipeLeft(el);
+                } else {
+                    el.style.transform = 'translate(0px, 0px)';
+                }
             }
             currentX = 0;
             currentY = 0;
@@ -4946,7 +5380,7 @@ if (typeof window !== 'undefined') {
         return el;
     };
 
-    // PAPER PARALLAX ENGINE
+    // PAPYR PARALLAX ENGINE
     papyr.parallax = (selector, speed = 0.5) => {
         if (typeof window === 'undefined') return;
         window.addEventListener('scroll', () => {
@@ -4959,7 +5393,7 @@ if (typeof window !== 'undefined') {
         });
     };
 
-    // PAPER PHYSICS ENGINE
+    // PAPYR PHYSICS ENGINE
     papyr.physics = (options = {}) => {
         const { gravity = 0.98, bounce = 0.8, friction = 0.95 } = options;
         return (el) => {
@@ -5541,14 +5975,102 @@ if (typeof window !== 'undefined') {
         }
         return papyr.div(`Template ${name} not found.`);
     };
+
+    // Figma Design-to-Papyr Compiler
+    const translateFigmaNode = (node) => {
+        if (!node) return null;
+        
+        let styles = {};
+        if (node.absoluteBoundingBox) {
+            styles.position = 'absolute';
+            styles.left = `${node.absoluteBoundingBox.x}px`;
+            styles.top = `${node.absoluteBoundingBox.y}px`;
+            styles.width = `${node.absoluteBoundingBox.width}px`;
+            styles.height = `${node.absoluteBoundingBox.height}px`;
+        }
+
+        // Fills
+        if (node.fills && node.fills.length > 0) {
+            let fill = node.fills[0];
+            if (fill.type === 'SOLID' && fill.color) {
+                let r = Math.round(fill.color.r * 255);
+                let g = Math.round(fill.color.g * 255);
+                let b = Math.round(fill.color.b * 255);
+                let a = fill.opacity !== undefined ? fill.opacity : (fill.color.a !== undefined ? fill.color.a : 1);
+                styles.background = `rgba(${r}, ${g}, ${b}, ${a})`;
+            }
+        }
+
+        // Strokes
+        if (node.strokes && node.strokes.length > 0) {
+            let stroke = node.strokes[0];
+            let weight = node.strokeWeight || 1;
+            if (stroke.type === 'SOLID' && stroke.color) {
+                let r = Math.round(stroke.color.r * 255);
+                let g = Math.round(stroke.color.g * 255);
+                let b = Math.round(stroke.color.b * 255);
+                let a = stroke.opacity !== undefined ? stroke.opacity : (stroke.color.a !== undefined ? stroke.color.a : 1);
+                styles.border = `${weight}px solid rgba(${r}, ${g}, ${b}, ${a})`;
+            }
+        }
+
+        // Corner Radius
+        if (node.cornerRadius) {
+            styles.borderRadius = `${node.cornerRadius}px`;
+        }
+
+        // Layout Mode (Auto Layout translation)
+        if (node.layoutMode === 'HORIZONTAL' || node.layoutMode === 'VERTICAL') {
+            styles.display = 'flex';
+            styles.flexDirection = node.layoutMode === 'HORIZONTAL' ? 'row' : 'column';
+            if (node.itemSpacing) styles.gap = `${node.itemSpacing}px`;
+            
+            if (node.paddingTop) styles.paddingTop = `${node.paddingTop}px`;
+            if (node.paddingBottom) styles.paddingBottom = `${node.paddingBottom}px`;
+            if (node.paddingLeft) styles.paddingLeft = `${node.paddingLeft}px`;
+            if (node.paddingRight) styles.paddingRight = `${node.paddingRight}px`;
+        }
+
+        // Children Compilation
+        let children = [];
+        if (node.children && Array.isArray(node.children)) {
+            children = node.children.map(translateFigmaNode).filter(Boolean);
+        }
+
+        if (node.type === 'TEXT') {
+            if (node.style) {
+                if (node.style.fontSize) styles.fontSize = `${node.style.fontSize}px`;
+                if (node.style.fontWeight) styles.fontWeight = String(node.style.fontWeight);
+                if (node.style.fontFamily) styles.fontFamily = node.style.fontFamily;
+                if (node.style.textAlignHorizontal) styles.textAlign = node.style.textAlignHorizontal.toLowerCase();
+            }
+            return papyr.span(node.characters || '', { style: styles });
+        }
+
+        return papyr.div({ style: styles }, ...children);
+    };
+
+    papyr.import = {
+        figma: (figmaJson) => {
+            if (!figmaJson) return null;
+            let root = figmaJson.document || figmaJson;
+            if (root.children && root.children.length > 0 && root.type === 'DOCUMENT') {
+                root = root.children[0];
+            }
+            if (root.children && root.children.length > 0 && root.type === 'CANVAS') {
+                root = root.children[0];
+            }
+            return translateFigmaNode(root);
+        }
+    };
 })();
 
 
 // --- MODULE: plugins/power.js ---
 /**
- * PAPYR POWER SYSTEM
- * Energy-Aware, Performance-First state management and rendering throttler.
- * Coordinates user interaction states, page visibility, and loop pacing natively.
+ * PAPYR POWER SYSTEM 2.0
+ * Energy-Aware, Performance-First state management, adaptive rendering and task scheduling throttler.
+ * Coordinates user interaction states, page visibility, battery status, device capabilities, and loop pacing.
  */
 (function(window) {
     if (!window.papyr) {
@@ -5558,32 +6080,90 @@ if (typeof window !== 'undefined') {
 
     const papyr = window.papyr;
 
-    // 1. Setup reactive power states
-    const powerState = papyr.state('active'); // 'active', 'idle', 'suspended'
-    const powerFps = papyr.state(60);         // Reactive FPS diagnostic
+    // 1. Estimate Device Capability
+    const estimateDeviceCapability = () => {
+        if (typeof navigator === 'undefined') return 'Mid Range';
+        let cores = navigator.hardwareConcurrency || 4;
+        let ram = navigator.deviceMemory || 4;
+        if (cores <= 2 || ram <= 2) return 'Low End';
+        if (cores >= 8 && ram >= 8) return 'High End';
+        return 'Mid Range';
+    };
+
+    const deviceCapability = estimateDeviceCapability();
+
+    // 2. Setup reactive power and system state variables
+    const powerState = papyr.state('active');            // 'active', 'idle', 'away', 'suspended'
+    const powerFps = papyr.state(deviceCapability === 'Low End' ? 30 : 60); // Reactive FPS diagnostic
+    const targetFps = papyr.state(deviceCapability === 'Low End' ? 30 : 60); // Target rendering speed
+    const isBackground = papyr.state(typeof document !== 'undefined' ? document.hidden : false);
+    const adaptiveEffects = papyr.state(deviceCapability !== 'Low End'); // Enable/disable heavy CSS/parallax
+    
+    // Battery awareness states
+    const batteryState = {
+        level: papyr.state(1.0),
+        charging: papyr.state(true)
+    };
 
     let idleTimeout = null;
+    let awayTimeout = null;
     const IDLE_DELAY_MS = 10000;              // 10 seconds to trigger idle throttling
+    const AWAY_DELAY_MS = 60000;              // 60 seconds to trigger away state
 
-    // 2. Activity monitor triggers
+    // 3. Activity monitor triggers
     const resetIdleTimer = () => {
         if (powerState.value === 'suspended') return; // Do not wake up if tab is backgrounded
         
         if (powerState.value !== 'active') {
             powerState.value = 'active';
-            powerFps.value = 60;
+            powerFps.value = targetFps.value;
+            adaptiveEffects.value = deviceCapability !== 'Low End' && (!batteryState.charging.value || batteryState.level.value > 0.2);
         }
 
         if (idleTimeout) clearTimeout(idleTimeout);
+        if (awayTimeout) clearTimeout(awayTimeout);
+
         idleTimeout = setTimeout(() => {
             if (powerState.value === 'active') {
                 powerState.value = 'idle';
-                powerFps.value = 10;
+                powerFps.value = Math.min(targetFps.value, 15);
+                // Reduce or disable heavy animations
+                adaptiveEffects.value = false;
             }
         }, IDLE_DELAY_MS);
+
+        awayTimeout = setTimeout(() => {
+            if (powerState.value === 'idle' || powerState.value === 'active') {
+                powerState.value = 'away';
+                powerFps.value = Math.min(targetFps.value, 5);
+                adaptiveEffects.value = false;
+            }
+        }, AWAY_DELAY_MS);
     };
 
-    // 3. Mount global event listeners safely (with passive: true to prevent frame drops)
+    // 4. Battery Level Observer Setup
+    if (typeof navigator !== 'undefined' && navigator.getBattery) {
+        navigator.getBattery().then(battery => {
+            const updateBattery = () => {
+                batteryState.level.value = battery.level;
+                batteryState.charging.value = battery.charging;
+                
+                // Low battery mode
+                if (!battery.charging && battery.level < 0.2) {
+                    targetFps.value = 30;
+                    powerFps.value = Math.min(powerFps.value, 30);
+                    adaptiveEffects.value = false;
+                } else {
+                    targetFps.value = deviceCapability === 'Low End' ? 30 : 60;
+                }
+            };
+            battery.addEventListener('levelchange', updateBattery);
+            battery.addEventListener('chargingchange', updateBattery);
+            updateBattery();
+        });
+    }
+
+    // 5. Mount global event listeners safely (with passive: true to prevent frame drops)
     if (typeof window !== 'undefined' && typeof document !== 'undefined') {
         const events = ['mousemove', 'mousedown', 'touchstart', 'keydown', 'scroll'];
         events.forEach(evt => {
@@ -5592,10 +6172,13 @@ if (typeof window !== 'undefined') {
 
         // Background / Visibility change listeners
         document.addEventListener('visibilitychange', () => {
+            isBackground.value = document.hidden;
             if (document.hidden) {
                 powerState.value = 'suspended';
                 powerFps.value = 0;
+                adaptiveEffects.value = false;
                 if (idleTimeout) clearTimeout(idleTimeout);
+                if (awayTimeout) clearTimeout(awayTimeout);
             } else {
                 resetIdleTimer();
             }
@@ -5605,10 +6188,15 @@ if (typeof window !== 'undefined') {
         resetIdleTimer();
     }
 
-    // 4. Power Engine API Exports
+    // 6. Power Engine API Exports
     papyr.power = {
         state: powerState,
         fps: powerFps,
+        targetFps: targetFps,
+        isBackground: isBackground,
+        adaptiveEffects: adaptiveEffects,
+        deviceCapability: deviceCapability,
+        battery: batteryState,
         
         /**
          * Reset the idle timer manually (e.g. during custom script interactions)
@@ -5636,8 +6224,21 @@ if (typeof window !== 'undefined') {
                     return;
                 }
 
+                if (currentState === 'away') {
+                    // Away state: Throttle to ~5 FPS (200ms pacing)
+                    setTimeout(() => {
+                        if (active && powerState.value === 'away') {
+                            callback();
+                            requestAnimationFrame(tick);
+                        } else if (active) {
+                            requestAnimationFrame(tick);
+                        }
+                    }, 200);
+                    return;
+                }
+
                 if (currentState === 'idle') {
-                    // Idle state: Throttle to ~10 FPS (100ms pacing)
+                    // Idle state: Throttle to ~15 FPS (66ms pacing)
                     setTimeout(() => {
                         if (active && powerState.value === 'idle') {
                             callback();
@@ -5645,13 +6246,24 @@ if (typeof window !== 'undefined') {
                         } else if (active) {
                             requestAnimationFrame(tick);
                         }
-                    }, 100);
+                    }, 66);
                     return;
                 }
 
-                // Active state: Full 60 FPS standard pacing
-                callback();
-                requestAnimationFrame(tick);
+                // Active state: Target FPS standard pacing
+                if (targetFps.value === 30) {
+                    setTimeout(() => {
+                        if (active && powerState.value === 'active') {
+                            callback();
+                            requestAnimationFrame(tick);
+                        } else if (active) {
+                            requestAnimationFrame(tick);
+                        }
+                    }, 33);
+                } else {
+                    callback();
+                    requestAnimationFrame(tick);
+                }
             };
 
             // Re-trigger loop if transitioning from suspended/idle to active
@@ -5779,7 +6391,7 @@ if (typeof window !== 'undefined') {
 // --- MODULE: plugins/ui-components.js ---
 /**
  * PAPYR UI COMPONENTS
- * Cinematic, interactive UI elements (Toasts, Modals, Sheets).
+ * Cinematic, interactive UI elements (Toasts, Modals, Sheets, Drawers, Steppers, Banners).
  */
 (function() {
     // 1. Toast System (Canonical Passthrough)
@@ -5791,7 +6403,6 @@ if (typeof window !== 'undefined') {
     // 3. Mobile Bottom Sheet
     papyr.sheet = (options = {}) => {
         const { content = '' } = options;
-        // Re-use modal overlay logic but with bottom-anchored sliding physics
         let overlay = papyr.div({
             style: {
                 position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh',
@@ -5808,7 +6419,6 @@ if (typeof window !== 'undefined') {
                 transition: 'transform 0.3s cubic-bezier(0.165, 0.84, 0.44, 1)'
             }
         },
-            // Drag Handle
             papyr.div({ style: { width: '40px', height: '4px', background: 'rgba(255,255,255,0.2)', borderRadius: '2px', margin: '0 auto 20px auto' } }),
             content
         );
@@ -5827,12 +6437,426 @@ if (typeof window !== 'undefined') {
             setTimeout(() => overlay.remove(), 300);
         };
     };
+
+    // 4. Side sliding navigation Drawer
+    papyr.drawer = (options = {}) => {
+        const { content = '', position = 'left' } = options;
+        let overlay = papyr.div({
+            style: {
+                position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh',
+                background: 'rgba(0,0,0,0.5)', zIndex: 9998, opacity: 0, transition: 'opacity 0.3s'
+            },
+            onclick: (e) => { if (e.target === overlay) close(); }
+        });
+        let drawerBox = papyr.div({
+            style: {
+                position: 'absolute', top: 0, [position]: 0, width: '300px', height: '100%',
+                background: '#0f172a', borderRight: '1px solid rgba(255,255,255,0.08)',
+                padding: '24px', transform: position === 'left' ? 'translateX(-100%)' : 'translateX(100%)',
+                transition: 'transform 0.3s cubic-bezier(0.165, 0.84, 0.44, 1)'
+            }
+        }, content);
+        overlay.appendChild(drawerBox);
+        document.body.appendChild(overlay);
+        requestAnimationFrame(() => {
+            overlay.style.opacity = '1';
+            drawerBox.style.transform = 'translateX(0)';
+        });
+        const close = () => {
+            overlay.style.opacity = '0';
+            drawerBox.style.transform = position === 'left' ? 'translateX(-100%)' : 'translateX(100%)';
+            setTimeout(() => overlay.remove(), 300);
+        };
+        return { close };
+    };
+
+    // 5. Sticky Top Notification Banner
+    papyr.banner = (options = {}) => {
+        const { message = '', type = 'info', actions = [] } = options;
+        let bg = type === 'error' ? '#7f1d1d' : type === 'success' ? '#064e3b' : '#1e3a8a';
+        let bannerBox = papyr.div({
+            class: `papyr-banner papyr-banner-${type}`,
+            style: {
+                position: 'sticky', top: 0, left: 0, width: '100%',
+                background: bg, color: '#f8fafc', padding: '12px 24px',
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)', zIndex: 999
+            }
+        },
+            papyr.span(message, { style: { fontWeight: '500' } }),
+            papyr.flex.row({ gap: '12px' },
+                ...actions.map(act => papyr.button(act.text, {
+                    style: { padding: '6px 12px', fontSize: '13px', borderRadius: '6px', background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', color: 'white' },
+                    onclick: () => { act.action(); bannerBox.remove(); }
+                })),
+                papyr.button('×', {
+                    style: { background: 'transparent', border: 'none', color: 'white', cursor: 'pointer', fontSize: '20px' },
+                    onclick: () => bannerBox.remove()
+                })
+            )
+        );
+        document.body.prepend(bannerBox);
+    };
+
+    // 6. Action Snackbar
+    papyr.snackbar = (options = {}) => {
+        const { message = '', actionText = '', onAction = null, duration = 4000 } = options;
+        let snackBox = papyr.div({
+            style: {
+                position: 'fixed', bottom: '24px', left: '24px',
+                background: '#1e293b', border: '1px solid rgba(255,255,255,0.08)',
+                borderRadius: '12px', padding: '12px 20px', color: 'white',
+                boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.3)', zIndex: 9999,
+                display: 'flex', alignItems: 'center', gap: '16px',
+                opacity: 0, transform: 'translateY(20px)', transition: 'all 0.3s'
+            }
+        },
+            papyr.span(message),
+            actionText ? papyr.button(actionText, {
+                style: { background: 'transparent', border: 'none', color: '#6366f1', fontWeight: 'bold', cursor: 'pointer' },
+                onclick: () => { if (onAction) onAction(); snackBox.remove(); }
+            }) : null
+        );
+        document.body.appendChild(snackBox);
+        requestAnimationFrame(() => {
+            snackBox.style.opacity = '1';
+            snackBox.style.transform = 'translateY(0)';
+        });
+        setTimeout(() => {
+            snackBox.style.opacity = '0';
+            snackBox.style.transform = 'translateY(20px)';
+            setTimeout(() => snackBox.remove(), 300);
+        }, duration);
+    };
+
+    // 7. Tooltip Hover overlay
+    papyr.tooltip = (target, text) => {
+        if (!target) return;
+        let tip = null;
+        target.addEventListener('mouseenter', () => {
+            let bounds = target.getBoundingClientRect();
+            tip = papyr.div({
+                style: {
+                    position: 'fixed', top: `${bounds.top - 36}px`, left: `${bounds.left + bounds.width/2}px`,
+                    transform: 'translateX(-50%)', background: '#0f172a', border: '1px solid rgba(255,255,255,0.1)',
+                    padding: '6px 12px', color: 'white', fontSize: '12px', borderRadius: '6px',
+                    boxShadow: '0 4px 6px rgba(0,0,0,0.3)', zIndex: 99999, pointerEvents: 'none'
+                }
+            }, text);
+            document.body.appendChild(tip);
+        });
+        target.addEventListener('mouseleave', () => {
+            if (tip) { tip.remove(); tip = null; }
+        });
+    };
+
+    // 8. Accordion panel
+    papyr.accordion = (items) => {
+        let acc = papyr.div('.accordion', { style: { display: 'flex', flexDirection: 'column', gap: '8px' } });
+        items.forEach(item => {
+            let open = papyr.state(false);
+            let contentNode = typeof item.content === 'string' ? papyr.div(item.content) : item.content;
+            let body = papyr.div({
+                style: () => ({
+                    display: open.value ? 'block' : 'none',
+                    padding: '16px', borderTop: '1px solid rgba(255,255,255,0.08)', color: '#94a3b8'
+                })
+            }, contentNode);
+            let header = papyr.button({
+                style: { width: '100%', textAlign: 'left', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.08)', padding: '12px 16px', color: 'white', display: 'flex', justifyContent: 'space-between', borderRadius: '8px' },
+                onclick: () => open.value = !open.value
+            },
+                papyr.span(item.title, { style: { fontWeight: '600' } }),
+                papyr.span(() => open.value ? '▲' : '▼')
+            );
+            acc.appendChild(papyr.div('.accordion-item', header, body));
+        });
+        return acc;
+    };
+
+    // 9. Checkbox component
+    papyr.checkbox = (labelText, stateObj) => {
+        let cb = papyr.input('checkbox', {
+            checked: () => stateObj.value,
+            onchange: (e) => stateObj.value = e.target.checked,
+            style: { width: 'auto', marginRight: '8px' }
+        });
+        return papyr.label({ style: { display: 'inline-flex', alignItems: 'center', cursor: 'pointer', color: 'white' } }, cb, labelText);
+    };
+
+    // 10. Radio component
+    papyr.radio = (name, labelText, val, stateObj) => {
+        let rb = papyr.input('radio', {
+            name: name,
+            checked: () => stateObj.value === val,
+            onchange: () => stateObj.value = val,
+            style: { width: 'auto', marginRight: '8px' }
+        });
+        return papyr.label({ style: { display: 'inline-flex', alignItems: 'center', cursor: 'pointer', color: 'white' } }, rb, labelText);
+    };
+
+    // 11. Navigation Rail
+    papyr.navigationRail = (items) => {
+        let rail = papyr.div('.navigation-rail', {
+            style: { width: '72px', height: '100%', background: '#0a0f1d', borderRight: '1px solid rgba(255,255,255,0.08)', display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '24px 0', gap: '20px' }
+        });
+        items.forEach(item => {
+            let btn = papyr.button({
+                style: { background: 'transparent', border: 'none', cursor: 'pointer', color: '#94a3b8', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', padding: '8px' },
+                onclick: item.onclick
+            },
+                papyr.icon(item.icon, { size: 20 }),
+                papyr.span(item.label, { style: { fontSize: '10px', fontWeight: '500' } })
+            );
+            rail.appendChild(btn);
+        });
+        return rail;
+    };
+
+    // 12. Progress bar
+    papyr.progress = (valueState, max = 100) => {
+        let val = (valueState && typeof valueState.subscribe === 'function') ? valueState : papyr.state(valueState);
+        let pct = papyr.computed(() => `${Math.min(100, Math.max(0, (val.value / max) * 100))}%`);
+        return papyr.div('.progress-track', {
+            style: { width: '100%', height: '8px', background: 'rgba(255,255,255,0.05)', borderRadius: '4px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.08)' }
+        },
+            papyr.div('.progress-fill', {
+                style: () => ({
+                    width: pct.value, height: '100%', background: 'linear-gradient(90deg, #6366f1, #10b981)',
+                    transition: 'width 0.2s cubic-bezier(0.4, 0, 0.2, 1)'
+                })
+            })
+        );
+    };
+
+    // 13. Stepper indicator
+    papyr.stepper = (steps, activeStepState) => {
+        let container = papyr.div('.stepper', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', marginBottom: '24px' } });
+        steps.forEach((step, idx) => {
+            let isComplete = papyr.computed(() => activeStepState.value > idx + 1);
+            let isActive = papyr.computed(() => activeStepState.value === idx + 1);
+            let circleBg = papyr.computed(() => isComplete.value ? '#10b981' : isActive.value ? '#6366f1' : 'rgba(255,255,255,0.05)');
+            let circleBorder = papyr.computed(() => isComplete.value ? 'none' : isActive.value ? 'none' : '1px solid rgba(255,255,255,0.1)');
+            
+            let circle = papyr.div('.step-circle', {
+                style: () => ({
+                    width: '32px', height: '32px', borderRadius: '50%', background: circleBg.value, border: circleBorder.value,
+                    display: 'flex', justifyContent: 'center', alignItems: 'center', color: 'white', fontWeight: 'bold', fontSize: '14px'
+                })
+            }, () => isComplete.value ? '✓' : String(idx + 1));
+            
+            let label = papyr.span(step, { style: () => ({ marginLeft: '8px', color: isActive.value ? 'white' : '#94a3b8', fontSize: '13px', fontWeight: '600' }) });
+            container.appendChild(papyr.flex.row({ align: 'center', style: { flex: 1 } }, circle, label));
+        });
+        return container;
+    };
+
+    // 14. Dropdown contextual Menu
+    papyr.menu = (trigger, items) => {
+        if (!trigger) return;
+        let menuBox = null;
+        trigger.style.position = 'relative';
+        const toggle = () => {
+            if (menuBox) { menuBox.remove(); menuBox = null; return; }
+            menuBox = papyr.div('.dropdown-menu', {
+                style: {
+                    position: 'absolute', top: '100%', left: '0', marginTop: '8px', minWidth: '160px',
+                    background: '#0f172a', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px',
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.4)', zIndex: 9999, overflow: 'hidden'
+                }
+            });
+            items.forEach(item => {
+                let btn = papyr.button(item.text, {
+                    style: { width: '100%', textAlign: 'left', padding: '10px 16px', fontSize: '13px', background: 'transparent', border: 'none', color: '#cbd5e1', cursor: 'pointer' },
+                    onclick: () => { item.onclick(); menuBox.remove(); menuBox = null; }
+                });
+                btn.addEventListener('mouseenter', () => btn.style.background = 'rgba(255,255,255,0.04)');
+                btn.addEventListener('mouseleave', () => btn.style.background = 'transparent');
+                menuBox.appendChild(btn);
+            });
+            trigger.appendChild(menuBox);
+        };
+        trigger.addEventListener('click', toggle);
+        document.addEventListener('click', (e) => {
+            if (menuBox && !trigger.contains(e.target)) { menuBox.remove(); menuBox = null; }
+        });
+    };
+
+    // 15. Custom Dropdown component
+    papyr.dropdown = (options = {}) => {
+        const { items = [], placeholder = 'Select item', onSelect = null } = options;
+        let selected = papyr.state(placeholder);
+        let open = papyr.state(false);
+        let container = papyr.div('.dropdown-container', { style: { position: 'relative', width: '100%' } });
+        let trigger = papyr.button({
+            style: { width: '100%', textAlign: 'left', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.02)', color: 'white', padding: '10px 14px' },
+            onclick: () => open.value = !open.value
+        },
+            papyr.span(() => selected.value),
+            papyr.span(() => open.value ? '▲' : '▼')
+        );
+        let menu = papyr.div({
+            style: () => ({
+                display: open.value ? 'block' : 'none',
+                position: 'absolute', top: '100%', left: 0, right: 0, marginTop: '4px',
+                background: '#0f172a', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px',
+                zIndex: 1000, maxHeight: '200px', overflowY: 'auto'
+            })
+        });
+        items.forEach(item => {
+            let li = papyr.div(item, {
+                style: { padding: '10px 14px', cursor: 'pointer', color: '#cbd5e1', fontSize: '14px' },
+                onclick: () => { selected.value = item; open.value = false; if (onSelect) onSelect(item); }
+            });
+            li.addEventListener('mouseenter', () => li.style.background = 'rgba(255,255,255,0.04)');
+            li.addEventListener('mouseleave', () => li.style.background = 'transparent');
+            menu.appendChild(li);
+        });
+        container.appendChild(trigger);
+        container.appendChild(menu);
+        document.addEventListener('click', (e) => {
+            if (!container.contains(e.target)) open.value = false;
+        });
+        return container;
+    };
+
+    // 16. Empty State card
+    papyr.emptyState = (options = {}) => {
+        const { title = 'No results found', description = 'Try adjusting your search criteria or filters.', icon = 'search' } = options;
+        return papyr.flex.col({
+            align: 'center',
+            style: { padding: '48px 24px', textAlign: 'center', background: 'rgba(255,255,255,0.01)', border: '1px dashed rgba(255,255,255,0.1)', borderRadius: '16px', gap: '12px' }
+        },
+            papyr.icon(icon, { size: 36, color: '#94a3b8' }),
+            papyr.h3(title, { style: { margin: 0, color: 'white', fontSize: '16px', fontWeight: '700' } }),
+            papyr.p(description, { style: { margin: 0, color: '#94a3b8', fontSize: '13px', maxWidth: '320px', lineHeight: '1.5' } })
+        );
+    };
+
+    // 17. Skeleton Loader
+    papyr.skeletonLoader = (options = {}) => {
+        const { type = 'card', count = 1 } = options;
+        let loader = papyr.div('.skeleton-loader-container', { style: { display: 'flex', flexDirection: 'column', gap: '12px', width: '100%' } });
+        const styleText = 'background: linear-gradient(90deg, rgba(255,255,255,0.04) 25%, rgba(255,255,255,0.08) 50%, rgba(255,255,255,0.04) 75%); background-size: 200% 100%; animation: papyr-skeleton-shine 1.5s infinite;';
+        
+        if (typeof document !== 'undefined' && !document.getElementById('papyr-skeleton-styles')) {
+            let style = document.createElement('style');
+            style.id = 'papyr-skeleton-styles';
+            style.textContent = `
+                @keyframes papyr-skeleton-shine {
+                    0% { background-position: 200% 0; }
+                    100% { background-position: -200% 0; }
+                }
+            `;
+            document.head.appendChild(style);
+        }
+
+        for (let i = 0; i < count; i++) {
+            if (type === 'card') {
+                loader.appendChild(papyr.div('.skeleton-card', {
+                    style: {
+                        background: 'rgba(255,255,255,0.01)', border: '1px solid rgba(255,255,255,0.06)',
+                        borderRadius: '16px', padding: '20px', display: 'flex', flexDirection: 'column', gap: '12px'
+                    }
+                },
+                    papyr.div({ style: `width: 60px; height: 12px; border-radius: 4px; ${styleText}` }),
+                    papyr.div({ style: `width: 100%; height: 16px; border-radius: 4px; ${styleText}` }),
+                    papyr.div({ style: `width: 80%; height: 16px; border-radius: 4px; ${styleText}` })
+                ));
+            } else {
+                loader.appendChild(papyr.div({ style: `width: 100%; height: 20px; border-radius: 4px; ${styleText}` }));
+            }
+        }
+        return loader;
+    };
+
+    // 18. Calendar panel
+    papyr.calendar = (options = {}) => {
+        const { onSelect = null } = options;
+        let date = new Date();
+        let year = papyr.state(date.getFullYear());
+        let month = papyr.state(date.getMonth());
+        let monthNames = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+        
+        let grid = papyr.div({ style: { display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '6px', textAlign: 'center', marginTop: '12px' } });
+        
+        const renderDays = () => {
+            grid.innerHTML = '';
+            ["Su","Mo","Tu","We","Th","Fr","Sa"].forEach(d => grid.appendChild(papyr.span(d, { style: { color: '#64748b', fontSize: '11px', fontWeight: 'bold' } })));
+            
+            let firstDay = new Date(year.value, month.value, 1).getDay();
+            let totalDays = new Date(year.value, month.value + 1, 0).getDate();
+            
+            for (let i = 0; i < firstDay; i++) grid.appendChild(papyr.span(''));
+            for (let day = 1; day <= totalDays; day++) {
+                let dayBtn = papyr.button(String(day), {
+                    style: { padding: '6px', fontSize: '12px', background: 'transparent', border: 'none', borderRadius: '6px', color: 'white', cursor: 'pointer' },
+                    onclick: () => {
+                        let selDate = new Date(year.value, month.value, day);
+                        if (onSelect) onSelect(selDate);
+                    }
+                });
+                dayBtn.addEventListener('mouseenter', () => dayBtn.style.background = '#6366f1');
+                dayBtn.addEventListener('mouseleave', () => dayBtn.style.background = 'transparent');
+                grid.appendChild(dayBtn);
+            }
+        };
+
+        let nextBtn = papyr.button('▶', {
+            style: { background: 'transparent', border: 'none', color: 'white', cursor: 'pointer' },
+            onclick: () => { month.value = (month.value + 1) % 12; if (month.value === 0) year.value++; renderDays(); }
+        });
+        let prevBtn = papyr.button('◀', {
+            style: { background: 'transparent', border: 'none', color: 'white', cursor: 'pointer' },
+            onclick: () => { month.value = (month.value - 1 + 12) % 12; if (month.value === 11) year.value--; renderDays(); }
+        });
+        let title = papyr.span(() => `${monthNames[month.value]} ${year.value}`, { style: { fontWeight: 'bold', color: 'white' } });
+        let header = papyr.flex.between({ style: { padding: '4px' } }, prevBtn, title, nextBtn);
+        
+        let container = papyr.div('.papyr-calendar', { style: { padding: '16px', background: '#0f172a', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', maxWidth: '260px' } }, header, grid);
+        renderDays();
+        return container;
+    };
+
+    // 19. Date Picker
+    papyr.datePicker = (options = {}) => {
+        const { placeholder = 'Select Date', onSelect = null } = options;
+        let open = papyr.state(false);
+        let selectedText = papyr.state('');
+        let container = papyr.div('.date-picker-container', { style: { position: 'relative', width: '100%' } });
+        let input = papyr.input('text', placeholder, {
+            value: () => selectedText.value,
+            onclick: () => open.value = !open.value,
+            style: { cursor: 'pointer' }
+        });
+        let calContainer = papyr.div({
+            style: () => ({
+                display: open.value ? 'block' : 'none',
+                position: 'absolute', top: '100%', left: 0, marginTop: '8px', zIndex: 2000
+            })
+        },
+            papyr.calendar({
+                onSelect: (date) => {
+                    let formatted = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+                    selectedText.value = formatted;
+                    open.value = false;
+                    if (onSelect) onSelect(date);
+                }
+            })
+        );
+        container.appendChild(input);
+        container.appendChild(calContainer);
+        document.addEventListener('click', (e) => {
+            if (!container.contains(e.target)) open.value = false;
+        });
+        return container;
+    };
 })();
 
 
 // --- MODULE: plugins/watt.js ---
 /**
- * PAPYR WATT SYSTEM (Web App Tracking Transparency)
+ * PAPYR WATT SYSTEM (Web Access Transparency Toolkit)
  * 
  * Hard runtime gatekeeper that intercepts browser tracking and hardware APIs at the kernel level.
  * Pops up a custom, accessible glassmorphic consent dashboard before native browser triggers execute.
@@ -5856,7 +6880,7 @@ if (typeof window !== 'undefined') {
             branding: { title: "Privacy Guard", primaryColor: "#6366f1" },
             reason: "This app requires secure access to fulfill its baseline function.",
             labels: { accept: "Allow Access", deny: "Ask App Not to Track", linkText: "Learn more about our privacy commitment" },
-            link: "https://eldrex.landecs.org/privacy"
+            link: "https://example.com/privacy"
         },
 
         configure(customSettings) {
@@ -5917,13 +6941,43 @@ if (typeof window !== 'undefined') {
                     });
                 };
             }
+
+            // 3. Plugin Registration Interception
+            if (typeof papyr !== 'undefined' && papyr.plugins && typeof papyr.plugins.register === 'function') {
+                const self = this;
+                const originalRegister = papyr.plugins.register;
+                papyr.plugins.register = function (plugin) {
+                    if (plugin.permissions && plugin.permissions.length > 0) {
+                        self.triggerWattPrompt(`Plugin Requests for [${plugin.name}]`, () => {
+                            originalRegister.call(papyr.plugins, plugin);
+                        }, () => {
+                            console.warn(`[WATT] Plugin registration blocked: ${plugin.name} due to denied permissions.`);
+                        }, plugin.permissions);
+                    } else {
+                        originalRegister.call(papyr.plugins, plugin);
+                    }
+                };
+            }
         },
 
-        triggerWattPrompt(capabilityName, onAllow, onDeny) {
+        triggerWattPrompt(capabilityName, onAllow, onDeny, permissions = null) {
             console.log(`[WATT Alert]: Intercepted unauthorized request for: ${capabilityName}`);
             if (typeof document === 'undefined') {
                 onDeny();
                 return;
+            }
+
+            let bodyContent = [];
+            if (permissions && Array.isArray(permissions)) {
+                let listItems = permissions.map(p => papyr.li(`✓ ${p.charAt(0).toUpperCase() + p.slice(1)}`, { style: "color: #10b981; margin: 4px 0; text-align: left; list-style: none;" }));
+                bodyContent = [
+                    papyr.muted(`Requests the following permissions:`, { style: "color: #cbd5e1; font-size: 0.95rem; line-height: 1.5; font-weight: bold; text-align: left;" }),
+                    papyr.ul({ style: "margin: 8px 0; padding-left: 0;" }, ...listItems)
+                ];
+            } else {
+                bodyContent = [
+                    papyr.muted(`wants to access your **${capabilityName}**. ${this.config.reason}`, { style: "color: #cbd5e1; font-size: 0.95rem; line-height: 1.5;" })
+                ];
             }
 
             // Construct the modal dynamically utilizing standard Papyr UI tags
@@ -5946,7 +7000,7 @@ if (typeof window !== 'undefined') {
                 `
             },
                 papyr.h3(`🔒 ${this.config.branding.title}`, { style: "font-size: 20px; margin-bottom: 12px; font-weight: 700; color: #fff;" }),
-                papyr.muted(`wants to access your **${capabilityName}**. ${this.config.reason}`, { style: "color: #cbd5e1; font-size: 0.95rem; line-height: 1.5;" }),
+                ...bodyContent,
 
                 papyr.flex.row({ style: "margin-top: 24px; justify-content: flex-end; gap: 12px;" },
                     papyr.button(this.config.labels.deny, {
@@ -6045,6 +7099,44 @@ if (typeof window !== 'undefined') {
         }, ...args);
     };
 
+    papyr.autoFlex = (container, options = {}) => {
+        if (!container || typeof window === 'undefined') return container;
+        const breakpoint = options.breakpoint || 768;
+        const rowClass = options.rowClass || 'flex-row';
+        const colClass = options.colClass || 'flex-col';
+
+        const updateLayout = (width) => {
+            if (width < breakpoint) {
+                container.classList.remove(rowClass);
+                container.classList.add(colClass);
+                container.style.flexDirection = 'column';
+            } else {
+                container.classList.remove(colClass);
+                container.classList.add(rowClass);
+                container.style.flexDirection = 'row';
+            }
+        };
+
+        if (typeof ResizeObserver !== 'undefined') {
+            const observer = new ResizeObserver((entries) => {
+                for (let entry of entries) {
+                    updateLayout(entry.contentRect.width || entry.target.clientWidth);
+                }
+            });
+            observer.observe(container);
+            if (!container._cleanups) container._cleanups = [];
+            container._cleanups.push(() => observer.disconnect());
+        } else {
+            const handler = () => updateLayout(window.innerWidth);
+            window.addEventListener('resize', handler);
+            handler();
+            if (!container._cleanups) container._cleanups = [];
+            container._cleanups.push(() => window.removeEventListener('resize', handler));
+        }
+
+        return container;
+    };
+
     papyr.layout = {
         /**
          * Responsive Flex Container
@@ -6125,6 +7217,57 @@ if (typeof window !== 'undefined') {
                     width: '100%'
                 }
             }, ...children);
+        },
+
+        mobile(options = {}, ...children) {
+            const { header = null, nav = null } = options;
+            return papyr.div({
+                class: 'papyr-layout-mobile',
+                style: {
+                    display: 'flex',
+                    flexDirection: 'column',
+                    minHeight: '100vh',
+                    width: '100%',
+                    background: '#070913'
+                }
+            },
+                header ? papyr('header', { style: { padding: '16px', borderBottom: '1px solid rgba(255,255,255,0.08)', background: 'rgba(16,22,42,0.8)' } }, header) : null,
+                papyr('main', { style: { flexGrow: 1, padding: '16px', overflowY: 'auto' } }, ...children),
+                nav ? papyr('nav', { style: { padding: '12px', borderTop: '1px solid rgba(255,255,255,0.08)', background: 'rgba(16,22,42,0.9)', display: 'flex', justifyContent: 'space-around' } }, nav) : null
+            );
+        },
+
+        tablet(options = {}, ...children) {
+            const { sidebar = null } = options;
+            return papyr.div({
+                class: 'papyr-layout-tablet',
+                style: {
+                    display: 'flex',
+                    minHeight: '100vh',
+                    width: '100%',
+                    background: '#070913'
+                }
+            },
+                sidebar ? papyr('aside', { style: { width: '80px', borderRight: '1px solid rgba(255,255,255,0.08)', background: 'rgba(11,16,36,0.95)', display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '20px 0', gap: '20px' } }, sidebar) : null,
+                papyr('main', { style: { flexGrow: 1, padding: '24px', overflowY: 'auto' } }, ...children)
+            );
+        },
+
+        desktop(options = {}, ...children) {
+            const { sidebar = null, inspector = null, sidebarWidth = '250px', inspectorWidth = '300px' } = options;
+            return papyr.div({
+                class: 'papyr-layout-desktop',
+                style: {
+                    display: 'flex',
+                    minHeight: '100vh',
+                    width: '100%',
+                    background: '#070913'
+                }
+            },
+                sidebar ? papyr('aside', { style: { width: sidebarWidth, borderRight: '1px solid rgba(255,255,255,0.08)', background: 'rgba(11,16,36,0.95)', overflowY: 'auto' } }, sidebar) : null,
+                papyr('main', { style: { flexGrow: 1, padding: '24px', overflowY: 'auto' } }, ...children),
+                inspector ? papyr('aside', { style: { width: inspectorWidth, borderLeft: '1px solid rgba(255,255,255,0.08)', background: 'rgba(11,16,36,0.95)', overflowY: 'auto' } }, inspector) : null
+            );
         },
 
         /**
@@ -8606,12 +9749,51 @@ if (typeof window !== 'undefined') {
                     return extract(element);
                 },
 
+                use(name) {
+                    this._config = this._config || {};
+                    this._config.provider = name;
+                    return this;
+                },
+
+                normalizeResponse(provider, data) {
+                    const prov = (provider || 'openai').toLowerCase();
+                    if (prov === 'openai') {
+                        const message = data.choices?.[0]?.message;
+                        if (!message) {
+                            return { success: false, content: null, refusal: "No response returned" };
+                        }
+                        if (message.refusal) {
+                            return { success: false, content: null, refusal: message.refusal };
+                        }
+                        return { success: true, content: message.content, refusal: null };
+                    } else if (prov === 'anthropic') {
+                        const text = data.content?.[0]?.text;
+                        if (!text) {
+                            return { success: false, content: null, refusal: "No response returned" };
+                        }
+                        return { success: true, content: text, refusal: null };
+                    } else if (prov === 'gemini') {
+                        const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+                        if (!text) {
+                            return { success: false, content: null, refusal: "No response returned" };
+                        }
+                        return { success: true, content: text, refusal: null };
+                    } else if (prov === 'ollama') {
+                        const content = data.message?.content || data.response || '';
+                        if (!content) {
+                            return { success: false, content: null, refusal: "No response returned" };
+                        }
+                        return { success: true, content: content, refusal: null };
+                    }
+                    return { success: false, content: null, refusal: `Unknown provider: ${provider}` };
+                },
+
                 /**
                  * Unified AI Provider interface mapping OpenAI, Anthropic, Gemini, and Ollama endpoints.
                  * Enforces strict real-world connections, API key validations, and secure data privacy protocols.
                  */
                 chat(options = {}) {
-                    const provider = (options.provider || 'openai').toLowerCase();
+                    const provider = (options.provider || (this._config && this._config.provider) || 'openai').toLowerCase();
                     const apiKey = options.apiKey || '';
                     const messages = options.messages || [];
                     const model = options.model;
@@ -8694,16 +9876,10 @@ if (typeof window !== 'undefined') {
                         return res.json();
                     })
                     .then(data => {
-                        let parsedText = '';
-                        if (provider === 'openai' || provider === 'ollama') {
-                            parsedText = data.choices ? data.choices[0].message.content : (data.message ? data.message.content : '');
-                        } else if (provider === 'anthropic') {
-                            parsedText = data.content ? data.content[0].text : '';
-                        } else if (provider === 'gemini') {
-                            parsedText = (data.candidates && data.candidates[0].content) ? data.candidates[0].content.parts[0].text : '';
-                        }
+                        const norm = this.normalizeResponse(provider, data);
                         return {
-                            text: parsedText,
+                            ...norm,
+                            text: norm.content || '',
                             provider: provider,
                             simulated: false,
                             raw: data
@@ -8917,7 +10093,12 @@ if (typeof window !== 'undefined') {
         ctx.clearRect(0, 0, w, h);
 
         const equation = options.equation || ((x) => Math.sin(x));
-        const range = options.range || [-10, 10, -5, 5];
+        let range = options.range;
+        if (!range && options.scale) {
+            const sc = options.scale;
+            range = [-sc, sc, -sc * (h / w), sc * (h / w)];
+        }
+        range = range || [-10, 10, -5, 5];
         const [minX, maxX, minY, maxY] = range;
         
         const plotColor = options.color || '#10b981';
@@ -8978,12 +10159,13 @@ if (typeof window !== 'undefined') {
             try {
                 // Safe evaluation fallback for basic math expressions
                 eqFunc = (x) => {
-                    const cleanEq = equation.replace(/sin/g, 'Math.sin')
+                    let cleanEq = equation.replace(/sin/g, 'Math.sin')
                                             .replace(/cos/g, 'Math.cos')
                                             .replace(/tan/g, 'Math.tan')
                                             .replace(/pi/g, 'Math.PI')
                                             .replace(/exp/g, 'Math.exp')
                                             .replace(/pow/g, 'Math.pow');
+                    cleanEq = cleanEq.replace(/Math\.Math\./g, 'Math.');
                     return new Function('x', `return ${cleanEq}`)(x);
                 };
             } catch (e) {
@@ -9037,7 +10219,7 @@ if (typeof window !== 'undefined') {
                  * Renders standard mathematical equations onto a Canvas element.
                  * Supports both container-based scaffolding and direct (canvas, equation) plotting.
                  */
-                graph(optionsOrCanvas = {}, equationStr) {
+                graph(optionsOrCanvas = {}, equationStr, config = {}) {
                     const isElement = (x) => {
                         if (!x || typeof x !== 'object') return false;
                         return (typeof Element !== 'undefined' && x instanceof Element) || 
@@ -9051,7 +10233,7 @@ if (typeof window !== 'undefined') {
 
                     if (isElement(optionsOrCanvas) || (typeof optionsOrCanvas === 'string' && typeof document !== 'undefined' && document.querySelector(optionsOrCanvas))) {
                         targetCanvas = typeof optionsOrCanvas === 'string' ? document.querySelector(optionsOrCanvas) : optionsOrCanvas;
-                        drawOptions = typeof equationStr === 'object' ? equationStr : { equation: equationStr };
+                        drawOptions = typeof equationStr === 'object' ? equationStr : { equation: equationStr, ...config };
                         
                         if (targetCanvas) {
                             setTimeout(() => {
@@ -9377,7 +10559,7 @@ input[type="text"]:focus, input[type="email"]:focus, input[type="password"]:focu
     border-radius: var(--papyr-radius, 12px) !important;
 }
 
-/* PAPER ANIMATE CSS */
+/* PAPYR ANIMATE CSS */
 .papyr-animate-base {
     opacity: 0;
     will-change: transform, opacity;
@@ -9773,4 +10955,13 @@ input[type="text"]:focus, input[type="email"]:focus, input[type="password"]:focu
 }
 
 export { papyr, createPapyr };
+export const signal = papyr.signal;
+export const computed = papyr.computed;
+export const watch = papyr.watch;
+export const effect = papyr.effect;
+export const mount = papyr.mount;
+export const route = papyr.route;
+export const page = papyr.page;
+export const theme = papyr.theme;
+export const plugin = papyr.plugin;
 export default papyr;

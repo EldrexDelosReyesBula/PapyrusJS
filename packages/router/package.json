@@ -1,0 +1,23 @@
+{
+  "name": "@eldrex/papyr-router",
+  "version": "3.0.2",
+  "description": "SPA Client-side router for Papyr.js",
+  "main": "dist/papyr-router.js",
+  "module": "dist/papyr-router.esm.js",
+  "files": [
+    "dist/papyr-router.js",
+    "dist/papyr-router.esm.js",
+    "README.md",
+    "LICENSE"
+  ],
+  "peerDependencies": {
+    "@eldrex/papyr": "^3.0.2"
+  },
+  "keywords": [
+    "router",
+    "spa",
+    "papyr"
+  ],
+  "author": "Eldrex Bula & Papyr Contributors",
+  "license": "MIT"
+}

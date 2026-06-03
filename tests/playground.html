@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Papyr 3.0.1 — Premium Feature Playground</title>
+    <!-- Outfit Google Font -->
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <!-- Load Local Compiled Papyr Complete Build -->
+    <script src="../public/papyr-complete.js"></script>
+    <style>
+        :root {
+            --bg-base: #090d16;
+            --primary: #6366f1;
+            --primary-glow: rgba(99, 102, 241, 0.25);
+            --accent: #10b981;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --glass-bg: rgba(255, 255, 255, 0.03);
+            --glass-border: rgba(255, 255, 255, 0.08);
+            --glass-blur: blur(16px);
+        }
+
+        body {
+            background-color: var(--bg-base);
+            color: var(--text-main);
+            font-family: 'Outfit', sans-serif;
+            margin: 0;
+            padding: 0;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+        }
+
+        .glass-shell {
+            width: 100%;
+            max-width: 1200px;
+            min-height: 100vh;
+            border-left: 1px solid var(--glass-border);
+            border-right: 1px solid var(--glass-border);
+            background: radial-gradient(circle at top right, rgba(99, 102, 241, 0.08), transparent 450px),
+                radial-gradient(circle at bottom left, rgba(16, 185, 129, 0.05), transparent 400px);
+            padding: 40px;
+            box-sizing: border-box;
+        }
+
+        .header-section {
+            margin-bottom: 40px;
+            border-bottom: 1px solid var(--glass-border);
+            padding-bottom: 24px;
+        }
+
+        .badge-ver {
+            display: inline-block;
+            background: linear-gradient(135deg, var(--primary), #4f46e5);
+            font-size: 11px;
+            font-weight: 700;
+            padding: 4px 10px;
+            border-radius: 20px;
+            letter-spacing: 0.5px;
+            box-shadow: 0 0 12px var(--primary-glow);
+            margin-left: 8px;
+            vertical-align: middle;
+        }
+
+        .playground-grid {
+            display: grid;
+            grid-template-columns: 280px 1fr;
+            gap: 32px;
+        }
+
+        .sidebar-menu {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .sidebar-btn {
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            color: var(--text-muted);
+            padding: 16px 20px;
+            border-radius: 12px;
+            font-family: inherit;
+            font-weight: 600;
+            font-size: 14px;
+            text-align: left;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .sidebar-btn:hover {
+            border-color: rgba(99, 102, 241, 0.4);
+            color: var(--text-main);
+            transform: translateX(4px);
+        }
+
+        .sidebar-btn.active {
+            background: rgba(99, 102, 241, 0.1);
+            border-color: var(--primary);
+            color: var(--primary);
+            box-shadow: 0 0 16px var(--primary-glow);
+        }
+
+        .main-stage {
+            background: rgba(255, 255, 255, 0.01);
+            border: 1px solid var(--glass-border);
+            border-radius: 20px;
+            padding: 40px;
+            backdrop-filter: var(--glass-blur);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+            box-sizing: border-box;
+        }
+
+        .demo-card {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--glass-border);
+            border-radius: 16px;
+            padding: 24px;
+            margin-bottom: 24px;
+        }
+
+        .demo-card h3 {
+            margin-top: 0;
+            margin-bottom: 12px;
+            font-size: 18px;
+            color: var(--text-main);
+        }
+
+        .demo-card p {
+            margin-top: 0;
+            font-size: 14px;
+            color: var(--text-muted);
+            line-height: 1.5;
+        }
+
+        .btn-premium {
+            background: linear-gradient(135deg, var(--primary), #4f46e5);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-family: inherit;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            box-shadow: 0 4px 12px var(--primary-glow);
+        }
+
+        .btn-premium:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(99, 102, 241, 0.4);
+        }
+
+        .btn-premium:active {
+            transform: translateY(0);
+        }
+
+        /* Styling for custom inputs */
+        .premium-input {
+            width: 100%;
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid var(--glass-border);
+            color: var(--text-main);
+            padding: 12px 16px;
+            border-radius: 8px;
+            font-family: inherit;
+            font-size: 14px;
+            outline: none;
+            box-sizing: border-box;
+            transition: border-color 0.2s;
+            margin-bottom: 12px;
+        }
+
+        .premium-input:focus {
+            border-color: var(--primary);
+        }
+
+        .metric-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            padding: 10px 0;
+            font-size: 14px;
+        }
+
+        .metric-val {
+            font-weight: 600;
+            color: var(--accent);
+        }
+
+        .toast-telemetry {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            z-index: 1000;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="glass-shell">
+        <div class="header-section">
+            <h1 style="margin: 0; font-size: 32px; font-weight: 700; letter-spacing: -0.5px;">
+                Papyr Feature Studio <span class="badge-ver">v3.0.1</span>
+            </h1>
+            <p style="margin: 8px 0 0 0; color: var(--text-muted); font-size: 15px;">
+                Interactive playground to validate layouts, design tokens, security boundaries, and energy systems.
+            </p>
+        </div>
+
+        <div class="playground-grid">
+            <!-- Sidebar Navigation -->
+            <div class="sidebar-menu" id="sidebar-mount"></div>
+
+            <!-- Main Interactive Screen -->
+            <div class="main-stage" id="stage-mount"></div>
+        </div>
+    </div>
+
+    <script>
+        // Ensure Papyr is fully parsed and configured
+        papyr.debug(true);
+
+        // State mapping active viewport screen
+        const activeTab = papyr.state("widgets"); // 'widgets', 'security', 'power', 'continuity'
+
+        // Render Sidebar Navigation Buttons dynamically
+        const Sidebar = papyr.div(".sidebar-menu",
+            [
+                { id: 'widgets', label: '🎨 Design UI Components' },
+                { id: 'security', label: '🛡️ Security Gateways' },
+                { id: 'power', label: '⚡ Energy Monitor 2.0' },
+                { id: 'continuity', label: '💾 Continuity Persistence' }
+            ].map(tab =>
+                papyr.button(".sidebar-btn", {
+                    class: () => `sidebar-btn ${activeTab.value === tab.id ? 'active' : ''}`,
+                    onclick: () => activeTab.value = tab.id
+                }, tab.label)
+            )
+        );
+        papyr.mount("#sidebar-mount", Sidebar);
+
+        // Sub-sections templates
+
+        // Tab A: Widgets Sandbox
+        const renderWidgets = () => {
+            const progressVal = papyr.state(0.4);
+            const stepperStep = papyr.state(1);
+
+            return papyr.div({},
+                papyr.div(".demo-card",
+                    papyr.h3("1. Stepper & Progress Indicators"),
+                    papyr.p("Click to advance stepper status and watch reactive progress change:"),
+                    papyr.stepper(["Design Tokens", "WATT Security", "Energy 2.0", "Release 3.0.1"], stepperStep),
+                    papyr.div({ style: { height: '16px' } }),
+                    papyr.progress(progressVal),
+                    papyr.div({ style: { height: '16px' } }),
+                    papyr.button(".btn-premium", {
+                        onclick: () => {
+                            stepperStep.value = (stepperStep.value % 4) + 1;
+                            progressVal.value = stepperStep.value / 4;
+                        }
+                    }, "Advance Process Step")
+                ),
+                papyr.div(".demo-card",
+                    papyr.h3("2. Accordion Container & Context Menu"),
+                    papyr.p("Verify expandable layout controls and premium tooltips below:"),
+                    papyr.accordion([
+                        { title: "What is the primary role of WATT?", content: "WATT acts as a runtime gatekeeper checking declared plugin permissions and intercepting sensitive browser hardware resources." },
+                        { title: "Does Papyr support IndexedDB transactions?", content: "Yes! Papyr 3.0.1 includes db.transaction(tx) which guarantees atomicity with automatic rollback." }
+                    ]),
+                    papyr.div({ style: { height: '16px' } }),
+                    papyr.div(".flex .gap-4",
+                        papyr.button(".btn-premium", {
+                            id: "tooltip-btn",
+                            onMounted: (el) => {
+                                papyr.tooltip(el, "Awesome glassmorphic tooltip!");
+                            }
+                        }, "Hover for Tooltip")
+                    )
+                )
+            );
+        };
+
+        // Tab B: Security & Object Injection
+        const renderSecurity = () => {
+            const userInput = papyr.state("");
+            const lookupKey = papyr.state("version");
+            const lookupResult = papyr.state("");
+
+            const handleSafeGet = () => {
+                const dummyObj = { title: "Secure Object", version: "3.0.1", sensitiveData: "secret" };
+                try {
+                    const val = papyr.safeGet(dummyObj, lookupKey.value);
+                    lookupResult.value = val === undefined ? "undefined" : String(val);
+                } catch (e) {
+                    lookupResult.value = `Blocked: ${e.message}`;
+                }
+            };
+
+            const triggerWattDialog = () => {
+                // Register a mock plugin to prompt consent dialog
+                const mockPlugin = {
+                    name: 'custom-payment-plugin',
+                    version: '1.0.0',
+                    permissions: ['network', 'storage', 'payments'],
+                    install(kernel) {
+                        console.log("Mock Payment Plugin installed.");
+                    }
+                };
+                papyr.use(mockPlugin);
+            };
+
+            return papyr.div({},
+                papyr.div(".demo-card",
+                    papyr.h3("1. Object Injection Protection"),
+                    papyr.p("Use safeGet helper to intercept prototype pollution attacks (__proto__, constructor):"),
+                    papyr.input("text", {
+                        class: "premium-input",
+                        placeholder: "Enter lookup key (e.g. version, __proto__)...",
+                        ...papyr.model(lookupKey)
+                    }),
+                    papyr.button(".btn-premium", { onclick: handleSafeGet }, "Execute safeGet Query"),
+                    papyr.div({ style: { marginTop: '12px', fontSize: '13px', color: '#10b981', fontWeight: '600' } },
+                        () => `Result: ${lookupResult.value}`
+                    )
+                ),
+                papyr.div(".demo-card",
+                    papyr.h3("2. WATT Permission Dialog Interceptor"),
+                    papyr.p("Clicking the trigger button tries to register a plugin declaring sensitive permissions, triggering WATT approval modal:"),
+                    papyr.button(".btn-premium", { onclick: triggerWattDialog }, "Trigger WATT Permission Consent Modal")
+                )
+            );
+        };
+
+        // Tab C: Energy Engine 2.0
+        const renderPower = () => {
+            const fpsCounter = papyr.state(0);
+
+            // Setup a simple loop that increments frames
+            let frames = 0;
+            let lastTime = performance.now();
+
+            const countLoop = () => {
+                frames++;
+                const time = performance.now();
+                if (time >= lastTime + 1000) {
+                    fpsCounter.value = Math.round((frames * 1000) / (time - lastTime));
+                    frames = 0;
+                    lastTime = time;
+                }
+            };
+
+            // Throttles automatically based on visibility / activity
+            const cleanupThrottle = papyr.power.throttle(countLoop);
+
+            return papyr.div({
+                onUnmounted: () => cleanupThrottle()
+            },
+                papyr.div(".demo-card",
+                    papyr.h3("1. Live Power Metrics"),
+                    papyr.p("Coordinates render speeds and visual pacing to save battery:"),
+                    papyr.div(".metric-row",
+                        papyr.span("Power Saving Level"),
+                        papyr.span(".metric-val", () => papyr.power.state.value.toUpperCase())
+                    ),
+                    papyr.div(".metric-row",
+                        papyr.span("Est. Device Tier"),
+                        papyr.span(".metric-val", () => papyr.power.deviceCapability)
+                    ),
+                    papyr.div(".metric-row",
+                        papyr.span("Target Render FPS"),
+                        papyr.span(".metric-val", () => `${papyr.power.targetFps.value} fps`)
+                    ),
+                    papyr.div(".metric-row",
+                        papyr.span("Reactive Render Loop Speed"),
+                        papyr.span(".metric-val", { style: { color: '#6366f1' } }, () => `${fpsCounter.value} FPS`)
+                    ),
+                    papyr.div(".metric-row",
+                        papyr.span("Adaptive UI Effects Active"),
+                        papyr.span(".metric-val", () => papyr.power.adaptiveEffects.value ? "YES" : "NO (Low Battery/Idle)")
+                    )
+                ),
+                papyr.div(".demo-card",
+                    papyr.h3("2. Simulate User Away State"),
+                    papyr.p("Leave this tab inactive or idle for 10 seconds to watch FPS and target speeds throttle automatically to conserve battery.")
+                )
+            );
+        };
+
+        // Tab D: Continuity & Persistence
+        const renderContinuity = () => {
+            const noteInput = papyr.state("");
+
+            // Restores automatically on mount
+            papyr.continuity.restore({
+                key: 'sandbox_editor_note',
+                target: noteInput
+            });
+
+            // Enables auto saving every 2 seconds
+            papyr.continuity.enable({
+                key: 'sandbox_editor_note',
+                target: noteInput,
+                interval: 2000,
+                onSave: (data) => {
+                    papyr.toast("Autosave: Saved draft successfully", "success", 1500);
+                }
+            });
+
+            return papyr.div({
+                onUnmounted: () => {
+                    papyr.continuity.disable('sandbox_editor_note');
+                }
+            },
+                papyr.div(".demo-card",
+                    papyr.h3("1. Continuity Engine (Autosave drafts)"),
+                    papyr.p("Type in note editor below. Draft is auto-saved locally every 2s and persists after page refreshes or tab reload:"),
+                    papyr.textarea(".premium-input", {
+                        rows: 4,
+                        placeholder: "Start typing notes draft here...",
+                        ...papyr.model(noteInput)
+                    }),
+                    papyr.button(".btn-premium", {
+                        onclick: () => {
+                            papyr.drafts.clear('sandbox_editor_note');
+                            noteInput.value = "";
+                            papyr.toast("Cleared draft cache.", "info");
+                        }
+                    }, "Clear Saved Draft")
+                ),
+                papyr.div(".demo-card",
+                    papyr.h3("2. Transaction Database Rollback"),
+                    papyr.p("Test transactions atomicity. Click to run a database query transaction that triggers an error and verifies rollback:"),
+                    papyr.button(".btn-premium", {
+                        onclick: async () => {
+                            const taskDb = papyr.db("tasks_sandbox_test", "local");
+                            taskDb.clear();
+                            taskDb.insert({ text: "Initial Setup Task" });
+
+                            try {
+                                await taskDb.transaction((tx) => {
+                                    tx.insert({ text: "Valid Task 1" });
+                                    tx.insert({ text: "Valid Task 2" });
+                                    throw new Error("Triggered transaction validation rollback!");
+                                });
+                            } catch (e) {
+                                papyr.toast(`Transaction failure caught and rolled back!`, "warning");
+                            }
+
+                            // Check count (should be 1)
+                            const list = taskDb.list();
+                            if (list.length === 1) {
+                                console.log("Rollback validation verified!");
+                            }
+                        }
+                    }, "Run Failing Transaction")
+                )
+            );
+        };
+
+        // Render main screen component based on reactive state
+        const Stage = papyr.if(
+            activeTab,
+            () => {
+                const screen = activeTab.value;
+                if (screen === 'widgets') return renderWidgets();
+                if (screen === 'security') return renderSecurity();
+                if (screen === 'power') return renderPower();
+                if (screen === 'continuity') return renderContinuity();
+                return papyr.div();
+            },
+            () => papyr.div()
+        );
+
+        papyr.mount("#stage-mount", Stage);
+    </script>
+</body>
+
+</html>

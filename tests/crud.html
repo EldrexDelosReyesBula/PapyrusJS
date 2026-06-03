@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Papyr.js - DB CRUD Test Sandbox</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600&display=swap" rel="stylesheet">
+    <script src="../public/papyr-complete.js"></script>
+    <style>
+        :root {
+            --bg-color: #0b0f19;
+            --surface-color: rgba(255, 255, 255, 0.03);
+            --border-color: rgba(255, 255, 255, 0.08);
+            --primary: #10b981;
+            --primary-hover: #059669;
+            --text-main: #f3f4f6;
+            --text-muted: #9ca3af;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            font-family: 'Outfit', sans-serif;
+            margin: 0;
+            padding: 40px 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            box-sizing: border-box;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 600px;
+            background: var(--surface-color);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 32px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+            backdrop-filter: blur(10px);
+            margin-bottom: 20px;
+        }
+
+        h2 { margin-top: 0; margin-bottom: 8px; font-weight: 600; letter-spacing: -0.5px; }
+        .subtitle { color: var(--text-muted); font-size: 14px; margin-bottom: 24px; }
+        .engine-tabs { display: flex; gap: 8px; margin-bottom: 20px; }
+        .engine-btn { background: none; border: 1px solid var(--border-color); color: var(--text-muted); padding: 8px 16px; border-radius: 8px; cursor: pointer; font-family: inherit; font-size: 14px; transition: all 0.2s; }
+        .engine-btn.active { background: rgba(16, 185, 129, 0.1); color: var(--primary); border-color: rgba(16, 185, 129, 0.2); }
+        .controls { display: flex; gap: 10px; margin-bottom: 20px; }
+        .search-input { flex-grow: 1; background: rgba(0, 0, 0, 0.2); border: 1px solid var(--border-color); color: var(--text-main); padding: 10px 14px; border-radius: 8px; font-family: inherit; font-size: 14px; outline: none; }
+        .btn-action { background: var(--primary); color: white; border: none; padding: 10px 16px; border-radius: 8px; font-family: inherit; font-weight: 600; cursor: pointer; transition: background 0.2s; }
+        .btn-action:hover { background: var(--primary-hover); }
+        .btn-clear { background: #ef4444; }
+        .btn-clear:hover { background: #dc2626; }
+        
+        .data-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 14px; }
+        .data-table th, .data-table td { border: 1px solid var(--border-color); padding: 12px; text-align: left; }
+        .data-table th { background: rgba(255, 255, 255, 0.02); color: var(--text-muted); font-weight: 600; }
+        .data-table tr:hover { background: rgba(255, 255, 255, 0.01); }
+
+        .pagination { display: flex; justify-content: space-between; align-items: center; font-size: 14px; }
+        .pager-btn { background: none; border: 1px solid var(--border-color); color: var(--text-main); padding: 6px 12px; border-radius: 6px; cursor: pointer; font-family: inherit; transition: all 0.2s; }
+        .pager-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+        .logger { width: 100%; max-width: 600px; background: #020617; border: 1px solid var(--border-color); border-radius: 12px; padding: 20px; box-sizing: border-box; }
+        .logger h3 { margin-top: 0; font-size: 14px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px; }
+        .log-terminal { font-family: monospace; font-size: 12px; color: #3b82f6; max-height: 120px; overflow-y: auto; }
+        .log-line { margin-bottom: 4px; }
+    </style>
+</head>
+<body>
+    <div id="crud-app-mount"></div>
+
+    <div class="logger">
+        <h3>Database Transaction Log</h3>
+        <div id="terminal" class="log-terminal">
+            <div class="log-line">[PapyrDB] Repository sandbox loaded.</div>
+        </div>
+    </div>
+
+    <script>
+        const logTerminal = document.getElementById("terminal");
+        const log = (...args) => {
+            const time = new Date().toLocaleTimeString();
+            const formatted = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : arg).join(" ");
+            const line = document.createElement("div");
+            line.className = "log-line";
+            line.textContent = `[${time}] ${formatted}`;
+            logTerminal.appendChild(line);
+            logTerminal.scrollTop = logTerminal.scrollHeight;
+        };
+
+        // 1. Initial State Settings
+        let activeEngine = papyr.state("local"); // 'local', 'session', 'indexeddb'
+        let searchQuery = papyr.state("");
+        let currentPage = papyr.state(0);
+        const limit = 3;
+
+        // Dynamic DB handler store
+        let currentStore = papyr.state(null);
+
+        // Seed random name generator
+        const names = ["Alice B.", "Bob K.", "Charlie P.", "Diana M.", "Ethan R.", "Fiona W.", "George V."];
+        const roles = ["Architect", "Developer", "Designer", "Scrum Master", "Director"];
+
+        // 2. Load DB dynamically when engine changes
+        papyr.watch(activeEngine, (engine) => {
+            log(`Loading DB driver: [${engine}]`);
+            const db = papyr.db("sandbox_records", engine);
+            currentStore.value = db;
+            currentPage.value = 0;
+
+            // Load and log data
+            setTimeout(async () => {
+                const list = await db.listAsync();
+                log(`Loaded ${list.length} records from ${engine} storage.`);
+                if (list.length === 0) {
+                    log("Store is empty. Click 'Add Record' to seed.");
+                }
+            }, 50);
+        });
+
+        // 3. Actions
+        const addRecord = async () => {
+            const db = currentStore.value;
+            if (!db) return;
+            const randomName = names[Math.floor(Math.random() * names.length)];
+            const randomRole = roles[Math.floor(Math.random() * roles.length)];
+            const randomSalary = Math.floor(Math.random() * 50 + 50) * 1000;
+
+            let start = performance.now();
+            const record = await db.insertAsync({ name: randomName, role: randomRole, salary: randomSalary });
+            let end = performance.now();
+
+            log(`INSERT success (ID: ${record.id}) in ${(end - start).toFixed(2)}ms`);
+        };
+
+        const deleteRecord = async (id) => {
+            const db = currentStore.value;
+            if (!db) return;
+            let start = performance.now();
+            await db.deleteAsync(id);
+            let end = performance.now();
+            log(`DELETE success (ID: ${id}) in ${(end - start).toFixed(2)}ms`);
+        };
+
+        const clearAll = async () => {
+            const db = currentStore.value;
+            if (!db) return;
+            await db.clearAsync();
+            log("Database purged completely.");
+        };
+
+        // Reset page on search input
+        papyr.watch(searchInput = searchQuery, () => {
+            currentPage.value = 0;
+        });
+
+        // 4. Computed Listing Pipeline
+        let resultsCount = papyr.state(0);
+
+        let filteredItems = papyr.computed(() => {
+            const db = currentStore.value;
+            if (!db) return [];
+            
+            // Read state array dependency
+            let all = db.state.value;
+            
+            // Apply text filter
+            let filtered = all.filter(item => 
+                item.name.toLowerCase().includes(searchQuery.value.toLowerCase()) ||
+                item.role.toLowerCase().includes(searchQuery.value.toLowerCase())
+            );
+
+            resultsCount.value = filtered.length;
+
+            // Pagination slice
+            let offset = currentPage.value * limit;
+            return filtered.slice(offset, offset + limit);
+        });
+
+        let totalPages = papyr.computed(() => Math.ceil(resultsCount.value / limit));
+
+        // 5. Scaffold UI
+        let UI = papyr.div(".container",
+            papyr.h2("💾 Unified DB Sandbox"),
+            papyr.div(".subtitle", "Validate multi-engine operations, queries, and pagination indexes."),
+
+            // Engine Tabs row
+            papyr.div(".engine-tabs",
+                ['local', 'session', 'indexeddb'].map(engine => 
+                    papyr.button(engine.toUpperCase(), {
+                        class: () => `engine-btn ${activeEngine.value === engine ? 'active' : ''}`,
+                        onclick: () => activeEngine.value = engine
+                    })
+                )
+            ),
+
+            // Controls row
+            papyr.div(".controls",
+                papyr.input("text", {
+                    class: "search-input",
+                    placeholder: "Filter by name or role...",
+                    ...papyr.model(searchQuery)
+                }),
+                papyr.button("Add Record", { class: "btn-action", onclick: addRecord }),
+                papyr.button("Clear", { class: "btn-action btn-clear", onclick: clearAll })
+            ),
+
+            // Data Table
+            papyr.table(".data-table",
+                papyr.thead(
+                    papyr.tr(
+                        papyr.th("ID"),
+                        papyr.th("Name"),
+                        papyr.th("Role"),
+                        papyr.th("Action")
+                    )
+                ),
+                papyr.tbody(
+                    papyr.for(filteredItems, (item) => 
+                        papyr.tr(
+                            papyr.td({ style: { fontFamily: 'monospace', fontSize: '12px', color: 'var(--text-muted)' } }, item.id),
+                            papyr.td(item.name),
+                            papyr.td(item.role),
+                            papyr.td(
+                                papyr.button("Purge", {
+                                    style: { background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer' },
+                                    onclick: () => deleteRecord(item.id)
+                                })
+                            )
+                        )
+                    )
+                )
+            ),
+
+            // Pagers Row
+            papyr.div(".pagination",
+                papyr.button("◀ Previous", {
+                    class: "pager-btn",
+                    disabled: () => currentPage.value === 0,
+                    onclick: () => currentPage.value = Math.max(0, currentPage.value - 1)
+                }),
+                papyr.span(() => `Page ${currentPage.value + 1} of ${totalPages.value || 1}`),
+                papyr.button("Next ▶", {
+                    class: "pager-btn",
+                    disabled: () => currentPage.value >= totalPages.value - 1,
+                    onclick: () => currentPage.value = Math.min(totalPages.value - 1, currentPage.value + 1)
+                })
+            )
+        );
+
+        papyr.mount("#crud-app-mount", UI);
+    </script>
+</body>
+</html>

@@ -21,6 +21,44 @@
         }, ...args);
     };
 
+    papyr.autoFlex = (container, options = {}) => {
+        if (!container || typeof window === 'undefined') return container;
+        const breakpoint = options.breakpoint || 768;
+        const rowClass = options.rowClass || 'flex-row';
+        const colClass = options.colClass || 'flex-col';
+
+        const updateLayout = (width) => {
+            if (width < breakpoint) {
+                container.classList.remove(rowClass);
+                container.classList.add(colClass);
+                container.style.flexDirection = 'column';
+            } else {
+                container.classList.remove(colClass);
+                container.classList.add(rowClass);
+                container.style.flexDirection = 'row';
+            }
+        };
+
+        if (typeof ResizeObserver !== 'undefined') {
+            const observer = new ResizeObserver((entries) => {
+                for (let entry of entries) {
+                    updateLayout(entry.contentRect.width || entry.target.clientWidth);
+                }
+            });
+            observer.observe(container);
+            if (!container._cleanups) container._cleanups = [];
+            container._cleanups.push(() => observer.disconnect());
+        } else {
+            const handler = () => updateLayout(window.innerWidth);
+            window.addEventListener('resize', handler);
+            handler();
+            if (!container._cleanups) container._cleanups = [];
+            container._cleanups.push(() => window.removeEventListener('resize', handler));
+        }
+
+        return container;
+    };
+
     papyr.layout = {
         /**
          * Responsive Flex Container
@@ -101,6 +139,57 @@
                     width: '100%'
                 }
             }, ...children);
+        },
+
+        mobile(options = {}, ...children) {
+            const { header = null, nav = null } = options;
+            return papyr.div({
+                class: 'papyr-layout-mobile',
+                style: {
+                    display: 'flex',
+                    flexDirection: 'column',
+                    minHeight: '100vh',
+                    width: '100%',
+                    background: '#070913'
+                }
+            },
+                header ? papyr('header', { style: { padding: '16px', borderBottom: '1px solid rgba(255,255,255,0.08)', background: 'rgba(16,22,42,0.8)' } }, header) : null,
+                papyr('main', { style: { flexGrow: 1, padding: '16px', overflowY: 'auto' } }, ...children),
+                nav ? papyr('nav', { style: { padding: '12px', borderTop: '1px solid rgba(255,255,255,0.08)', background: 'rgba(16,22,42,0.9)', display: 'flex', justifyContent: 'space-around' } }, nav) : null
+            );
+        },
+
+        tablet(options = {}, ...children) {
+            const { sidebar = null } = options;
+            return papyr.div({
+                class: 'papyr-layout-tablet',
+                style: {
+                    display: 'flex',
+                    minHeight: '100vh',
+                    width: '100%',
+                    background: '#070913'
+                }
+            },
+                sidebar ? papyr('aside', { style: { width: '80px', borderRight: '1px solid rgba(255,255,255,0.08)', background: 'rgba(11,16,36,0.95)', display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '20px 0', gap: '20px' } }, sidebar) : null,
+                papyr('main', { style: { flexGrow: 1, padding: '24px', overflowY: 'auto' } }, ...children)
+            );
+        },
+
+        desktop(options = {}, ...children) {
+            const { sidebar = null, inspector = null, sidebarWidth = '250px', inspectorWidth = '300px' } = options;
+            return papyr.div({
+                class: 'papyr-layout-desktop',
+                style: {
+                    display: 'flex',
+                    minHeight: '100vh',
+                    width: '100%',
+                    background: '#070913'
+                }
+            },
+                sidebar ? papyr('aside', { style: { width: sidebarWidth, borderRight: '1px solid rgba(255,255,255,0.08)', background: 'rgba(11,16,36,0.95)', overflowY: 'auto' } }, sidebar) : null,
+                papyr('main', { style: { flexGrow: 1, padding: '24px', overflowY: 'auto' } }, ...children),
+                inspector ? papyr('aside', { style: { width: inspectorWidth, borderLeft: '1px solid rgba(255,255,255,0.08)', background: 'rgba(11,16,36,0.95)', overflowY: 'auto' } }, inspector) : null
+            );
         },
 
         /**

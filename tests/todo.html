@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Papyr.js - Todo Test Sandbox</title>
+    <!-- Outfit Font -->
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600&display=swap" rel="stylesheet">
+    <!-- Load Local Compiled Papyr Complete Build -->
+    <script src="../public/papyr-complete.js"></script>
+    <style>
+        :root {
+            --bg-color: #0b0f19;
+            --surface-color: rgba(255, 255, 255, 0.03);
+            --border-color: rgba(255, 255, 255, 0.08);
+            --primary: #6366f1;
+            --primary-hover: #4f46e5;
+            --text-main: #f3f4f6;
+            --text-muted: #9ca3af;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            font-family: 'Outfit', sans-serif;
+            margin: 0;
+            padding: 40px 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            box-sizing: border-box;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 480px;
+            background: var(--surface-color);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 32px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+            backdrop-filter: blur(10px);
+            margin-bottom: 20px;
+        }
+
+        h2 {
+            margin-top: 0;
+            margin-bottom: 8px;
+            font-weight: 600;
+            letter-spacing: -0.5px;
+        }
+
+        .subtitle {
+            color: var(--text-muted);
+            font-size: 14px;
+            margin-bottom: 24px;
+        }
+
+        .input-row {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .input-task {
+            flex-grow: 1;
+            background: rgba(0, 0, 0, 0.2);
+            border: 1px solid var(--border-color);
+            color: var(--text-main);
+            padding: 12px 16px;
+            border-radius: 8px;
+            font-family: inherit;
+            font-size: 15px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        .input-task:focus {
+            border-color: var(--primary);
+        }
+
+        .btn-add {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 8px;
+            font-family: inherit;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .btn-add:hover {
+            background: var(--primary-hover);
+        }
+
+        .tabs {
+            display: flex;
+            gap: 6px;
+            margin-bottom: 20px;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 12px;
+        }
+
+        .tab-btn {
+            background: none;
+            border: 1px solid transparent;
+            color: var(--text-muted);
+            padding: 6px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 13px;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+
+        .tab-btn.active {
+            background: rgba(99, 102, 241, 0.1);
+            color: var(--primary);
+            border-color: rgba(99, 102, 241, 0.2);
+        }
+
+        .task-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .task-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: rgba(255, 255, 255, 0.01);
+            border: 1px solid var(--border-color);
+            padding: 12px 16px;
+            border-radius: 8px;
+            transition: background 0.2s;
+        }
+
+        .task-item.completed span {
+            text-decoration: line-through;
+            color: var(--text-muted);
+        }
+
+        .checkbox-container {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            cursor: pointer;
+        }
+
+        .btn-delete {
+            background: none;
+            border: none;
+            color: #ef4444;
+            cursor: pointer;
+            font-size: 16px;
+            padding: 4px;
+            border-radius: 4px;
+            transition: background 0.2s;
+        }
+
+        .btn-delete:hover {
+            background: rgba(239, 68, 68, 0.1);
+        }
+
+        .logger {
+            width: 100%;
+            max-width: 480px;
+            background: #020617;
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+
+        .logger h3 {
+            margin-top: 0;
+            font-size: 14px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 12px;
+        }
+
+        .log-terminal {
+            font-family: monospace;
+            font-size: 12px;
+            color: #10b981;
+            max-height: 120px;
+            overflow-y: auto;
+        }
+
+        .log-line {
+            margin-bottom: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div id="todo-app-mount"></div>
+
+    <div class="logger">
+        <h3>Console Telemetry Log</h3>
+        <div id="terminal" class="log-terminal">
+            <div class="log-line">[Papyr] Sandbox initialized. Listening to updates...</div>
+        </div>
+    </div>
+
+    <script>
+        // Custom Logger Hook
+        const logTerminal = document.getElementById("terminal");
+        const log = (...args) => {
+            const time = new Date().toLocaleTimeString();
+            const formatted = args.map(arg => {
+                if (arg && typeof arg.subscribe === 'function') {
+                    return `State(${JSON.stringify(arg.value)})`;
+                }
+                return typeof arg === 'object' ? JSON.stringify(arg) : arg;
+            }).join(" ");
+            
+            const line = document.createElement("div");
+            line.className = "log-line";
+            line.textContent = `[${time}] ${formatted}`;
+            logTerminal.appendChild(line);
+            logTerminal.scrollTop = logTerminal.scrollHeight;
+            console.log('[Papyr]', ...args);
+        };
+
+        // Enable debug mode
+        papyr.debug(true);
+
+        // 1. Initial State Model
+        let inputState = papyr.state("");
+        let currentFilter = papyr.state("all"); // 'all', 'active', 'completed'
+        let tasks = papyr.state([
+            { id: "1", text: "Test core reactivity proxy model", done: false },
+            { id: "2", text: "Create local sandbox suites", done: true }
+        ]);
+
+        // Watch state mutations
+        papyr.watch(tasks, (newVal) => {
+            log("Tasks list mutated:", newVal.length, "items total.");
+        });
+
+        // 2. Action Handlers
+        const handleAddTask = () => {
+            if (!inputState.value.trim()) return;
+            tasks.value = [
+                ...tasks.value,
+                { id: Date.now().toString(36), text: inputState.value.trim(), done: false }
+            ];
+            log("Added task:", inputState.value);
+            inputState.value = "";
+        };
+
+        const handleToggle = (id) => {
+            tasks.value = tasks.value.map(t => {
+                if (t.id === id) {
+                    log(`Toggled status for ID ${id} to ${!t.done}`);
+                    return { ...t, done: !t.done };
+                }
+                return t;
+            });
+        };
+
+        const handleDelete = (id) => {
+            log("Deleted task ID:", id);
+            tasks.value = tasks.value.filter(t => t.id !== id);
+        };
+
+        // 3. Computed derived list
+        let filteredTasks = papyr.computed(() => {
+            let filter = currentFilter.value;
+            let list = tasks.value;
+            if (filter === "active") return list.filter(t => !t.done);
+            if (filter === "completed") return list.filter(t => t.done);
+            return list;
+        });
+
+        let remainingCount = papyr.computed(() => {
+            return tasks.value.filter(t => !t.done).length;
+        });
+
+        // 4. Scaffolding UI Template
+        let UI = papyr.div(".container",
+            papyr.h2("📝 Todo Sandbox"),
+            papyr.div(".subtitle", () => `Reactivity validation workspace — ${remainingCount.value} remaining`),
+
+            // Input fields row
+            papyr.div(".input-row",
+                papyr.input("text", {
+                    class: "input-task",
+                    placeholder: "Task description...",
+                    ...papyr.model(inputState),
+                    onkeypress: (e) => { if (e.key === 'Enter') handleAddTask(); }
+                }),
+                papyr.button("Add", { class: "btn-add", onclick: handleAddTask })
+            ),
+
+            // Tab Filters
+            papyr.div(".tabs",
+                ['all', 'active', 'completed'].map(f => 
+                    papyr.button(f.toUpperCase(), {
+                        class: () => `tab-btn ${currentFilter.value === f ? 'active' : ''}`,
+                        onclick: () => {
+                            log("Filter changed to:", f);
+                            currentFilter.value = f;
+                        }
+                    })
+                )
+            ),
+
+            // Tasks List
+            papyr.ul(".task-list",
+                papyr.for(filteredTasks, (task) => 
+                    papyr.li({ class: () => `task-item ${task.done ? 'completed' : ''}` },
+                        papyr.label(".checkbox-container",
+                            papyr.input("checkbox", {
+                                checked: () => task.done,
+                                onchange: () => handleToggle(task.id)
+                            }),
+                            papyr.span(task.text)
+                        ),
+                        papyr.button("✕", { class: "btn-delete", onclick: () => handleDelete(task.id) })
+                    )
+                )
+            )
+        );
+
+        papyr.mount("#todo-app-mount", UI);
+    </script>
+</body>
+</html>

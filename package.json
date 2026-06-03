@@ -1,22 +1,10 @@
 {
-  "name": "papyr-js",
-  "version": "3.0.0",
-  "description": "Ultra-lightweight static site compiler library with built-in automatic reactivity, SPA router, custom ciphers, and IndexedDB CRUD engine.",
-  "main": "public/papyr.js",
-  "module": "public/papyr.esm.js",
-  "types": "public/papyr.d.ts",
-  "files": [
-    "public/papyr.js",
-    "public/papyr-complete.js",
-    "public/papyr-core.js",
-    "public/papyr-ui.js",
-    "public/papyr-advanced.js",
-    "public/papyr.esm.js",
-    "public/papyr-complete.esm.js",
-    "public/papyr-plugins.js",
-    "public/papyr.d.ts",
-    "README.md",
-    "DOCS.md"
+  "name": "papyr-monorepo",
+  "version": "3.0.2",
+  "private": true,
+  "description": "Monorepo workspace for Papyr.js library and modules.",
+  "workspaces": [
+    "packages/*"
   ],
   "scripts": {
     "build": "node build.js",
