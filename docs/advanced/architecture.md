@@ -1,8 +1,8 @@
-# Monorepo Architecture & Builds
+# Architecture & Builds
 
 Papyr.js is managed as a monorepo workspace. This allows publishing the core framework alongside modular subpackages.
 
-The monorepo configuration is defined in the root [package.json](file:///c:/Users/Eldrex/Downloads/Papyr.js-main/Papyr.js-main/package.json) and built using the compiler script [build.js](file:///c:/Users/Eldrex/Downloads/Papyr.js-main/Papyr.js-main/build.js).
+The papyr configuration is defined in the root [package.json](package.json) and built using the compiler script [build.js](build.js).
 
 ---
 
