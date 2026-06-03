@@ -107,5 +107,5 @@ Open `index.html` directly in your browser. Click the button, and watch the coun
 ## Next Steps
 
 Now that you have built your first app:
-- Check out [State Management](file:///c:/Users/Eldrex/Downloads/Papyr.js-main/Papyr.js-main/docs/intermediate/state.md) to understand Signals, Computeds, and Watchers.
-- Learn about client-side [SPA Routing](file:///c:/Users/Eldrex/Downloads/Papyr.js-main/Papyr.js-main/docs/intermediate/routing.md) using clean URLs.
+- Check out [State Management](https://github.com/EldrexDelosReyesBula/PapyrusJS/blob/main/docs/intermediate/state.md) to understand Signals, Computeds, and Watchers.
+- Learn about client-side [SPA Routing](https://github.com/EldrexDelosReyesBula/PapyrusJS/blob/main/docs/intermediate/routing.md) using clean URLs.

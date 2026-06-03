@@ -69,21 +69,21 @@ When a state's `.value` mutations occur, the Papyr Runtime Engine executes targe
 
 Explore the official documentation:
 
-* 🚀 [Getting Started](file:///c:/Users/Eldrex/Downloads/Papyr.js-main/Papyr.js-main/docs/getting-started.md)
-* 🧠 [The Papyr Way](file:///c:/Users/Eldrex/Downloads/Papyr.js-main/Papyr.js-main/docs/papyr-way.md)
-* 📦 [Core Concepts](file:///c:/Users/Eldrex/Downloads/Papyr.js-main/Papyr.js-main/docs/core-concepts.md)
-* 📖 [Master API Reference](file:///c:/Users/Eldrex/Downloads/Papyr.js-main/Papyr.js-main/docs/api/)
-* 🍔 [Practical Recipes](file:///c:/Users/Eldrex/Downloads/Papyr.js-main/Papyr.js-main/docs/recipes/)
-* 🛡️ [Security & WATT](file:///c:/Users/Eldrex/Downloads/Papyr.js-main/Papyr.js-main/docs/guides/security.md)
+* 🚀 [Getting Started](https://github.com/EldrexDelosReyesBula/PapyrusJS/blob/main/docs/getting-started.md)
+* 🧠 [The Papyr Way](https://github.com/EldrexDelosReyesBula/PapyrusJS/blob/main/docs/papyr-way.md)
+* 📦 [Core Concepts](https://github.com/EldrexDelosReyesBula/PapyrusJS/blob/main/docs/core-concepts.md)
+* 📖 [Master API Reference](https://github.com/EldrexDelosReyesBula/PapyrusJS/blob/main/docs/api/)
+* 🍔 [Practical Recipes](https://github.com/EldrexDelosReyesBula/PapyrusJS/blob/main/docs/recipes/)
+* 🛡️ [Security & WATT](https://github.com/EldrexDelosReyesBula/PapyrusJS/blob/main/docs/guides/security.md)
 ---
 
 ## 🧪 Interactive Demos
 
 Run and inspect the interactive test suites inside the browser:
-* 📝 [Interactive Todo Checklist](file:///c:/Users/Eldrex/Downloads/Papyr.js-main/Papyr.js-main/tests/todo.html)
-* 💾 [Multi-Engine CRUD Database Sandbox](file:///c:/Users/Eldrex/Downloads/Papyr.js-main/Papyr.js-main/tests/crud.html)
-* 🎬 [Touch Gestures & Spring Physics Sandbox](file:///c:/Users/Eldrex/Downloads/Papyr.js-main/Papyr.js-main/tests/animation.html)
-* 📈 [Canvas Formula Graphing Plotter](file:///c:/Users/Eldrex/Downloads/Papyr.js-main/Papyr.js-main/tests/charts.html)
+* 📝 [Interactive Todo Checklist](https://github.com/EldrexDelosReyesBula/PapyrusJS/blob/main/tests/todo.html)
+* 💾 [Multi-Engine CRUD Database Sandbox](https://github.com/EldrexDelosReyesBula/PapyrusJS/blob/main/tests/crud.html)
+* 🎬 [Touch Gestures & Spring Physics Sandbox](https://github.com/EldrexDelosReyesBula/PapyrusJS/blob/main/tests/animation.html)
+* 📈 [Canvas Formula Graphing Plotter](https://github.com/EldrexDelosReyesBula/PapyrusJS/blob/main/tests/charts.html)
 ---
 
 ## ⚙️ Installation
@@ -106,4 +106,4 @@ import { papyr } from '@eldrex/papyr';
 ---
 
 ## 📄 License
-Papyr.js is distributed under the [MIT License](file:///c:/Users/Eldrex/Downloads/Papyr.js-main/Papyr.js-main/LICENSE).
+Papyr.js is distributed under the [MIT License](https://github.com/EldrexDelosReyesBula/PapyrusJS/blob/main/LICENSE).

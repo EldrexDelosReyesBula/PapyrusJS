@@ -2,7 +2,7 @@
 
 Papyr takes application security and privacy seriously. It includes a built-in **Web Access Transparency Toolkit (WATT)** system, a security module for cryptographic vault storage, and cross-site scripting (XSS) sanitation.
 
-The WATT source code is located at [watt.js](file:///c:/Users/Eldrex/Downloads/Papyr.js-main/Papyr.js-main/src/plugins/watt.js).
+The WATT source code is located at [watt.js](https://github.com/EldrexDelosReyesBula/PapyrusJS/blob/main/src/plugins/watt.js).
 
 ---
 
@@ -62,4 +62,4 @@ const decrypted = await papyr.storage.secureGetAsync("vault_key", password);
 console.log(decrypted.jwt); // "123-secret"
 ```
 
-The underlying cryptography operations are detailed in [security.js](file:///c:/Users/Eldrex/Downloads/Papyr.js-main/Papyr.js-main/src/core/security.js).
+The underlying cryptography operations are detailed in [security.js](https://github.com/EldrexDelosReyesBula/PapyrusJS/blob/main/src/core/security.js).

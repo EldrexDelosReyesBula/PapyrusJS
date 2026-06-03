@@ -19,10 +19,10 @@ node build.js
 
 The `tests/` directory contains interactive, browser-based sandboxes that serve as functional integration tests. You can open these files directly in your web browser:
 
-*   **[todo.html](file:///c:/Users/Eldrex/Downloads/Papyr.js-main/Papyr.js-main/tests/todo.html):** Verifies reactive lists, state bindings, cleanups, and task toggles.
-*   **[crud.html](file:///c:/Users/Eldrex/Downloads/Papyr.js-main/Papyr.js-main/tests/crud.html):** Asserts local, session, and async IndexedDB storage reads/writes.
-*   **[animation.html](file:///c:/Users/Eldrex/Downloads/Papyr.js-main/Papyr.js-main/tests/animation.html):** Validates touch gesture tracking, spring animation properties, and physics ticks.
-*   **[charts.html](file:///c:/Users/Eldrex/Downloads/Papyr.js-main/Papyr.js-main/tests/charts.html):** Verifies rendering of canvas formulas and dynamic plotting nodes.
+*   **[todo.html](https://github.com/EldrexDelosReyesBula/PapyrusJS/blob/main/tests/todo.html):** Verifies reactive lists, state bindings, cleanups, and task toggles.
+*   **[crud.html](https://github.com/EldrexDelosReyesBula/PapyrusJS/blob/main/tests/crud.html):** Asserts local, session, and async IndexedDB storage reads/writes.
+*   **[animation.html](https://github.com/EldrexDelosReyesBula/PapyrusJS/blob/main/tests/animation.html):** Validates touch gesture tracking, spring animation properties, and physics ticks.
+*   **[charts.html](https://github.com/EldrexDelosReyesBula/PapyrusJS/blob/main/tests/charts.html):** Verifies rendering of canvas formulas and dynamic plotting nodes.
 
 ---
 

@@ -4,7 +4,7 @@ Papyr features two client-side single page application (SPA) routing systems nat
 1.  **Clean URL System (`papyr.page`)**: Standard HTML5 History routing (`/about`, `/user/:id`) with auto link-interception.
 2.  **Hash Routing System (`papyr.route`)**: Classic hash-based routing (`#/about`, `#/user/:id`) useful for static CDN hosts without rewrite capabilities.
 
-You can inspect the router engine implementation at [router.js](file:///c:/Users/Eldrex/Downloads/Papyr.js-main/Papyr.js-main/src/core/router.js).
+You can inspect the router engine implementation at [router.js](https://github.com/EldrexDelosReyesBula/PapyrusJS/blob/main/src/core/router.js).
 
 ---
 
@@ -91,7 +91,7 @@ papyr.mount("#app", shell);
 
 When deploying an app using clean HTML5 URLs (`papyr.page`), the server must rewrite all page requests to `index.html`. 
 
-For example, on Vercel, deploy with a [vercel.json](file:///c:/Users/Eldrex/Downloads/Papyr.js-main/Papyr.js-main/vercel.json):
+For example, on Vercel, deploy with a [vercel.json](https://github.com/EldrexDelosReyesBula/PapyrusJS/blob/main/vercel.json):
 ```json
 {
   "rewrites": [

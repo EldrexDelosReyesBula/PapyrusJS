@@ -22,7 +22,7 @@ This document serves as the master specification for typography, layout orchestr
 Papyr uses a carefully curated, modern dark/glassmorphic default palette based on slate and indigo colors. It avoids flat browser defaults in favor of premium, high-contrast HSL shades.
 
 ### Default Style Tokens
-These custom properties are defined globally on `:root` inside [complete.css](file:///c:/Users/Eldrex/Downloads/Papyr.js-main/Papyr.js-main/src/styles/complete.css#L1-L15):
+These custom properties are defined globally on `:root` inside [complete.css](https://github.com/EldrexDelosReyesBula/PapyrusJS/blob/main/src/styles/complete.css#L1-L15):
 
 | Variable | Default Value | Description |
 |---|---|---|

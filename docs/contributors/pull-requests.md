@@ -26,7 +26,7 @@ node build.js
 ```
 
 ### B. Validate Type Declarations
-If you modified any public APIs, ensure that you update the TypeScript definitions in [papyr.d.ts](file:///c:/Users/Eldrex/Downloads/Papyr.js-main/Papyr.js-main/public/papyr.d.ts).
+If you modified any public APIs, ensure that you update the TypeScript definitions in [papyr.d.ts](https://github.com/EldrexDelosReyesBula/PapyrusJS/blob/main/public/papyr.d.ts).
 
 ### C. Verify Interactive Tests
 Ensure there are no regressions. Open the relevant files in the `tests/` directory to verify reactivity, routing, and animation pipelines still function correctly.

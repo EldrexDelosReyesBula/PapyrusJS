@@ -2,7 +2,7 @@
 
 Papyr.js features a modular kernel architecture. Developers can extend core behaviors by registering custom plugins.
 
-You can inspect the `PluginSystem` registry inside [papyr-core.js](file:///c:/Users/Eldrex/Downloads/Papyr.js-main/Papyr.js-main/src/core/papyr-core.js#L345-L380), and the native kernel adapters at [kernel-plugins.js](file:///c:/Users/Eldrex/Downloads/Papyr.js-main/Papyr.js-main/src/plugins/kernel-plugins.js).
+You can inspect the `PluginSystem` registry inside [papyr-core.js](https://github.com/EldrexDelosReyesBula/PapyrusJS/blob/main/src/core/papyr-core.js#L345-L380), and the native kernel adapters at [kernel-plugins.js](https://github.com/EldrexDelosReyesBula/PapyrusJS/blob/main/src/plugins/kernel-plugins.js).
 
 ---
 

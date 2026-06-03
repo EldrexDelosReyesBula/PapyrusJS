@@ -6,10 +6,10 @@ This directory lists interactive test suites and sandboxes that you can run in y
 
 | Test Suite File | Subsystem Under Test | Key Conceptual Target |
 | :--- | :--- | :--- |
-| 📝 [todo.html](file:///c:/Users/Eldrex/Downloads/Papyr.js-main/Papyr.js-main/tests/todo.html) | Reactivity & DOM | Two-way data models, state arrays, and list reconciliation filters. |
-| 💾 [crud.html](file:///c:/Users/Eldrex/Downloads/Papyr.js-main/Papyr.js-main/tests/crud.html) | Unified Databases | IndexedDB collections, LocalStorage synchronizations, sorting, and pagination. |
-| 🎬 [animation.html](file:///c:/Users/Eldrex/Downloads/Papyr.js-main/Papyr.js-main/tests/animation.html) | Transitions & Physics | Spring dynamics (`tension`, `friction`), drag gestures, and opacity fades. |
-| 📈 [charts.html](file:///c:/Users/Eldrex/Downloads/Papyr.js-main/Papyr.js-main/tests/charts.html) | Canvas & Science | 2D formula graphing coordinates, statistical bar/line diagrams, and math calculators. |
+| 📝 [todo.html](https://github.com/EldrexDelosReyesBula/PapyrusJS/blob/main/tests/todo.html) | Reactivity & DOM | Two-way data models, state arrays, and list reconciliation filters. |
+| 💾 [crud.html](https://github.com/EldrexDelosReyesBula/PapyrusJS/blob/main/tests/crud.html) | Unified Databases | IndexedDB collections, LocalStorage synchronizations, sorting, and pagination. |
+| 🎬 [animation.html](https://github.com/EldrexDelosReyesBula/PapyrusJS/blob/main/tests/animation.html) | Transitions & Physics | Spring dynamics (`tension`, `friction`), drag gestures, and opacity fades. |
+| 📈 [charts.html](https://github.com/EldrexDelosReyesBula/PapyrusJS/blob/main/tests/charts.html) | Canvas & Science | 2D formula graphing coordinates, statistical bar/line diagrams, and math calculators. |
 
 ---
 

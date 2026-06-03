@@ -2,7 +2,7 @@
 
 To maintain code quality, security, and visual consistency across the Papyr.js ecosystem, all contributions must adhere to the standards outlined below.
 
-Please read the root [CONTRIBUTING.md](file:///c:/Users/Eldrex/Downloads/Papyr.js-main/Papyr.js-main/CONTRIBUTING.md) for background details.
+Please read the root [CONTRIBUTING.md](https://github.com/EldrexDelosReyesBula/PapyrusJS/blob/main/CONTRIBUTING.md) for background details.
 
 ---
 
@@ -11,7 +11,7 @@ Please read the root [CONTRIBUTING.md](file:///c:/Users/Eldrex/Downloads/Papyr.j
 Papyr prioritizes secure-by-default rendering.
 -   **No Direct `innerHTML`:** Avoid setting `innerHTML` directly on DOM nodes unless it is in the standalone SSR package or has been run through `papyr.security.sanitize()`.
 -   **Text Node Binding:** Functional element builders (e.g., `papyr.div(text)`) automatically append text as safe text nodes. When handling untrusted user input, keep it bound inside variables or wrap it in a sanitizer.
--   **Sanitization:** Run user-provided raw markup through the security API, located in [security.js](file:///c:/Users/Eldrex/Downloads/Papyr.js-main/Papyr.js-main/src/core/security.js):
+-   **Sanitization:** Run user-provided raw markup through the security API, located in [security.js](https://github.com/EldrexDelosReyesBula/PapyrusJS/blob/main/src/core/security.js):
     ```javascript
     const cleanHTML = papyr.security.sanitize(userInput);
     ```

@@ -2,7 +2,7 @@
 
 Papyr.js relies on a granular, dependency-tracking reactivity engine that bypasses the Virtual DOM. Updates are executed directly on the affected DOM elements.
 
-The full source code of the reactivity system is located at [reactivity.js](file:///c:/Users/Eldrex/Downloads/Papyr.js-main/Papyr.js-main/src/core/reactivity.js).
+The full source code of the reactivity system is located at [reactivity.js](https://github.com/EldrexDelosReyesBula/PapyrusJS/blob/main/src/core/reactivity.js).
 
 ---
 

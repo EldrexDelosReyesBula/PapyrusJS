@@ -65,10 +65,10 @@ Papyr 3.0.1 introduces modular subpackages that you can install as needed:
 
 Papyr ship with comprehensive TypeScript typings. If you are using VS Code or any modern IDE, IntelliSense autocompletes automatically.
 
-You can inspect the full typing signatures in [papyr.d.ts](file:///c:/Users/Eldrex/Downloads/Papyr.js-main/Papyr.js-main/public/papyr.d.ts).
+You can inspect the full typing signatures in [papyr.d.ts](https://github.com/EldrexDelosReyesBula/PapyrusJS/blob/main/public/papyr.d.ts).
 
 ---
 
 ## Next Steps
 
-Now that you've installed Papyr, let's build your very first app! Head over to the [First App Guide](file:///c:/Users/Eldrex/Downloads/Papyr.js-main/Papyr.js-main/docs/beginner/first-app.md).
+Now that you've installed Papyr, let's build your very first app! Head over to the [First App Guide](https://github.com/EldrexDelosReyesBula/PapyrusJS/blob/main/docs/beginner/first-app.md).

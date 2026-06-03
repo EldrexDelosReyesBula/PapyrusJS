@@ -6,7 +6,7 @@ Papyr supports two styles of component modeling:
 
 Additionally, Papyr's Intelligent Web Runtime Kernel features a built-in MutationObserver-driven **Element Lifecycle Engine** to monitor element insertions and teardowns, which prevents memory leaks.
 
-You can inspect the lifecycle runtime logic in [papyr-core.js](file:///c:/Users/Eldrex/Downloads/Papyr.js-main/Papyr.js-main/src/core/papyr-core.js#L1049-L1100).
+You can inspect the lifecycle runtime logic in [papyr-core.js](https://github.com/EldrexDelosReyesBula/PapyrusJS/blob/main/src/core/papyr-core.js#L1049-L1100).
 
 ---
 

@@ -190,4 +190,4 @@ Congratulations! You have successfully mastered:
 3. Hooking event handlers.
 4. Setting up list bindings that synchronize with arrays.
 
-Ready to deep-dive? Head over to **[The Papyr Way](file:///c:/Users/Eldrex/Downloads/Papyr.js-main/Papyr.js-main/docs/papyr-way.md)** to learn how to structure applications professionally.
+Ready to deep-dive? Head over to **[The Papyr Way](https://github.com/EldrexDelosReyesBula/PapyrusJS/blob/main/docs/papyr-way.md)** to learn how to structure applications professionally.

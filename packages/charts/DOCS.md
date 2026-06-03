@@ -1260,7 +1260,7 @@ This section maps the complete isomorphic API surface of all 31 sub-systems, cor
 ### Current Status (v3.0.1)
 - **Pre-bundled Types**: TypeScript definitions (`.d.ts`) are officially pre-bundled and distributed inside the `@eldrex/papyr` core package.
 - **VS Code autocomplete**: Active out of the box (resolved by the `"types": "./dist/papyr.d.ts"` field in `@eldrex/papyr`'s configuration).
-- **Type Definitions Location**: Located at [papyr.d.ts](file:///c:/Users/Eldrex/Downloads/Papyr.js-main/Papyr.js-main/public/papyr.d.ts) in the workspace and exported to `/dist` directories.
+- **Type Definitions Location**: Located at [papyr.d.ts](https://github.com/EldrexDelosReyesBula/PapyrusJS/blob/main/public/papyr.d.ts) in the workspace and exported to `/dist` directories.
 
 ---
 

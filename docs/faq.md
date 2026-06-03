@@ -18,7 +18,7 @@ Traditional frameworks introduce complex development workflows (npm, bundlers, W
 
 Papyr.js is currently in a active **Beta** stage. It is suitable for dashboard utilities, interactive prototypes, internal tools, and lightweight single-page applications. 
 
-For high-traffic, mission-critical enterprise applications, consider the [Known Limitations](file:///c:/Users/Eldrex/Downloads/Papyr.js-main/Papyr.js-main/docs/limitations.md). The software is provided under the MIT License on an "AS-IS" basis.
+For high-traffic, mission-critical enterprise applications, consider the [Known Limitations](https://github.com/EldrexDelosReyesBula/PapyrusJS/blob/main/docs/limitations.md). The software is provided under the MIT License on an "AS-IS" basis.
 
 ---
 
