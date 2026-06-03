@@ -232,7 +232,7 @@ export default papyr;
     // 7b. Build papyr-plugins.js (Decoupled Plugins IIFE Bundle)
     const paperPluginsCode = `/**
  * PAPYR STATIC SITE LIBRARY - Decoupled Plugins Bundle
- * v3.0.3 - Official Capability Modules
+ * v3.0.4 - Official Capability Modules
  * Released under MIT License.
  */
 
@@ -271,7 +271,7 @@ ${pluginsContent}
 
     const paperUiCode = `/**
  * PAPYR STATIC SITE LIBRARY - UI & Layout Modular Bundle
- * v3.0.3 - Core Reactivity, SPA Routing, Layouts, Design Engine, and Premium UI Components
+ * v3.0.4 - Core Reactivity, SPA Routing, Layouts, Design Engine, and Premium UI Components
  * Released under MIT License.
  */
 
@@ -332,7 +332,7 @@ ${stylesContent.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$/g, '\\$'
 
     const paperAdvancedCode = `/**
  * PAPYR STATIC SITE LIBRARY - Advanced Engineering Modular Bundle
- * v3.0.3 - Core Reactivity, AI/ML Toolkits, 3D Immersive Graphics, 2D Verlet Physics, and PDF Exporter
+ * v3.0.4 - Core Reactivity, AI/ML Toolkits, 3D Immersive Graphics, 2D Verlet Physics, and PDF Exporter
  * Released under MIT License.
  */
 

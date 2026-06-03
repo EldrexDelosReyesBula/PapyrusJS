@@ -1,6 +1,6 @@
 {
   "name": "@eldrex/papyr-animate",
-  "version": "3.0.3",
+  "version": "3.0.4",
   "description": "Animations and spring physics engine for Papyr.js",
   "main": "dist/papyr-animate.js",
   "module": "dist/papyr-animate.esm.js",
@@ -11,7 +11,7 @@
     "LICENSE"
   ],
   "peerDependencies": {
-    "@eldrex/papyr": "^3.0.3"
+    "@eldrex/papyr": "^3.0.4"
   },
   "keywords": [
     "animate",

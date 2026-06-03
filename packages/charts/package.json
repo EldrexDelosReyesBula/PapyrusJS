@@ -1,6 +1,6 @@
 {
   "name": "@eldrex/papyr-charts",
-  "version": "3.0.3",
+  "version": "3.0.4",
   "description": "Reactive charts plugin for Papyr.js",
   "main": "dist/papyr-charts.js",
   "module": "dist/papyr-charts.esm.js",
@@ -11,7 +11,7 @@
     "LICENSE"
   ],
   "peerDependencies": {
-    "@eldrex/papyr": "^3.0.3"
+    "@eldrex/papyr": "^3.0.4"
   },
   "keywords": [
     "charts",

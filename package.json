@@ -1,6 +1,6 @@
 {
   "name": "papyr-monorepo",
-  "version": "3.0.3",
+  "version": "3.0.4",
   "private": true,
   "description": "Monorepo workspace for Papyr.js library and modules.",
   "workspaces": [

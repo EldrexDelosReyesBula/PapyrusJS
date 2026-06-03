@@ -103,7 +103,18 @@ npm install @eldrex/papyr
 import { papyr } from '@eldrex/papyr';
 ```
 
+## 🛡️ Security & Network Disclosure
+
+Papyr is a front-end framework running client-side in the user's browser. It includes standard, developer-facing AJAX wrapper utilities (`papyr.api.get`, `papyr.api.post`, and `papyr.fetch`) that reference the native browser `fetch()` API. 
+
+Because the compiled JavaScript bundles contain these standard `fetch()` API calls, static security analysis scanners (such as **Socket**) will flag the packages with a **Network Access / Supply Chain Security** alert.
+
+Please rest assured:
+- Papyr **does not** contain any telemetry, tracking, background logging, or malicious data transmission code.
+- Network references are solely wrapper declarations provided to simplify HTTP requests for your application code.
+
 ---
 
 ## 📄 License
 Papyr.js is distributed under the [MIT License](https://github.com/EldrexDelosReyesBula/PapyrusJS/blob/main/LICENSE).
+
