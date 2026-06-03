@@ -69,13 +69,12 @@ When a state's `.value` mutations occur, the Papyr Runtime Engine executes targe
 
 Explore the official documentation:
 
-* 🚀 [Getting Started](file:///c:/Users/Eldrex/Downloads/Papyr.js-main/Papyr.js-main/docs/getting-started.md) — Turn from a beginner into a user in 10 minutes.
-* 🧠 [The Papyr Way](file:///c:/Users/Eldrex/Downloads/Papyr.js-main/Papyr.js-main/docs/papyr-way.md) — Master the architectural mental models.
-* 📦 [Core Concepts](file:///c:/Users/Eldrex/Downloads/Papyr.js-main/Papyr.js-main/docs/core-concepts.md) — Understand reactivity flow, state, and rendering.
-* 📖 [Master API Reference](file:///c:/Users/Eldrex/Downloads/Papyr.js-main/Papyr.js-main/docs/api/) — Read the individual subsystem reference modules.
-* 🍔 [Practical Recipes](file:///c:/Users/Eldrex/Downloads/Papyr.js-main/Papyr.js-main/docs/recipes/) — Copy-paste common UI/data patterns.
-* 🛡️ [Security & WATT](file:///c:/Users/Eldrex/Downloads/Papyr.js-main/Papyr.js-main/docs/guides/security.md) — Learn about Web Access Transparency Toolkit.
-
+* 🚀 [Getting Started](file:///c:/Users/Eldrex/Downloads/Papyr.js-main/Papyr.js-main/docs/getting-started.md)
+* 🧠 [The Papyr Way](file:///c:/Users/Eldrex/Downloads/Papyr.js-main/Papyr.js-main/docs/papyr-way.md)
+* 📦 [Core Concepts](file:///c:/Users/Eldrex/Downloads/Papyr.js-main/Papyr.js-main/docs/core-concepts.md)
+* 📖 [Master API Reference](file:///c:/Users/Eldrex/Downloads/Papyr.js-main/Papyr.js-main/docs/api/)
+* 🍔 [Practical Recipes](file:///c:/Users/Eldrex/Downloads/Papyr.js-main/Papyr.js-main/docs/recipes/)
+* 🛡️ [Security & WATT](file:///c:/Users/Eldrex/Downloads/Papyr.js-main/Papyr.js-main/docs/guides/security.md)
 ---
 
 ## 🧪 Interactive Demos
@@ -85,7 +84,6 @@ Run and inspect the interactive test suites inside the browser:
 * 💾 [Multi-Engine CRUD Database Sandbox](file:///c:/Users/Eldrex/Downloads/Papyr.js-main/Papyr.js-main/tests/crud.html)
 * 🎬 [Touch Gestures & Spring Physics Sandbox](file:///c:/Users/Eldrex/Downloads/Papyr.js-main/Papyr.js-main/tests/animation.html)
 * 📈 [Canvas Formula Graphing Plotter](file:///c:/Users/Eldrex/Downloads/Papyr.js-main/Papyr.js-main/tests/charts.html)
-
 ---
 
 ## ⚙️ Installation
