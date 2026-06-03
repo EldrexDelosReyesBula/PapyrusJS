@@ -1,6 +1,6 @@
 /**
  * PAPYR STATIC SITE LIBRARY - Advanced Engineering Modular Bundle
- * v3.0.2 - Core Reactivity, AI/ML Toolkits, 3D Immersive Graphics, 2D Verlet Physics, and PDF Exporter
+ * v3.0.3 - Core Reactivity, AI/ML Toolkits, 3D Immersive Graphics, 2D Verlet Physics, and PDF Exporter
  * Released under MIT License.
  */
 

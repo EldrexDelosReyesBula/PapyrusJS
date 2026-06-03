@@ -1,6 +1,6 @@
 /**
  * PAPYR STATIC SITE LIBRARY - Decoupled Plugins Bundle
- * v3.0.2 - Official Capability Modules
+ * v3.0.3 - Official Capability Modules
  * Released under MIT License.
  */
 

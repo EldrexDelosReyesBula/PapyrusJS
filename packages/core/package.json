@@ -1,6 +1,6 @@
 {
   "name": "@eldrex/papyr",
-  "version": "3.0.2",
+  "version": "3.0.3",
   "description": "Core reactivity, DOM mounting, and state management engine for Papyr.js",
   "main": "dist/papyr.js",
   "module": "dist/papyr.esm.js",

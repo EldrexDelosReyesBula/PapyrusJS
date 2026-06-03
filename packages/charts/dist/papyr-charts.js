@@ -1,6 +1,6 @@
 /**
  * PAPYR STATIC SITE LIBRARY - UI & Layout Modular Bundle
- * v3.0.2 - Core Reactivity, SPA Routing, Layouts, Design Engine, and Premium UI Components
+ * v3.0.3 - Core Reactivity, SPA Routing, Layouts, Design Engine, and Premium UI Components
  * Released under MIT License.
  */
 
