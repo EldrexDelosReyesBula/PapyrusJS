@@ -779,6 +779,22 @@ p.textContent = `Message: ${message}`;
 // To update: p.textContent = `Message: ${message}`;
 ```
 
+### Pattern 4: Safe Reflect Attribute Writes
+
+To prevent Prototype Pollution (CWE-94) dynamically, Papyr writes attributes using `Reflect` methods instead of direct object bracket properties:
+
+```javascript
+// Papyr (Under the Hood)
+if (k !== '__proto__' && k !== 'constructor' && k !== 'prototype') {
+    Reflect.set(el, k, v);
+}
+
+// Vanilla equivalent (Dynamic Attribute Set)
+if (k !== '__proto__' && k !== 'constructor' && k !== 'prototype') {
+    el[k] = v;
+}
+```
+
 ---
 
 ## Tips for Manual Translation

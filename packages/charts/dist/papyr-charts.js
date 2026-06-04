@@ -47,7 +47,11 @@ if (typeof document === 'undefined') {
                 tagName: tag.toUpperCase(),
                 attributes: {},
                 style: {
-                    setProperty(k, v) { this[k] = v; }
+                    setProperty(k, v) {
+                        if (k !== '__proto__' && k !== 'constructor' && k !== 'prototype') {
+                            Reflect.set(this, k, v);
+                        }
+                    }
                 },
                 classList: {
                     _classes: [],
@@ -69,15 +73,29 @@ if (typeof document === 'undefined') {
                 removeChild(n) {
                     this.childNodes = this.childNodes.filter(c => c !== n);
                 },
-                setAttribute(k, v) { this.attributes[k] = v; },
-                getAttribute(k) { return this.attributes[k]; },
-                removeAttribute(k) { delete this.attributes[k]; },
-                hasAttribute(k) { return k in this.attributes; },
+                setAttribute(k, v) {
+                    if (k !== '__proto__' && k !== 'constructor' && k !== 'prototype') {
+                        Reflect.set(this.attributes, k, v);
+                    }
+                },
+                getAttribute(k) {
+                    if (k === '__proto__' || k === 'constructor' || k === 'prototype') return undefined;
+                    return Reflect.get(this.attributes, k);
+                },
+                removeAttribute(k) {
+                    if (k !== '__proto__' && k !== 'constructor' && k !== 'prototype') {
+                        Reflect.deleteProperty(this.attributes, k);
+                    }
+                },
+                hasAttribute(k) {
+                    if (k === '__proto__' || k === 'constructor' || k === 'prototype') return false;
+                    return Reflect.has(this.attributes, k);
+                },
                 addEventListener() {},
                 removeEventListener() {},
                 get innerHTML() {
                     const attrs = Object.entries(this.attributes).map(([k, v]) => `${k}="${v}"`).join(' ');
-                    const styles = Object.entries(this.style).filter(([k]) => typeof this.style[k] !== 'function').map(([k, v]) => `${k.replace(/[A-Z]/g, m => '-' + m.toLowerCase())}: ${v}`).join('; ');
+                    const styles = Object.entries(this.style).filter(([k]) => typeof Reflect.get(this.style, k) !== 'function').map(([k, v]) => `${k.replace(/[A-Z]/g, m => '-' + m.toLowerCase())}: ${v}`).join('; ');
                     const classStr = this.classList._classes.length > 0 ? `class="${this.classList._classes.join(' ')}"` : '';
                     const allAttrs = [classStr, attrs, styles ? `style="${styles}"` : ''].filter(Boolean).join(' ');
                     const inner = this.childNodes.map(c => typeof c === 'string' ? c : (c.innerHTML || c.text || '')).join('');
@@ -112,7 +130,7 @@ if (typeof document === 'undefined') {
 function parseClass(val) {
     if (Array.isArray(val)) return val.filter(Boolean).join(' ');
     if (typeof val === 'object' && val !== null) {
-        return Object.keys(val).filter(k => val[k]).join(' ');
+        return Object.keys(val).filter(k => Reflect.get(val, k)).join(' ');
     }
     return String(val);
 }
@@ -231,7 +249,7 @@ const parsePapyrUtilities = (el, utilities) => {
                         el._papyrUniqueClass = uniqueClass;
                     }
                     
-                    let styleText = Object.entries(utilitySet[ut])
+                    let styleText = Object.entries(Reflect.get(utilitySet, ut))
                         .map(([k, v]) => `${k.replace(/[A-Z]/g, m => '-' + m.toLowerCase())}: ${v};`)
                         .join(' ');
                     
@@ -241,10 +259,13 @@ const parsePapyrUtilities = (el, utilities) => {
             }
         } else {
             // Standard utility class
-            let utilitySet = papyrUtilities[trimmedItem] ? papyrUtilities : (typeof paperUtilities !== 'undefined' ? paperUtilities : {});
-            if (utilitySet[trimmedItem]) {
-                Object.entries(utilitySet[trimmedItem]).forEach(([k, v]) => {
-                    el.style[k] = v;
+            let utilitySet = Reflect.get(papyrUtilities, trimmedItem) ? papyrUtilities : (typeof paperUtilities !== 'undefined' ? paperUtilities : {});
+            let targetUtility = Reflect.get(utilitySet, trimmedItem);
+            if (targetUtility) {
+                Object.entries(targetUtility).forEach(([k, v]) => {
+                    if (k !== '__proto__' && k !== 'constructor' && k !== 'prototype') {
+                        Reflect.set(el.style, k, v);
+                    }
                 });
             } else {
                 el.classList.add(trimmedItem);
@@ -262,19 +283,29 @@ function levenshtein(a, b) {
     const key = a < b ? a + ',' + b : b + ',' + a;
     if (levenshteinCache.has(key)) return levenshteinCache.get(key);
 
-    let tmp = [];
-    for (let i = 0; i <= a.length; i++) {
-        let row = [i];
-        for (let j = 1; j <= b.length; j++) {
-            row.push(i === 0 ? j : Math.min(
-                tmp[i - 1][j] + 1,
-                row[j - 1] + 1,
-                tmp[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)
-            ));
-        }
-        tmp.push(row);
+    const m = a.length;
+    const n = b.length;
+    let prev = new Int32Array(n + 1);
+    let curr = new Int32Array(n + 1);
+
+    for (let j = 0; j <= n; j++) {
+        prev[j] = j;
     }
-    const result = tmp[a.length][b.length];
+
+    for (let i = 1; i <= m; i++) {
+        curr[0] = i;
+        for (let j = 1; j <= n; j++) {
+            curr[j] = Math.min(
+                prev[j] + 1,
+                curr[j - 1] + 1,
+                prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)
+            );
+        }
+        let temp = prev;
+        prev = curr;
+        curr = temp;
+    }
+    const result = prev[n];
     levenshteinCache.set(key, result);
     return result;
 }
@@ -320,7 +351,7 @@ class StateManager {
         const result = {};
         let idx = 0;
         this.states.forEach(s => {
-            result[`state_${idx++}`] = s.value;
+            Reflect.set(result, `state_${idx++}`, s.value);
         });
         return result;
     }
@@ -383,11 +414,14 @@ class PluginSystem {
     }
     triggerHook(hookName, ...args) {
         this.installed.forEach(plugin => {
-            if (plugin.hooks && typeof plugin.hooks[hookName] === 'function') {
-                try {
-                    plugin.hooks[hookName](...args);
-                } catch(e) {
-                    this.kernel.diagnostics.reportError(e);
+            if (plugin.hooks && hookName !== '__proto__' && hookName !== 'constructor' && hookName !== 'prototype') {
+                const hookFn = Reflect.get(plugin.hooks, hookName);
+                if (typeof hookFn === 'function') {
+                    try {
+                        hookFn(...args);
+                    } catch(e) {
+                        this.kernel.diagnostics.reportError(e);
+                    }
                 }
             }
         });
@@ -646,8 +680,7 @@ function createPapyr() {
                             if (key.startsWith('--')) {
                                 el.style.setProperty(key, String(v));
                             } else if (key !== '__proto__' && key !== 'constructor' && key !== 'prototype') {
-                                // eslint-disable-next-line security/detect-object-injection
-                                el.style[key] = v;
+                                Reflect.set(el.style, key, v);
                             }
                         };
                         let unsubscribe;
@@ -738,13 +771,11 @@ function createPapyr() {
                                 }
                             } else if (k in el && k !== '__proto__' && k !== 'constructor' && k !== 'prototype') {
                                 if (typeof newVal === 'boolean') {
-                                    // eslint-disable-next-line security/detect-object-injection
-                                    el[k] = newVal;
+                                    Reflect.set(el, k, newVal);
                                     if (newVal) el.setAttribute(k, '');
                                     else el.removeAttribute(k);
                                 } else {
-                                    // eslint-disable-next-line security/detect-object-injection
-                                    el[k] = newVal;
+                                    Reflect.set(el, k, newVal);
                                 }
                             } else {
                                 if (newVal === null || newVal === undefined || newVal === false) {
@@ -811,11 +842,24 @@ function createPapyr() {
     // Context Export API
     papyrInstance.exportContext = () => {
         return {
-            components: papyrInstance.components.list(),
-            state: papyrInstance.state.dump(),
-            routes: papyrInstance.runtime.routes || [],
-            errors: papyrInstance.diagnostics.errors,
-            plugins: papyrInstance.plugins.list()
+            components: papyrInstance.components ? papyrInstance.components.list() : [],
+            state: papyrInstance.state ? papyrInstance.state.dump() : {},
+            routes: papyrInstance.runtime ? (papyrInstance.runtime.routes || []) : [],
+            errors: papyrInstance.diagnostics ? papyrInstance.diagnostics.errors : [],
+            plugins: papyrInstance.plugins ? papyrInstance.plugins.list() : [],
+            power: papyrInstance.power ? {
+                state: papyrInstance.power.state ? papyrInstance.power.state.value : 'unknown',
+                fps: papyrInstance.power.fps ? papyrInstance.power.fps.value : 0,
+                targetFps: papyrInstance.power.targetFps ? papyrInstance.power.targetFps.value : 0,
+                battery: papyrInstance.power.battery ? {
+                    level: papyrInstance.power.battery.level ? papyrInstance.power.battery.level.value : 1.0,
+                    charging: papyrInstance.power.battery.charging ? papyrInstance.power.battery.charging.value : true
+                } : {}
+            } : {},
+            gateways: papyrInstance.gateway ? papyrInstance.gateway.list() : [],
+            diagnostics: papyrInstance.diagnostics ? {
+                updateCounts: Array.from(papyrInstance.diagnostics.updateCounts || []).map(([k, v]) => ({ key: k, count: v }))
+            } : {}
         };
     };
 
@@ -832,14 +876,27 @@ function createPapyr() {
     // Design Tokens Theme engine for dynamic custom property updates
     papyrInstance.theme = (config) => {
         if (!config || typeof doc === 'undefined') return papyrInstance;
-        Object.entries(config).forEach(([key, val]) => {
-            if (doc.documentElement && doc.documentElement.style) {
-                doc.documentElement.style.setProperty(`--papyr-${key}`, val);
-                doc.documentElement.style.setProperty(`--${key}`, val);
+        if (typeof config === 'string') {
+            const presets = ['liquid', 'material', 'minimal', 'enterprise'];
+            const presetLower = config.toLowerCase();
+            if (presets.includes(presetLower)) {
+                const rootEl = doc.documentElement || doc.body;
+                if (rootEl && rootEl.classList) {
+                    presets.forEach(p => rootEl.classList.remove(`papyr-theme-${p}`));
+                    rootEl.classList.add(`papyr-theme-${presetLower}`);
+                }
             }
-        });
+        } else if (typeof config === 'object') {
+            Object.entries(config).forEach(([key, val]) => {
+                if (doc.documentElement && doc.documentElement.style) {
+                    doc.documentElement.style.setProperty(`--papyr-${key}`, val);
+                    doc.documentElement.style.setProperty(`--${key}`, val);
+                }
+            });
+        }
         return papyrInstance;
     };
+
 
     // Dynamic plugin registration alias matching the roadmap API layout
     papyrInstance.plugin = (p) => papyrInstance.use(p);
@@ -872,6 +929,84 @@ function createPapyr() {
         }
     }
     papyrInstance.component = PapyrComponent;
+
+    // Python-like syntax wrapper (papyr.py namespace)
+    papyrInstance.py = {
+        state: (val, options) => papyrInstance.state(val, options),
+        computed: (fn) => papyrInstance.computed(fn),
+        effect: (fn) => papyrInstance.effect(fn),
+
+        Box: (...args) => {
+            let props = {};
+            let children = args;
+            if (args[0] && typeof args[0] === 'object' && !args[0].tagName && !args[0]._subscribers && !args[0].value) {
+                props = args[0];
+                children = args.slice(1);
+            }
+            const style = {
+                display: 'flex',
+                flexDirection: props.direction || 'column',
+                padding: typeof props.padding === 'number' ? `${props.padding}px` : props.padding,
+                margin: typeof props.margin === 'number' ? `${props.margin}px` : props.margin,
+                gap: typeof props.gap === 'number' ? `${props.gap}px` : props.gap,
+                alignItems: props.align || 'stretch',
+                justifyContent: props.justify || 'flex-start',
+                background: props.bg,
+                color: props.color,
+                borderRadius: typeof props.radius === 'number' ? `${props.radius}px` : props.radius,
+                ...props.style
+            };
+            const elProps = { style, class: props.class, id: props.id };
+            if (props.on_click) elProps.onClick = props.on_click;
+            return papyrInstance.div(elProps, ...children);
+        },
+
+        Text: (content, props = {}) => {
+            const style = {
+                fontSize: typeof props.size === 'number' ? `${props.size}px` : props.size,
+                color: props.color,
+                fontWeight: props.weight,
+                lineHeight: props.line_height,
+                letterSpacing: props.kerning,
+                ...props.style
+            };
+            const elProps = { style, class: props.class, id: props.id };
+            if (props.on_click) elProps.onClick = props.on_click;
+            return papyrInstance.span(elProps, content);
+        },
+
+        Button: (label, on_click, props = {}) => {
+            const style = {
+                padding: props.padding || '8px 16px',
+                borderRadius: props.radius || '8px',
+                background: props.bg,
+                color: props.color,
+                ...props.style
+            };
+            const elProps = { style, class: props.class, id: props.id };
+            elProps.onClick = on_click;
+            return papyrInstance.button(elProps, label);
+        },
+
+        Input: (props = {}) => {
+            const style = {
+                padding: props.padding || '8px 12px',
+                borderRadius: props.radius || '6px',
+                border: props.border,
+                ...props.style
+            };
+            const elProps = {
+                style,
+                class: props.class,
+                id: props.id,
+                type: props.type || 'text',
+                placeholder: props.placeholder || '',
+                value: props.value !== undefined ? props.value : ''
+            };
+            if (props.on_change) elProps.onInput = (e) => props.on_change(e.target.value, e);
+            return papyrInstance.input(elProps);
+        }
+    };
 
     // Error boundary wrapper
     papyrInstance.errorBoundary = (renderFn, fallbackFn) => {
@@ -1516,6 +1651,38 @@ if (typeof module !== 'undefined' && module.exports) {
  */
 
 coreInitializers.push((papyr) => {
+    const pendingSubscribers = new Set();
+    let isSchedulerScheduled = false;
+
+    const queueSubscriber = (sub, val) => {
+        pendingSubscribers.add({ sub, val });
+        if (!isSchedulerScheduled) {
+            isSchedulerScheduled = true;
+            if (typeof requestAnimationFrame !== 'undefined') {
+                requestAnimationFrame(flushScheduler);
+            } else {
+                setTimeout(flushScheduler, 0);
+            }
+        }
+    };
+
+    const flushScheduler = () => {
+        const subsToNotify = new Map();
+        pendingSubscribers.forEach(({ sub, val }) => {
+            subsToNotify.set(sub, val);
+        });
+        pendingSubscribers.clear();
+        isSchedulerScheduled = false;
+        
+        subsToNotify.forEach((val, sub) => {
+            try {
+                sub(val);
+            } catch (err) {
+                papyr.diagnostics.reportError(err);
+            }
+        });
+    };
+
     
     /**
      * Creates an auto-tracking reactive state variable.
@@ -1588,12 +1755,127 @@ coreInitializers.push((papyr) => {
         });
     };
 
-    papyr.state = (val) => {
+    class KalmanFilter {
+        constructor(processNoise = 0.05, measurementNoise = 0.5) {
+            this.q = processNoise;
+            this.r = measurementNoise;
+            this.p = 1.0;
+            this.x = null;
+            this.v = 0.0;
+        }
+        update(val, dt) {
+            if (this.x === null) {
+                this.x = val;
+                return;
+            }
+            if (dt <= 0) dt = 0.016;
+            this.x = this.x + this.v * dt;
+            this.p = this.p + this.q;
+            let k = this.p / (this.p + this.r);
+            let diff = val - this.x;
+            this.x = this.x + k * diff;
+            this.v = this.v + k * (diff / dt - this.v);
+            this.p = (1.0 - k) * this.p;
+        }
+        predict(dtAhead) {
+            if (this.x === null) return 0;
+            return this.x + this.v * dtAhead;
+        }
+    }
+
+    class Predictor {
+        constructor(val, options = {}) {
+            this.options = options;
+            this.filters = {};
+            this.lastTime = typeof performance !== 'undefined' ? performance.now() : Date.now();
+            this.initialize(val);
+        }
+        initialize(val) {
+            const q = this.options.processNoise || 0.05;
+            const r = this.options.measurementNoise || 0.5;
+            if (typeof val === 'number') {
+                this.filters['root'] = new KalmanFilter(q, r);
+            } else if (Array.isArray(val)) {
+                val.forEach((item, index) => {
+                    if (typeof item === 'number') {
+                        this.filters[index] = new KalmanFilter(q, r);
+                    }
+                });
+            } else if (val && typeof val === 'object') {
+                Object.keys(val).forEach(key => {
+                    if (typeof val[key] === 'number') {
+                        this.filters[key] = new KalmanFilter(q, r);
+                    }
+                });
+            }
+        }
+        update(newVal) {
+            let now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+            let dt = (now - this.lastTime) / 1000.0;
+            this.lastTime = now;
+            const q = this.options.processNoise || 0.05;
+            const r = this.options.measurementNoise || 0.5;
+
+            if (typeof newVal === 'number') {
+                if (!this.filters['root']) this.filters['root'] = new KalmanFilter(q, r);
+                this.filters['root'].update(newVal, dt);
+            } else if (Array.isArray(newVal)) {
+                newVal.forEach((item, index) => {
+                    if (typeof item === 'number') {
+                        if (!this.filters[index]) this.filters[index] = new KalmanFilter(q, r);
+                        this.filters[index].update(item, dt);
+                    }
+                });
+            } else if (newVal && typeof newVal === 'object') {
+                Object.keys(newVal).forEach(key => {
+                    if (typeof newVal[key] === 'number') {
+                        if (!this.filters[key]) this.filters[key] = new KalmanFilter(q, r);
+                        this.filters[key].update(newVal[key], dt);
+                    }
+                });
+            }
+        }
+        predict(dtAheadSeconds) {
+            if (this.filters['root']) {
+                return this.filters['root'].predict(dtAheadSeconds);
+            }
+            let keys = Object.keys(this.filters);
+            if (keys.length === 0) return null;
+
+            let isArray = false;
+            for (let k of keys) {
+                if (!isNaN(k)) {
+                    isArray = true;
+                    break;
+                }
+            }
+
+            if (isArray) {
+                let res = [];
+                keys.forEach(k => {
+                    res[k] = this.filters[k].predict(dtAheadSeconds);
+                });
+                return res;
+            } else {
+                let res = {};
+                keys.forEach(k => {
+                    res[k] = this.filters[k].predict(dtAheadSeconds);
+                });
+                return res;
+            }
+        }
+    }
+
+    papyr.state = (val, options = {}) => {
         let subscribers = new Set();
+        let predictor = options.predictive ? new Predictor(val, options) : null;
         
         let notify = () => {
+            if (predictor) predictor.update(val);
             papyr.diagnostics.trackUpdate(stateObj, val, val);
-            Array.from(subscribers).forEach(sub => sub(val));
+            Array.from(subscribers).forEach(sub => {
+                queueSubscriber(sub, val);
+            });
             papyr.plugins.triggerHook('onUpdate', stateObj);
         };
 
@@ -1612,8 +1894,11 @@ coreInitializers.push((papyr) => {
                 if (val === newVal && (typeof newVal !== 'object' || newVal === null)) return;
                 let oldVal = val;
                 val = newVal;
+                if (predictor) predictor.update(newVal);
                 papyr.diagnostics.trackUpdate(stateObj, newVal, oldVal);
-                Array.from(subscribers).forEach(sub => sub(newVal));
+                Array.from(subscribers).forEach(sub => {
+                    queueSubscriber(sub, newVal);
+                });
                 
                 // Trigger hooks
                 papyr.plugins.triggerHook('onUpdate', stateObj);
@@ -1623,12 +1908,26 @@ coreInitializers.push((papyr) => {
                 sub(val);
                 return () => subscribers.delete(sub);
             },
+            predict(dtAheadMs) {
+                if (predictor) {
+                    const pred = predictor.predict(dtAheadMs / 1000.0);
+                    return pred !== null ? pred : val;
+                }
+                return val;
+            },
+            get predicted() {
+                return stateObj.predict(16);
+            },
             dump() {
                 return val;
             }
         };
         papyr.state.register(stateObj);
         return stateObj;
+    };
+
+    papyr.predictiveState = (val, options = {}) => {
+        return papyr.state(val, { ...options, predictive: true });
     };
 
     // Initialize state registries on the state function itself for this kernel instance
@@ -1824,9 +2123,7 @@ coreInitializers.push((papyr) => {
             arr.forEach((item, index) => {
                 let baseKey = (item && typeof item === 'object' && item.id !== undefined) 
                     ? item.id 
-                    : (item && typeof item === 'object') 
-                        ? item 
-                        : item;
+                    : item;
                 
                 let occurrence = (keyCounts.get(baseKey) || 0) + 1;
                 keyCounts.set(baseKey, occurrence);
@@ -2023,6 +2320,16 @@ coreInitializers.push((papyr) => {
     let currentView = papyr.state(null);
     let pathParams = papyr.state({});
 
+    const safeRouteRegex = (cleanPath) => {
+        // Enforce route string format: must only contain alphanumeric, slash, colon, hyphen, underscore, dot, at-sign, tilde.
+        // This prevents injection of backtracking metacharacters (e.g. *, +, ?, (, ), [, ], etc.)
+        if (!/^[a-zA-Z0-9_/:.\-@~]*$/.test(cleanPath)) {
+            throw new Error("Security Violation: Unsafe characters in route path pattern");
+        }
+        // eslint-disable-next-line security/detect-non-literal-regexp
+        return new RegExp('^' + cleanPath.replace(/:\w+/g, '([^/]+)') + '$');
+    };
+
     /**
      * Define a hash route.
      * @param {string} path Route path (e.g., "#/about", "#/user/:id")
@@ -2033,8 +2340,7 @@ coreInitializers.push((papyr) => {
         let cleanPath = path.startsWith('#') ? path.substring(1) : path;
         routes.push({
             path: cleanPath,
-            // eslint-disable-next-line security/detect-non-literal-regexp
-            regex: new RegExp('^' + cleanPath.replace(/:\w+/g, '([^/]+)') + '$'),
+            regex: safeRouteRegex(cleanPath),
             keys: (cleanPath.match(/:\w+/g) || []).map(k => k.slice(1)),
             componentFn
         });
@@ -2156,8 +2462,7 @@ coreInitializers.push((papyr) => {
         let cleanPath = path;
         pageRoutes.push({
             path: cleanPath,
-            // eslint-disable-next-line security/detect-non-literal-regexp
-            regex: new RegExp('^' + cleanPath.replace(/:\w+/g, '([^/]+)') + '$'),
+            regex: safeRouteRegex(cleanPath),
             keys: (cleanPath.match(/:\w+/g) || []).map(k => k.slice(1)),
             componentFn
         });
@@ -3772,47 +4077,172 @@ coreInitializers.push((papyr) => {
  */
 
 coreInitializers.push((papyr) => {
-    papyr.api = {
-        /**
-         * Perform an async GET request
-         */
-        async get(url, headers = {}) {
-            try {
-                const response = await fetch(url, {
-                    method: 'GET',
-                    headers: {
-                        'Accept': 'application/json',
-                        ...headers
+    const getCacheDB = () => {
+        return new Promise((resolve, reject) => {
+            if (typeof window === 'undefined' || !window.indexedDB) return reject("No IndexedDB support");
+            const req = window.indexedDB.open("papyr_network_cache", 1);
+            req.onupgradeneeded = (e) => {
+                const db = e.target.result;
+                if (!db.objectStoreNames.contains("cache")) {
+                    db.createObjectStore("cache", { keyPath: "url" });
+                }
+            };
+            req.onsuccess = (e) => resolve(e.target.result);
+            req.onerror = (e) => reject(e.target.error);
+        });
+    };
+
+    const getCachedResponse = async (url, password) => {
+        try {
+            const db = await getCacheDB();
+            return new Promise((resolve, reject) => {
+                const tx = db.transaction("cache", "readonly");
+                const store = tx.objectStore("cache");
+                const getReq = store.get(url);
+                getReq.onsuccess = () => {
+                    db.close();
+                    const item = getReq.result;
+                    if (item && item.payload) {
+                        try {
+                            const decrypted = papyr.security ? papyr.security.decrypt(item.payload, password) : item.payload;
+                            resolve(JSON.parse(decrypted));
+                        } catch (e) {
+                            reject(e);
+                        }
+                    } else {
+                        reject(new Error("No cache entry"));
                     }
+                };
+                getReq.onerror = () => {
+                    db.close();
+                    reject(getReq.error);
+                };
+            });
+        } catch (err) {
+            return null;
+        }
+    };
+
+    const cacheResponse = async (url, data, password) => {
+        try {
+            const db = await getCacheDB();
+            const text = JSON.stringify(data);
+            const encrypted = papyr.security ? papyr.security.encrypt(text, password) : text;
+            return new Promise((resolve) => {
+                const tx = db.transaction("cache", "readwrite");
+                const store = tx.objectStore("cache");
+                store.put({ url, payload: encrypted, timestamp: Date.now() }).onsuccess = () => {
+                    db.close();
+                    resolve();
+                };
+            });
+        } catch (err) {
+            console.error("Cache error:", err);
+        }
+    };
+
+    const syncLedger = async () => {
+        if (typeof navigator !== 'undefined' && !navigator.onLine) return;
+        let ledger = [];
+        try {
+            ledger = JSON.parse(localStorage.getItem("papyr_mutation_ledger") || "[]");
+        } catch (e) {}
+        if (ledger.length === 0) return;
+
+        const remaining = [];
+        for (let op of ledger) {
+            try {
+                const res = await fetch(op.url, {
+                    method: op.method,
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...op.headers
+                    },
+                    body: op.data ? JSON.stringify(op.data) : undefined
                 });
-                if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
-                return await response.json();
-            } catch (error) {
-                if (papyr.warn) papyr.warn(`papyr.api.get failed for ${url}`, error);
-                throw error;
+                if (!res.ok) throw new Error("Sync server returned error " + res.status);
+                if (papyr.emit) {
+                    papyr.emit('sync:success', { op, response: await res.json() });
+                }
+            } catch (err) {
+                console.error("Ledger replay failed for", op.url, err);
+                remaining.push(op);
+            }
+        }
+        localStorage.setItem("papyr_mutation_ledger", JSON.stringify(remaining));
+    };
+
+    if (typeof window !== 'undefined') {
+        window.addEventListener('online', () => {
+            syncLedger().catch(console.error);
+        });
+        setInterval(() => {
+            syncLedger().catch(console.error);
+        }, 15000);
+    }
+
+    papyr.api = {
+        async fetch(url, options = {}) {
+            const method = (options.method || 'GET').toUpperCase();
+            const headers = options.headers || {};
+            const password = options.encryptionKey || "papyr_secure_mesh_cache";
+            const isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
+
+            if (method === 'GET') {
+                if (isOnline) {
+                    try {
+                        const res = await fetch(url, { method, headers });
+                        if (!res.ok) throw new Error(`HTTP error! Status: ${res.status}`);
+                        const data = await res.json();
+                        await cacheResponse(url, data, password);
+                        return data;
+                    } catch (error) {
+                        const cached = await getCachedResponse(url, password);
+                        if (cached) return cached;
+                        throw error;
+                    }
+                } else {
+                    const cached = await getCachedResponse(url, password);
+                    if (cached) return cached;
+                    throw new Error("Offline and no cached data available");
+                }
+            } else {
+                if (isOnline) {
+                    const body = options.body || options.data;
+                    const res = await fetch(url, {
+                        method,
+                        headers: {
+                            'Content-Type': 'application/json',
+                            ...headers
+                        },
+                        body: body ? JSON.stringify(body) : undefined
+                    });
+                    if (!res.ok) throw new Error(`HTTP error! Status: ${res.status}`);
+                    return await res.json();
+                } else {
+                    let ledger = [];
+                    try {
+                        ledger = JSON.parse(localStorage.getItem("papyr_mutation_ledger") || "[]");
+                    } catch (e) {}
+                    const body = options.body || options.data;
+                    ledger.push({ url, method, data: body, headers, timestamp: Date.now() });
+                    localStorage.setItem("papyr_mutation_ledger", JSON.stringify(ledger));
+
+                    return {
+                        id: "temp_" + Math.random().toString(36).substr(2, 9),
+                        ...(typeof body === 'object' ? body : {}),
+                        status: "pending_sync"
+                    };
+                }
             }
         },
 
-        /**
-         * Perform an async POST request
-         */
+        async get(url, headers = {}) {
+            return this.fetch(url, { method: 'GET', headers });
+        },
+
         async post(url, data, headers = {}) {
-            try {
-                const response = await fetch(url, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json',
-                        ...headers
-                    },
-                    body: JSON.stringify(data)
-                });
-                if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
-                return await response.json();
-            } catch (error) {
-                if (papyr.warn) papyr.warn(`papyr.api.post failed for ${url}`, error);
-                throw error;
-            }
+            return this.fetch(url, { method: 'POST', data, headers });
         }
     };
 
@@ -4128,7 +4558,21 @@ if (typeof window !== 'undefined' && !window.papyr) {
             if (isInteractive) {
                 options.interactive = 'true';
             }
-            return papyr('div', '.papyr-card', options, ...children);
+
+            let hasTilt = options.tilt;
+            delete options.tilt;
+            
+            let cardEl = papyr('div', '.papyr-card', options, ...children);
+            if (hasTilt) {
+                const oldMounted = cardEl._onMounted;
+                cardEl._onMounted = (el) => {
+                    if (oldMounted) oldMounted(el);
+                    if (papyr['3d'] && typeof papyr['3d'].tilt === 'function') {
+                        papyr['3d'].tilt(el);
+                    }
+                };
+            }
+            return cardEl;
         } else {
             let [title, content, footer] = args;
             let headerEl = title ? (typeof title === 'string' ? papyr.h3(title, '.card-title') : title) : null;
@@ -4145,6 +4589,7 @@ if (typeof window !== 'undefined' && !window.papyr) {
             return papyr.div('.papyr-card', ...children);
         }
     };
+
 
     papyr.title = (...args) => {
         return papyr('h1', '.papyr-title', ...args);
@@ -5039,26 +5484,35 @@ if (typeof window !== 'undefined' && !window.papyr) {
          * Auto-splits layout if a fold viewport is detected.
          */
         foldable(options = {}, ...children) {
-            const isFolded = typeof window !== 'undefined' && (
-                window.matchMedia('(spanning: single-fold-vertical)').matches || 
-                window.matchMedia('(spanning: single-fold-horizontal)').matches ||
-                window.innerWidth < 900 // Fallback breakpoint for fold simulation
-            );
-
             let config = Object.assign({
                 gap: '24px'
             }, options);
 
+            const isFold = papyr.state(false);
+
+            if (typeof window !== 'undefined') {
+                const checkFold = () => {
+                    const hasSpanning = window.matchMedia('(spanning: single-fold-vertical)').matches || 
+                                        window.matchMedia('(spanning: single-fold-horizontal)').matches;
+                    // Dual screen detection fallback (simulating fold split on medium-sized landscape devices)
+                    const isFoldDevice = hasSpanning || (window.innerWidth >= 768 && window.innerWidth < 1200 && window.innerWidth / window.innerHeight > 1.3);
+                    isFold.value = isFoldDevice;
+                };
+                window.addEventListener('resize', checkFold);
+                checkFold();
+            }
+
             return papyr.div({
                 class: 'papyr-foldable-layout',
-                style: {
+                style: () => ({
                     display: 'grid',
-                    gridTemplateColumns: isFolded ? '1fr' : '1fr 1fr',
+                    gridTemplateColumns: isFold.value ? '1fr 1fr' : '1fr',
                     gap: config.gap,
                     width: '100%'
-                }
+                })
             }, ...children);
         },
+
 
         mobile(options = {}, ...children) {
             const { header = null, nav = null } = options;
@@ -5339,9 +5793,566 @@ if (typeof window !== 'undefined' && !window.papyr) {
             }
 
             return papyr.div({ style: containerStyle }, heroContent);
+        },
+
+        gpu(options = {}, nodes = []) {
+            const width = options.width || 800;
+            const height = options.height || 600;
+            
+            const container = document.createElement('div');
+            container.className = 'papyr-gpu-layout-container';
+            container.style.position = 'relative';
+            container.style.width = typeof width === 'number' ? `${width}px` : width;
+            container.style.height = typeof height === 'number' ? `${height}px` : height;
+            container.style.overflow = 'hidden';
+            container.style.borderRadius = options.borderRadius || '12px';
+
+            const glCanvas = document.createElement('canvas');
+            glCanvas.width = typeof width === 'number' ? width : 800;
+            glCanvas.height = typeof height === 'number' ? height : 600;
+            glCanvas.style.position = 'absolute';
+            glCanvas.style.left = '0';
+            glCanvas.style.top = '0';
+            glCanvas.style.width = '100%';
+            glCanvas.style.height = '100%';
+            container.appendChild(glCanvas);
+
+            const textCanvas = document.createElement('canvas');
+            textCanvas.width = glCanvas.width;
+            textCanvas.height = glCanvas.height;
+            textCanvas.style.position = 'absolute';
+            textCanvas.style.left = '0';
+            textCanvas.style.top = '0';
+            textCanvas.style.width = '100%';
+            textCanvas.style.height = '100%';
+            textCanvas.style.pointerEvents = 'none';
+            container.appendChild(textCanvas);
+
+            const gl = glCanvas.getContext('webgl2', { alpha: true, antialias: true });
+            const ctx2d = textCanvas.getContext('2d');
+
+            const vsSource = `#version 300 es
+            in vec2 position;
+            in vec4 a_rect;
+            in vec4 a_color;
+            in vec4 a_borderColor;
+            in vec4 a_border_radius_width;
+            out vec2 v_localCoords;
+            out vec2 v_size;
+            out vec4 v_color;
+            out vec4 v_borderColor;
+            out float v_borderWidth;
+            out float v_radius;
+            uniform vec2 u_resolution;
+
+            void main() {
+                vec2 rectPos = a_rect.xy;
+                vec2 rectSize = a_rect.zw;
+                vec2 p = position * rectSize + rectPos;
+                vec2 clipSpace = (p / u_resolution) * 2.0 - 1.0;
+                gl_Position = vec4(clipSpace.x, -clipSpace.y, 0.0, 1.0);
+
+                v_localCoords = (position - 0.5) * rectSize;
+                v_size = rectSize;
+                v_color = a_color;
+                v_borderColor = a_borderColor;
+                v_radius = a_border_radius_width.x;
+                v_borderWidth = a_border_radius_width.y;
+            }`;
+
+            const fsSource = `#version 300 es
+            precision highp float;
+            in vec2 v_localCoords;
+            in vec2 v_size;
+            in vec4 v_color;
+            in vec4 v_borderColor;
+            in float v_borderWidth;
+            in float v_radius;
+            out vec4 outColor;
+
+            float sdRoundedBox(vec2 p, vec2 b, float r) {
+                vec2 q = abs(p) - b + vec2(r);
+                return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - r;
+            }
+
+            void main() {
+                vec2 halfSize = v_size * 0.5;
+                float d = sdRoundedBox(v_localCoords, halfSize, v_radius);
+                float fillAlpha = 1.0 - smoothstep(-1.0, 1.0, d);
+                
+                vec4 col = v_color;
+                if (v_borderWidth > 0.0) {
+                    float borderDist = d + v_borderWidth;
+                    float borderAlpha = smoothstep(-1.0, 1.0, d) - smoothstep(-1.0, 1.0, borderDist);
+                    col = mix(v_color, v_borderColor, borderAlpha);
+                }
+                outColor = col;
+                outColor.a *= fillAlpha;
+                if (outColor.a == 0.0) discard;
+            }`;
+
+            let program, vao, instanceBuffer;
+            let positionLoc, rectLoc, colorLoc, borderColorLoc, borderRadiusWidthLoc;
+
+            if (gl) {
+                const vs = gl.createShader(gl.VERTEX_SHADER);
+                gl.shaderSource(vs, vsSource);
+                gl.compileShader(vs);
+                if (!gl.getShaderParameter(vs, gl.COMPILE_STATUS)) {
+                    console.error("VS compile error:", gl.getShaderInfoLog(vs));
+                }
+
+                const fs = gl.createShader(gl.FRAGMENT_SHADER);
+                gl.shaderSource(fs, fsSource);
+                gl.compileShader(fs);
+                if (!gl.getShaderParameter(fs, gl.COMPILE_STATUS)) {
+                    console.error("FS compile error:", gl.getShaderInfoLog(fs));
+                }
+
+                program = gl.createProgram();
+                gl.attachShader(program, vs);
+                gl.attachShader(program, fs);
+                gl.linkProgram(program);
+                if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+                    console.error("Program link error:", gl.getProgramInfoLog(program));
+                }
+
+                gl.useProgram(program);
+                const resLoc = gl.getUniformLocation(program, "u_resolution");
+                gl.uniform2f(resLoc, glCanvas.width, glCanvas.height);
+
+                vao = gl.createVertexArray();
+                gl.bindVertexArray(vao);
+
+                const positionBuffer = gl.createBuffer();
+                gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+                const vertices = new Float32Array([
+                    0, 0,
+                    1, 0,
+                    0, 1,
+                    0, 1,
+                    1, 0,
+                    1, 1
+                ]);
+                gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
+                
+                positionLoc = gl.getAttribLocation(program, "position");
+                gl.enableVertexAttribArray(positionLoc);
+                gl.vertexAttribPointer(positionLoc, 2, gl.FLOAT, false, 0, 0);
+
+                instanceBuffer = gl.createBuffer();
+                gl.bindBuffer(gl.ARRAY_BUFFER, instanceBuffer);
+
+                const stride = 16 * 4;
+
+                rectLoc = gl.getAttribLocation(program, "a_rect");
+                gl.enableVertexAttribArray(rectLoc);
+                gl.vertexAttribPointer(rectLoc, 4, gl.FLOAT, false, stride, 0);
+                gl.vertexAttribDivisor(rectLoc, 1);
+
+                colorLoc = gl.getAttribLocation(program, "a_color");
+                gl.enableVertexAttribArray(colorLoc);
+                gl.vertexAttribPointer(colorLoc, 4, gl.FLOAT, false, stride, 4 * 4);
+                gl.vertexAttribDivisor(colorLoc, 1);
+
+                borderColorLoc = gl.getAttribLocation(program, "a_borderColor");
+                gl.enableVertexAttribArray(borderColorLoc);
+                gl.vertexAttribPointer(borderColorLoc, 4, gl.FLOAT, false, stride, 8 * 4);
+                gl.vertexAttribDivisor(borderColorLoc, 1);
+
+                borderRadiusWidthLoc = gl.getAttribLocation(program, "a_border_radius_width");
+                gl.enableVertexAttribArray(borderRadiusWidthLoc);
+                gl.vertexAttribPointer(borderRadiusWidthLoc, 4, gl.FLOAT, false, stride, 12 * 4);
+                gl.vertexAttribDivisor(borderRadiusWidthLoc, 1);
+            }
+
+            function solveLayout(node, parentX, parentY, parentW, parentH) {
+                let solved = {
+                    x: parentX + (node.x || 0),
+                    y: parentY + (node.y || 0),
+                    width: node.width || parentW,
+                    height: node.height || parentH,
+                    color: node.color || [0.1, 0.1, 0.1, 1],
+                    borderColor: node.borderColor || [0, 0, 0, 0],
+                    borderWidth: node.borderWidth || 0,
+                    borderRadius: node.borderRadius || 0,
+                    text: node.text || null,
+                    textColor: node.textColor || [1, 1, 1, 1],
+                    fontSize: node.fontSize || 14,
+                    fontFamily: node.fontFamily || 'sans-serif'
+                };
+
+                let children = node.children || [];
+                let solvedChildren = [];
+                if (children.length > 0) {
+                    const direction = node.direction || 'column';
+                    const padding = node.padding || 0;
+                    const gap = node.gap || 0;
+                    
+                    let curX = solved.x + padding;
+                    let curY = solved.y + padding;
+                    let innerW = solved.width - padding * 2;
+                    let innerH = solved.height - padding * 2;
+
+                    children.forEach(child => {
+                        let childW = child.width || (direction === 'row' ? (innerW - gap * (children.length - 1)) / children.length : innerW);
+                        let childH = child.height || (direction === 'column' ? (innerH - gap * (children.length - 1)) / children.length : innerH);
+                        
+                        let childSolved = solveLayout(child, curX, curY, childW, childH);
+                        solvedChildren.push(childSolved);
+
+                        if (direction === 'row') {
+                            curX += childW + gap;
+                        } else {
+                            curY += childH + gap;
+                        }
+                    });
+                }
+
+                solved.solvedChildren = solvedChildren;
+                return solved;
+            }
+
+            function flattenTree(solvedNode, list = []) {
+                list.push(solvedNode);
+                (solvedNode.solvedChildren || []).forEach(child => flattenTree(child, list));
+                return list;
+            }
+
+            function render(nodesList = []) {
+                const rootSolved = solveLayout({ children: nodesList }, 0, 0, glCanvas.width, glCanvas.height);
+                const flatNodes = flattenTree(rootSolved).filter(n => n !== rootSolved);
+
+                if (gl) {
+                    gl.viewport(0, 0, glCanvas.width, glCanvas.height);
+                    gl.clearColor(0, 0, 0, 0);
+                    gl.clear(gl.COLOR_BUFFER_BIT);
+                    gl.enable(gl.BLEND);
+                    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+
+                    const data = new Float32Array(flatNodes.length * 16);
+                    for (let i = 0; i < flatNodes.length; i++) {
+                        const n = flatNodes[i];
+                        const offset = i * 16;
+                        data[offset + 0] = n.x;
+                        data[offset + 1] = n.y;
+                        data[offset + 2] = n.width;
+                        data[offset + 3] = n.height;
+                        data[offset + 4] = n.color[0];
+                        data[offset + 5] = n.color[1];
+                        data[offset + 6] = n.color[2];
+                        data[offset + 7] = n.color[3];
+                        data[offset + 8] = n.borderColor[0];
+                        data[offset + 9] = n.borderColor[1];
+                        data[offset + 10] = n.borderColor[2];
+                        data[offset + 11] = n.borderColor[3];
+                        data[offset + 12] = n.borderRadius;
+                        data[offset + 13] = n.borderWidth;
+                        data[offset + 14] = 0;
+                        data[offset + 15] = 0;
+                    }
+
+                    gl.bindBuffer(gl.ARRAY_BUFFER, instanceBuffer);
+                    gl.bufferData(gl.ARRAY_BUFFER, data, gl.DYNAMIC_DRAW);
+
+                    gl.useProgram(program);
+                    gl.bindVertexArray(vao);
+                    gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, flatNodes.length);
+                } else {
+                    ctx2d.clearRect(0, 0, textCanvas.width, textCanvas.height);
+                    flatNodes.forEach(n => {
+                        ctx2d.fillStyle = `rgba(${n.color[0]*255}, ${n.color[1]*255}, ${n.color[2]*255}, ${n.color[3]})`;
+                        ctx2d.fillRect(n.x, n.y, n.width, n.height);
+                    });
+                }
+
+                ctx2d.clearRect(0, 0, textCanvas.width, textCanvas.height);
+                flatNodes.forEach(n => {
+                    if (n.text) {
+                        ctx2d.fillStyle = `rgba(${n.textColor[0]*255}, ${n.textColor[1]*255}, ${n.textColor[2]*255}, ${n.textColor[3]})`;
+                        ctx2d.font = `${n.fontSize}px ${n.fontFamily}`;
+                        ctx2d.textBaseline = 'middle';
+                        ctx2d.textAlign = 'center';
+                        ctx2d.fillText(n.text, n.x + n.width / 2, n.y + n.height / 2);
+                    }
+                });
+            }
+
+            if (nodes && typeof nodes.subscribe === 'function') {
+                const unsub = nodes.subscribe((latestNodes) => {
+                    render(latestNodes);
+                });
+                if (!container._cleanups) container._cleanups = [];
+                container._cleanups.push(unsub);
+            } else {
+                render(nodes);
+            }
+
+            if (options.responsive) {
+                const ro = new ResizeObserver((entries) => {
+                    for (let entry of entries) {
+                        const w = entry.contentRect.width;
+                        const h = entry.contentRect.height;
+                        glCanvas.width = w;
+                        glCanvas.height = h;
+                        textCanvas.width = w;
+                        textCanvas.height = h;
+                        if (gl) {
+                            gl.viewport(0, 0, w, h);
+                            gl.useProgram(program);
+                            const resLoc = gl.getUniformLocation(program, "u_resolution");
+                            gl.uniform2f(resLoc, w, h);
+                        }
+                        render(nodes.value || nodes);
+                    }
+                });
+                ro.observe(container);
+                if (!container._cleanups) container._cleanups = [];
+                container._cleanups.push(() => ro.disconnect());
+            }
+
+            return container;
         }
     };
+
+    // Reactive Device Class State
+    let currentDeviceClass = 'desktop';
+    if (typeof window !== 'undefined') {
+        const getDeviceClass = (width) => {
+            if (width < 768) return 'mobile';
+            if (width < 1024) return 'tablet';
+            if (width < 1440) return 'laptop';
+            return 'desktop';
+        };
+        currentDeviceClass = papyr.state(getDeviceClass(window.innerWidth));
+        window.addEventListener('resize', () => {
+            currentDeviceClass.value = getDeviceClass(window.innerWidth);
+        });
+    } else {
+        currentDeviceClass = { value: 'desktop', subscribe: () => {} };
+    }
+    papyr.layout.deviceClass = currentDeviceClass;
 })();
+
+
+// --- MODULE: plugins/shapes.js ---
+/**
+ * PAPYR SHAPES SYSTEM
+ * Package: @papyr/shapes
+ * Premium, customizable mathematical shape generators with elastic morph support.
+ */
+(function(window) {
+    function createBlobPath(rad, points, offset) {
+        const angleStep = (Math.PI * 2) / points;
+        const pathPoints = [];
+        for (let i = 0; i < points; i++) {
+            const theta = i * angleStep;
+            const r = rad + offset[i];
+            const x = rad + r * Math.cos(theta);
+            const y = rad + r * Math.sin(theta);
+            pathPoints.push({ x, y });
+        }
+        let d = `M ${pathPoints[0].x} ${pathPoints[0].y}`;
+        for (let i = 0; i < points; i++) {
+            const p1 = pathPoints[i];
+            const p2 = pathPoints[(i + 1) % points];
+            const xc = (p1.x + p2.x) / 2;
+            const yc = (p1.y + p2.y) / 2;
+            d += ` Q ${p1.x} ${p1.y}, ${xc} ${yc}`;
+        }
+        d += " Z";
+        return d;
+    }
+
+    const shapesPlugin = {
+        name: 'papyr-shapes',
+        version: '1.0.0',
+        install(papyr) {
+            // Blob shape generator
+            papyr.blob = (options = {}) => {
+                const {
+                    size = 200,
+                    color = 'var(--papyr-primary)',
+                    points = 6,
+                    amplitude = 20,
+                    speed = 2000,
+                    animate = false
+                } = options;
+                const offsets = Array.from({ length: points }, () => (Math.random() - 0.5) * amplitude * 2);
+                const pathD = createBlobPath(size / 2, points, offsets);
+                const svgEl = papyr.html(`
+                    <svg viewBox="0 0 ${size} ${size}" width="${size}" height="${size}" style="overflow: visible;">
+                        <path d="${pathD}" fill="${color}" style="transition: d ${speed}ms cubic-bezier(0.4, 0, 0.2, 1);" />
+                    </svg>
+                `).firstElementChild;
+                
+                if (animate === 'morph' || animate === true) {
+                    const interval = setInterval(() => {
+                        if (typeof document !== 'undefined' && !document.body.contains(svgEl)) {
+                            clearInterval(interval);
+                            return;
+                        }
+                        const path = svgEl.querySelector('path');
+                        if (path) {
+                            const newOffsets = Array.from({ length: points }, () => (Math.random() - 0.5) * amplitude * 2);
+                            path.setAttribute('d', createBlobPath(size / 2, points, newOffsets));
+                        }
+                    }, speed);
+                    if (!svgEl._cleanups) svgEl._cleanups = [];
+                    svgEl._cleanups.push(() => clearInterval(interval));
+                }
+                return svgEl;
+            };
+
+            // Wave shape generator
+            papyr.wave = (options = {}) => {
+                const {
+                    width = 800,
+                    height = 100,
+                    color = 'var(--papyr-primary)',
+                    amplitude = 20,
+                    frequency = 0.02,
+                    speed = 0.05,
+                    animate = false
+                } = options;
+                const svgEl = papyr.html(`
+                    <svg viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" preserveAspectRatio="none" style="display: block;">
+                        <path fill="${color}" />
+                    </svg>
+                `).firstElementChild;
+                const path = svgEl.querySelector('path');
+                let phase = 0;
+                const updatePath = () => {
+                    let points = [];
+                    for (let x = 0; x <= width; x += 10) {
+                        let y = height / 2 + Math.sin(x * frequency + phase) * amplitude;
+                        points.push(`${x},${y}`);
+                    }
+                    let d = `M 0,${height} L 0,${height/2} ` + points.map(p => `L ${p}`).join(' ') + ` L ${width},${height} Z`;
+                    path.setAttribute('d', d);
+                };
+                updatePath();
+                if (animate) {
+                    let animId = null;
+                    const loop = () => {
+                        if (typeof document !== 'undefined' && !document.body.contains(svgEl)) {
+                            if (animId) cancelAnimationFrame(animId);
+                            return;
+                        }
+                        phase += speed;
+                        updatePath();
+                        animId = requestAnimationFrame(loop);
+                    };
+                    animId = requestAnimationFrame(loop);
+                    if (!svgEl._cleanups) svgEl._cleanups = [];
+                    svgEl._cleanups.push(() => {
+                        if (animId) cancelAnimationFrame(animId);
+                    });
+                }
+                return svgEl;
+            };
+
+            // Organic rounded panel
+            papyr.organic = (options = {}) => {
+                const {
+                    width = 200,
+                    height = 200,
+                    color = 'var(--papyr-surface)',
+                    border = '1px solid var(--papyr-border)',
+                    animate = false,
+                    speed = 3000
+                } = options;
+                const generateBorderRadius = () => {
+                    const r = () => Math.floor(Math.random() * 40) + 30;
+                    return `${r()}% ${100-r()}% ${r()}% ${100-r()}% / ${r()}% ${r()}% ${100-r()}% ${100-r()}%`;
+                };
+                const el = papyr.div({
+                    style: {
+                        width: typeof width === 'number' ? `${width}px` : width,
+                        height: typeof height === 'number' ? `${height}px` : height,
+                        backgroundColor: color,
+                        border: border,
+                        borderRadius: generateBorderRadius(),
+                        transition: `border-radius ${speed}ms cubic-bezier(0.4, 0, 0.2, 1)`
+                    }
+                });
+                if (animate === 'morph' || animate === true) {
+                    const interval = setInterval(() => {
+                        if (typeof document !== 'undefined' && !document.body.contains(el)) {
+                            clearInterval(interval);
+                            return;
+                        }
+                        el.style.borderRadius = generateBorderRadius();
+                    }, speed);
+                    if (!el._cleanups) el._cleanups = [];
+                    el._cleanups.push(() => clearInterval(interval));
+                }
+                return el;
+            };
+
+            // Custom Polygon generator
+            papyr.polygon = (sides = 5, options = {}) => {
+                const {
+                    size = 150,
+                    color = 'var(--papyr-primary)',
+                    animate = false,
+                    speed = 0.02
+                } = options;
+                const svgEl = papyr.html(`
+                    <svg viewBox="0 0 ${size} ${size}" width="${size}" height="${size}">
+                        <polygon fill="${color}" />
+                    </svg>
+                `).firstElementChild;
+                const poly = svgEl.querySelector('polygon');
+                const radius = size / 2;
+                const cx = size / 2;
+                const cy = size / 2;
+                let rotation = 0;
+                const updatePoints = () => {
+                    let points = [];
+                    for (let i = 0; i < sides; i++) {
+                        let angle = (i * 2 * Math.PI) / sides + rotation;
+                        let x = cx + radius * Math.cos(angle);
+                        let y = cy + radius * Math.sin(angle);
+                        points.push(`${x},${y}`);
+                    }
+                    poly.setAttribute('points', points.join(' '));
+                };
+                updatePoints();
+                if (animate) {
+                    let animId = null;
+                    const loop = () => {
+                        if (typeof document !== 'undefined' && !document.body.contains(svgEl)) {
+                            if (animId) cancelAnimationFrame(animId);
+                            return;
+                        }
+                        rotation += speed;
+                        updatePoints();
+                        animId = requestAnimationFrame(loop);
+                    };
+                    animId = requestAnimationFrame(loop);
+                    if (!svgEl._cleanups) svgEl._cleanups = [];
+                    svgEl._cleanups.push(() => {
+                        if (animId) cancelAnimationFrame(animId);
+                    });
+                }
+                return svgEl;
+            };
+        }
+    };
+
+    const targetPapyr = window.papyr || (typeof global !== 'undefined' && global.papyr);
+    if (targetPapyr) {
+        targetPapyr.use(shapesPlugin);
+    }
+    if (typeof module !== 'undefined' && module.exports) {
+        module.exports = shapesPlugin;
+    } else if (typeof exports !== 'undefined') {
+        exports.default = shapesPlugin;
+    } else {
+        window.papyrShapes = shapesPlugin;
+    }
+})(typeof window !== 'undefined' ? window : this);
 
 
 // --- MODULE: plugins/ui-components.js ---
@@ -5766,7 +6777,7 @@ if (typeof window !== 'undefined' && !window.papyr) {
             style: { background: 'transparent', border: 'none', color: 'white', cursor: 'pointer' },
             onclick: () => { month.value = (month.value - 1 + 12) % 12; if (month.value === 11) year.value--; renderDays(); }
         });
-        let title = papyr.span(() => `${monthNames[month.value]} ${year.value}`, { style: { fontWeight: 'bold', color: 'white' } });
+        let title = papyr.span(() => `${Reflect.get(monthNames, Math.max(0, Math.min(11, Number(month.value))))} ${year.value}`, { style: { fontWeight: 'bold', color: 'white' } });
         let header = papyr.flex.between({ style: { padding: '4px' } }, prevBtn, title, nextBtn);
         
         let container = papyr.div('.papyr-calendar', { style: { padding: '16px', background: '#0f172a', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', maxWidth: '260px' } }, header, grid);
@@ -5807,6 +6818,85 @@ if (typeof window !== 'undefined' && !window.papyr) {
         });
         return container;
     };
+
+    // 20. Virtual scroll list for performance scaling
+    papyr.virtualList = (options = {}) => {
+        const {
+            items = [],
+            itemHeight = 40,
+            renderItem = (item, idx) => papyr.div(String(item)),
+            viewportHeight = 300,
+            style = {}
+        } = options;
+
+        const arrayState = (items && typeof items.subscribe === 'function') ? items : papyr.state(items);
+        const scrollTop = papyr.state(0);
+
+        const totalHeight = papyr.computed(() => arrayState.value.length * itemHeight);
+        const startIndex = papyr.computed(() => Math.max(0, Math.floor(scrollTop.value / itemHeight) - 2));
+        const endIndex = papyr.computed(() => Math.min(arrayState.value.length, Math.floor((scrollTop.value + viewportHeight) / itemHeight) + 2));
+
+        const visibleItems = papyr.computed(() => {
+            const arr = arrayState.value;
+            const start = startIndex.value;
+            const end = endIndex.value;
+            const result = [];
+            for (let i = start; i < end; i++) {
+                result.push({ item: Reflect.get(arr, i), index: i });
+            }
+            return result;
+        });
+
+        const listContainer = papyr.div({
+            style: {
+                position: 'relative',
+                width: '100%',
+                height: '100%',
+                overflow: 'hidden'
+            }
+        },
+            papyr.div({
+                style: {
+                    position: 'absolute',
+                    top: 0, left: 0, right: 0, bottom: 0,
+                    overflowY: 'auto'
+                },
+                onscroll: (e) => {
+                    scrollTop.value = e.target.scrollTop;
+                }
+            },
+                papyr.div({
+                    style: () => ({
+                        height: `${totalHeight.value}px`,
+                        width: '100%',
+                        position: 'relative'
+                    })
+                },
+                    papyr.for(visibleItems, (entry) => {
+                        const childEl = renderItem(entry.item, entry.index);
+                        if (childEl && childEl.style) {
+                            childEl.style.position = 'absolute';
+                            childEl.style.top = `${entry.index * itemHeight}px`;
+                            childEl.style.left = '0';
+                            childEl.style.width = '100%';
+                            childEl.style.height = `${itemHeight}px`;
+                            childEl.style.boxSizing = 'border-box';
+                        }
+                        return childEl;
+                    })
+                )
+            )
+        );
+
+        Object.assign(listContainer.style, {
+            height: typeof viewportHeight === 'number' ? `${viewportHeight}px` : viewportHeight,
+            border: '1px solid rgba(255,255,255,0.08)',
+            borderRadius: '12px',
+            background: 'rgba(255,255,255,0.02)'
+        }, style);
+
+        return listContainer;
+    };
 })();
 
 
@@ -5818,6 +6908,45 @@ if (typeof window !== 'undefined' && !window.papyr) {
  */
 (function () {
     const prefersReducedMotion = typeof window !== 'undefined' && typeof window.matchMedia === 'function' ? window.matchMedia('(prefers-reduced-motion: reduce)').matches : false;
+
+    const isLowEnd = () => {
+        return prefersReducedMotion || (typeof document !== 'undefined' && document.documentElement.classList.contains('papyr-low-end'));
+    };
+
+    // Fluid Engine (Performance-aware frame monitor)
+    if (typeof window !== 'undefined' && typeof requestAnimationFrame !== 'undefined') {
+        let lastTime = performance.now();
+        let frameCount = 0;
+        let lowFpsCount = 0;
+        const checkFPS = () => {
+            const now = performance.now();
+            frameCount++;
+            if (now - lastTime >= 1000) {
+                const fps = (frameCount * 1000) / (now - lastTime);
+                frameCount = 0;
+                lastTime = now;
+                
+                if (fps < 45) {
+                    lowFpsCount++;
+                    if (lowFpsCount >= 3) {
+                        if (typeof document !== 'undefined' && document.documentElement) {
+                            document.documentElement.classList.add('papyr-low-end');
+                            console.warn("Papyr Fluid Engine: Low frame rate detected. Visual quality degraded to optimize performance.");
+                            if (window.papyr && typeof window.papyr.emit === 'function') {
+                                window.papyr.emit('performance-degraded', { fps });
+                            }
+                        }
+                        return; // stop checking once downgraded
+                    }
+                } else {
+                    lowFpsCount = 0;
+                }
+            }
+            requestAnimationFrame(checkFPS);
+        };
+        setTimeout(() => requestAnimationFrame(checkFPS), 1000);
+    }
+
 
     // Intersection Observer for scroll animations
     let observer = null;
@@ -5944,6 +7073,10 @@ if (typeof window !== 'undefined' && !window.papyr) {
     // Cinematic transition wrappers
     papyr.animate.fade = (el, duration = 600) => {
         if (!el) return el;
+        if (isLowEnd()) {
+            el.style.opacity = '1';
+            return el;
+        }
         el.style.opacity = '0';
         el.style.transition = `opacity ${duration}ms cubic-bezier(0.4, 0, 0.2, 1)`;
         requestAnimationFrame(() => {
@@ -5956,6 +7089,11 @@ if (typeof window !== 'undefined' && !window.papyr) {
 
     papyr.animate.slide = (el, duration = 600) => {
         if (!el) return el;
+        if (isLowEnd()) {
+            el.style.opacity = '1';
+            el.style.transform = 'translateY(0px)';
+            return el;
+        }
         el.style.opacity = '0';
         el.style.transform = 'translateY(30px)';
         el.style.transition = `opacity ${duration}ms cubic-bezier(0.4, 0, 0.2, 1), transform ${duration}ms cubic-bezier(0.4, 0, 0.2, 1.15)`;
@@ -5970,6 +7108,11 @@ if (typeof window !== 'undefined' && !window.papyr) {
 
     papyr.animate.zoom = (el, duration = 600) => {
         if (!el) return el;
+        if (isLowEnd()) {
+            el.style.opacity = '1';
+            el.style.transform = 'scale(1)';
+            return el;
+        }
         el.style.opacity = '0';
         el.style.transform = 'scale(0.9)';
         el.style.transition = `opacity ${duration}ms cubic-bezier(0.4, 0, 0.2, 1), transform ${duration}ms cubic-bezier(0.4, 0, 0.2, 1.15)`;
@@ -5984,6 +7127,11 @@ if (typeof window !== 'undefined' && !window.papyr) {
 
     papyr.animate.pop = (el, duration = 600) => {
         if (!el) return el;
+        if (isLowEnd()) {
+            el.style.opacity = '1';
+            el.style.transform = 'scale(1)';
+            return el;
+        }
         el.style.opacity = '0';
         el.style.transform = 'scale(0.3)';
         el.style.transition = `opacity ${duration}ms ease, transform ${duration}ms cubic-bezier(0.34, 1.56, 0.64, 1)`;
@@ -5996,9 +7144,45 @@ if (typeof window !== 'undefined' && !window.papyr) {
         return el;
     };
 
+
     // Spring physics animator solver
     papyr.animate.spring = (el, properties, config = {}) => {
         if (!el || typeof window === 'undefined') return el;
+
+        // Auto-cancellation on mousedown/touchstart to ensure interactions are never blocked
+        if (!el._hasSpringCancelListeners) {
+            el._hasSpringCancelListeners = true;
+            const cancelEvent = () => {
+                if (el._springCancel) {
+                    el._springCancel();
+                }
+            };
+            el.addEventListener('mousedown', cancelEvent);
+            el.addEventListener('touchstart', cancelEvent);
+        }
+
+        if (isLowEnd()) {
+            // Apply target values immediately for low-end / reduced motion
+            let transformParts = [];
+            if ('x' in properties || 'y' in properties) {
+                transformParts.push(`translate(${properties.x !== undefined ? properties.x : 0}px, ${properties.y !== undefined ? properties.y : 0}px)`);
+            }
+            if ('scale' in properties) {
+                transformParts.push(`scale(${properties.scale})`);
+            }
+            if (transformParts.length > 0) {
+                el.style.transform = transformParts.join(' ');
+            }
+            Object.entries(properties).forEach(([prop, targetVal]) => {
+                if (prop !== 'x' && prop !== 'y' && prop !== 'scale') {
+                    if (prop !== '__proto__' && prop !== 'constructor' && prop !== 'prototype') {
+                        el.style[prop] = prop === 'opacity' ? targetVal : `${targetVal}px`;
+                    }
+                }
+            });
+            return el;
+        }
+
         const { tension = 170, friction = 26, mass = 1 } = config;
 
         if (el._springCancel) {
@@ -6105,6 +7289,7 @@ if (typeof window !== 'undefined' && !window.papyr) {
         step();
         return el;
     };
+
 
     // Gesture swipe controls and dynamic touch trackers
     papyr.animate.gesture = (el, options = {}) => {
@@ -6512,6 +7697,7 @@ if (typeof window !== 'undefined' && !window.papyr) {
         style.id = 'papyr-complete-styles';
         style.textContent = `
 :root {
+    /* Foundation Accent Colors */
     --papyr-primary: #6366f1;
     --papyr-primary-hover: #4f46e5;
     --papyr-primary-light: rgba(99, 102, 241, 0.15);
@@ -6525,7 +7711,116 @@ if (typeof window !== 'undefined' && !window.papyr) {
     --papyr-info: #0ea5e9;
     --papyr-radius: 12px;
     --papyr-font: system-ui, -apple-system, sans-serif;
+
+    /* Layer 1 - Spacing Scale */
+    --papyr-space-4: 4px;
+    --papyr-space-8: 8px;
+    --papyr-space-12: 12px;
+    --papyr-space-16: 16px;
+    --papyr-space-20: 20px;
+    --papyr-space-24: 24px;
+    --papyr-space-32: 32px;
+    --papyr-space-40: 40px;
+    --papyr-space-48: 48px;
+    --papyr-space-64: 64px;
+
+    /* Layer 1 - Radius Scale */
+    --papyr-radius-xs: 2px;
+    --papyr-radius-sm: 4px;
+    --papyr-radius-md: 8px;
+    --papyr-radius-lg: 12px;
+    --papyr-radius-xl: 16px;
+    --papyr-radius-2xl: 24px;
+    --papyr-radius-full: 9999px;
+
+    /* Layer 1 - Elevation Scale */
+    --papyr-shadow-0: none;
+    --papyr-shadow-1: 0 1px 3px rgba(0,0,0,0.1), 0 1px 2px rgba(0,0,0,0.06);
+    --papyr-shadow-2: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06);
+    --papyr-shadow-3: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05);
+    --papyr-shadow-4: 0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04);
+    --papyr-shadow-5: 0 25px 50px -12px rgba(0,0,0,0.25);
+
+    /* Layer 1 - Typography Scale */
+    --papyr-font-display: 3.5rem;
+    --papyr-font-headline: 2.25rem;
+    --papyr-font-title: 1.5rem;
+    --papyr-font-body: 1rem;
+    --papyr-font-caption: 0.875rem;
+    --papyr-font-label: 0.75rem;
+
+    /* Layer 1 - Motion Scale */
+    --papyr-motion-fast: 150ms;
+    --papyr-motion-normal: 300ms;
+    --papyr-motion-slow: 600ms;
+
+    /* Transition curves */
+    --papyr-ease: cubic-bezier(0.16, 1, 0.3, 1);
+    --papyr-duration: 0.4s;
+    --papyr-transition: all var(--papyr-duration) var(--papyr-ease);
 }
+
+/* Preset Layer 2 - Papyr Liquid Theme overrides */
+.papyr-theme-liquid {
+    --papyr-bg: #030712;
+    --papyr-surface: rgba(255, 255, 255, 0.02);
+    --papyr-border: rgba(255, 255, 255, 0.08);
+    --papyr-text: #f9fafb;
+    --papyr-text-muted: #9ca3af;
+    --papyr-glow: rgba(99, 102, 241, 0.15);
+    --papyr-radius: var(--papyr-radius-xl);
+    --papyr-blur-level: 16px;
+}
+
+/* Preset Layer 2 - Papyr Material Theme overrides */
+.papyr-theme-material {
+    --papyr-bg: #121212;
+    --papyr-surface: #1e1e1e;
+    --papyr-border: rgba(255, 255, 255, 0.12);
+    --papyr-text: rgba(255, 255, 255, 0.87);
+    --papyr-text-muted: rgba(255, 255, 255, 0.6);
+    --papyr-primary: #bb86fc;
+    --papyr-primary-hover: #9a66da;
+    --papyr-radius: var(--papyr-radius-sm);
+    --papyr-blur-level: 0px;
+}
+
+/* Preset Layer 2 - Papyr Minimal Theme overrides */
+.papyr-theme-minimal {
+    --papyr-bg: #ffffff;
+    --papyr-surface: #ffffff;
+    --papyr-border: #e5e7eb;
+    --papyr-text: #111827;
+    --papyr-text-muted: #6b7280;
+    --papyr-primary: #111827;
+    --papyr-primary-hover: #374151;
+    --papyr-radius: var(--papyr-radius-xs);
+    --papyr-blur-level: 0px;
+}
+
+/* Preset Layer 2 - Papyr Enterprise Theme overrides */
+.papyr-theme-enterprise {
+    --papyr-bg: #f3f4f6;
+    --papyr-surface: #ffffff;
+    --papyr-border: #d1d5db;
+    --papyr-text: #1f2937;
+    --papyr-text-muted: #4b5563;
+    --papyr-primary: #2563eb;
+    --papyr-primary-hover: #1d4ed8;
+    --papyr-radius: var(--papyr-radius-xs);
+    --papyr-blur-level: 0px;
+}
+
+/* GPU acceleration hooks for Liquid Theme */
+.papyr-theme-liquid .papyr-card, 
+.papyr-theme-liquid .papyr-glass-panel,
+.papyr-theme-liquid .papyr-hero-glass {
+    backdrop-filter: blur(var(--papyr-blur-level, 16px));
+    -webkit-backdrop-filter: blur(var(--papyr-blur-level, 16px));
+    will-change: transform, opacity;
+    transform: translate3d(0, 0, 0);
+}
+
 
 /* Flexbox System */
 .flex-row { display: flex; flex-direction: row; gap: 1rem; }
@@ -6771,6 +8066,17 @@ input[type="text"]:focus, input[type="email"]:focus, input[type="password"]:focu
         opacity: 1 !important;
     }
 }
+
+/* Low-end device performance overrides */
+.papyr-low-end, .papyr-low-end * {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+    animation: none !important;
+    transition: none !important;
+}
+
 
 
 /* Papyr.js Responsive Grid System */
@@ -7089,6 +8395,33 @@ input[type="text"]:focus, input[type="email"]:focus, input[type="password"]:focu
     color: var(--papyr-text-muted);
     font-size: var(--papyr-fs, 14px);
     line-height: 1.5;
+}
+
+/* Biometric & Behavioral Adaptive UI Overrides */
+.papyr-stress .papyr-btn,
+.papyr-stress button {
+    padding: 16px 32px !important;
+    font-size: 16px !important;
+    transform: scale(1.05) !important; /* Larger hit target */
+}
+
+.papyr-stress .papyr-card {
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    border-color: var(--papyr-border) !important;
+}
+
+.papyr-stress .papyr-particle-canvas,
+.papyr-stress canvas:not(.papyr-gpu-layout-container) {
+    display: none !important;
+}
+
+.papyr-reading p,
+.papyr-reading .papyr-muted {
+    line-height: 1.8 !important;
+    letter-spacing: 0.03em !important;
+    transition: line-height 0.4s ease, letter-spacing 0.4s ease;
 }
 `;
         document.head.appendChild(style);

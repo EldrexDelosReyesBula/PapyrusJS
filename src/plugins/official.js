@@ -245,7 +245,21 @@
             if (isInteractive) {
                 options.interactive = 'true';
             }
-            return papyr('div', '.papyr-card', options, ...children);
+
+            let hasTilt = options.tilt;
+            delete options.tilt;
+            
+            let cardEl = papyr('div', '.papyr-card', options, ...children);
+            if (hasTilt) {
+                const oldMounted = cardEl._onMounted;
+                cardEl._onMounted = (el) => {
+                    if (oldMounted) oldMounted(el);
+                    if (papyr['3d'] && typeof papyr['3d'].tilt === 'function') {
+                        papyr['3d'].tilt(el);
+                    }
+                };
+            }
+            return cardEl;
         } else {
             let [title, content, footer] = args;
             let headerEl = title ? (typeof title === 'string' ? papyr.h3(title, '.card-title') : title) : null;
@@ -262,6 +276,7 @@
             return papyr.div('.papyr-card', ...children);
         }
     };
+
 
     papyr.title = (...args) => {
         return papyr('h1', '.papyr-title', ...args);

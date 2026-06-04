@@ -6,6 +6,45 @@
 (function () {
     const prefersReducedMotion = typeof window !== 'undefined' && typeof window.matchMedia === 'function' ? window.matchMedia('(prefers-reduced-motion: reduce)').matches : false;
 
+    const isLowEnd = () => {
+        return prefersReducedMotion || (typeof document !== 'undefined' && document.documentElement.classList.contains('papyr-low-end'));
+    };
+
+    // Fluid Engine (Performance-aware frame monitor)
+    if (typeof window !== 'undefined' && typeof requestAnimationFrame !== 'undefined') {
+        let lastTime = performance.now();
+        let frameCount = 0;
+        let lowFpsCount = 0;
+        const checkFPS = () => {
+            const now = performance.now();
+            frameCount++;
+            if (now - lastTime >= 1000) {
+                const fps = (frameCount * 1000) / (now - lastTime);
+                frameCount = 0;
+                lastTime = now;
+                
+                if (fps < 45) {
+                    lowFpsCount++;
+                    if (lowFpsCount >= 3) {
+                        if (typeof document !== 'undefined' && document.documentElement) {
+                            document.documentElement.classList.add('papyr-low-end');
+                            console.warn("Papyr Fluid Engine: Low frame rate detected. Visual quality degraded to optimize performance.");
+                            if (window.papyr && typeof window.papyr.emit === 'function') {
+                                window.papyr.emit('performance-degraded', { fps });
+                            }
+                        }
+                        return; // stop checking once downgraded
+                    }
+                } else {
+                    lowFpsCount = 0;
+                }
+            }
+            requestAnimationFrame(checkFPS);
+        };
+        setTimeout(() => requestAnimationFrame(checkFPS), 1000);
+    }
+
+
     // Intersection Observer for scroll animations
     let observer = null;
     if (typeof window !== 'undefined' && 'IntersectionObserver' in window) {
@@ -131,6 +170,10 @@
     // Cinematic transition wrappers
     papyr.animate.fade = (el, duration = 600) => {
         if (!el) return el;
+        if (isLowEnd()) {
+            el.style.opacity = '1';
+            return el;
+        }
         el.style.opacity = '0';
         el.style.transition = `opacity ${duration}ms cubic-bezier(0.4, 0, 0.2, 1)`;
         requestAnimationFrame(() => {
@@ -143,6 +186,11 @@
 
     papyr.animate.slide = (el, duration = 600) => {
         if (!el) return el;
+        if (isLowEnd()) {
+            el.style.opacity = '1';
+            el.style.transform = 'translateY(0px)';
+            return el;
+        }
         el.style.opacity = '0';
         el.style.transform = 'translateY(30px)';
         el.style.transition = `opacity ${duration}ms cubic-bezier(0.4, 0, 0.2, 1), transform ${duration}ms cubic-bezier(0.4, 0, 0.2, 1.15)`;
@@ -157,6 +205,11 @@
 
     papyr.animate.zoom = (el, duration = 600) => {
         if (!el) return el;
+        if (isLowEnd()) {
+            el.style.opacity = '1';
+            el.style.transform = 'scale(1)';
+            return el;
+        }
         el.style.opacity = '0';
         el.style.transform = 'scale(0.9)';
         el.style.transition = `opacity ${duration}ms cubic-bezier(0.4, 0, 0.2, 1), transform ${duration}ms cubic-bezier(0.4, 0, 0.2, 1.15)`;
@@ -171,6 +224,11 @@
 
     papyr.animate.pop = (el, duration = 600) => {
         if (!el) return el;
+        if (isLowEnd()) {
+            el.style.opacity = '1';
+            el.style.transform = 'scale(1)';
+            return el;
+        }
         el.style.opacity = '0';
         el.style.transform = 'scale(0.3)';
         el.style.transition = `opacity ${duration}ms ease, transform ${duration}ms cubic-bezier(0.34, 1.56, 0.64, 1)`;
@@ -183,9 +241,45 @@
         return el;
     };
 
+
     // Spring physics animator solver
     papyr.animate.spring = (el, properties, config = {}) => {
         if (!el || typeof window === 'undefined') return el;
+
+        // Auto-cancellation on mousedown/touchstart to ensure interactions are never blocked
+        if (!el._hasSpringCancelListeners) {
+            el._hasSpringCancelListeners = true;
+            const cancelEvent = () => {
+                if (el._springCancel) {
+                    el._springCancel();
+                }
+            };
+            el.addEventListener('mousedown', cancelEvent);
+            el.addEventListener('touchstart', cancelEvent);
+        }
+
+        if (isLowEnd()) {
+            // Apply target values immediately for low-end / reduced motion
+            let transformParts = [];
+            if ('x' in properties || 'y' in properties) {
+                transformParts.push(`translate(${properties.x !== undefined ? properties.x : 0}px, ${properties.y !== undefined ? properties.y : 0}px)`);
+            }
+            if ('scale' in properties) {
+                transformParts.push(`scale(${properties.scale})`);
+            }
+            if (transformParts.length > 0) {
+                el.style.transform = transformParts.join(' ');
+            }
+            Object.entries(properties).forEach(([prop, targetVal]) => {
+                if (prop !== 'x' && prop !== 'y' && prop !== 'scale') {
+                    if (prop !== '__proto__' && prop !== 'constructor' && prop !== 'prototype') {
+                        el.style[prop] = prop === 'opacity' ? targetVal : `${targetVal}px`;
+                    }
+                }
+            });
+            return el;
+        }
+
         const { tension = 170, friction = 26, mass = 1 } = config;
 
         if (el._springCancel) {
@@ -292,6 +386,7 @@
         step();
         return el;
     };
+
 
     // Gesture swipe controls and dynamic touch trackers
     papyr.animate.gesture = (el, options = {}) => {

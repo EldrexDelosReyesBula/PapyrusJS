@@ -1,0 +1,26 @@
+{
+  "name": "@eldrex/papyr-3d",
+  "version": "3.0.4",
+  "description": "3D and immersive scene graphics system for Papyr.js",
+  "main": "dist/papyr-3d.js",
+  "module": "dist/papyr-3d.esm.js",
+  "files": [
+    "dist/papyr-3d.js",
+    "dist/papyr-3d.esm.js",
+    "README.md",
+    "LICENSE"
+  ],
+  "peerDependencies": {
+    "@eldrex/papyr": "^3.0.4"
+  },
+  "keywords": [
+    "3d",
+    "webgl",
+    "tilt",
+    "threejs",
+    "immersive",
+    "papyr"
+  ],
+  "author": "Eldrex Bula & Papyr Contributors",
+  "license": "MIT"
+}

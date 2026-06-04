@@ -1,65 +1,83 @@
-# Security & WATT Integration
+# Official Plugin Modules & Lifecycle Cleanups
 
-Papyr takes application security and privacy seriously. It includes a built-in **Web Access Transparency Toolkit (WATT)** system, a security module for cryptographic vault storage, and cross-site scripting (XSS) sanitation.
-
-The WATT source code is located at [watt.js](https://github.com/EldrexDelosReyesBula/PapyrusJS/blob/main/src/plugins/watt.js).
+This guide details the official plugin modules packaged with Papyr.js, explaining their architectures, usage, and how they utilize standard lifecycle enforcements to prevent memory leaks and performance regression.
 
 ---
 
-## 🔒 1. Web Access Transparency Toolkit (WATT)
+## 1. Shapes Plugin (`shapes.js`)
 
-WATT acts as a runtime gatekeeper that intercepts browser-tracking scripts and hardware APIs at the kernel level. Before allowing access, it presents a user-friendly consent modal.
+Provides canvas-based custom background effects and dynamic geometric decorations:
 
-### API Interceptions
-WATT automatically intercepts the following capabilities:
--   **Geolocation:** Intercepts `navigator.geolocation.getCurrentPosition`.
--   **Media Devices:** Intercepts `navigator.mediaDevices.getUserMedia` (Camera and Microphone access).
--   **Plugin Installation:** Intercepts `papyr.plugins.register` if a plugin requests specific permissions.
+*   **`papyr.wave(options)`**: Spawns an animated fluid wave drawing onto a canvas element. Options include `amplitude`, `frequency`, `waveColor`, and `speed`.
+*   **`papyr.polygon(options)`**: Renders morphing geometric shapes.
 
----
-
-## 🛡️ 2. Security Tiers & Cookie/Tracker Sandboxing
-
-WATT lets you restrict local tracking and scripts by setting a policy tier using `papyr.watt.setTier(tier)`:
-
--   `'none'`: Interception is completely disabled.
--   `'default'`: Sandboxes tracker-related LocalStorage entries (e.g. `_ga`, `_gid`, `tracking`) in memory until the user explicitly grants consent.
--   `'high'`: Hard blocks all tracking dependencies and third-party scripts.
-
+### Lifecycle Cleanups
+Both shapes start a continuous `requestAnimationFrame` render loop. To prevent memory leaks when elements leave the DOM, the loops store animation IDs:
 ```javascript
-// Configure security level
-papyr.watt.setTier('default');
-
-// Request tracking consent programmatically
-papyr.watt.requestTracking({
-  purpose: "We use analytics to optimize our platform's responsiveness.",
-  onAllow: () => console.log("User consented to tracking."),
-  onDeny: () => console.log("User requested no tracking.")
-});
+let animId;
+const tick = () => {
+    draw();
+    animId = requestAnimationFrame(tick);
+};
+el._cleanups.push(() => cancelAnimationFrame(animId));
 ```
 
 ---
 
-## 🔑 3. Safe Local Cryptographic Vaults
+## 2. Particles Plugin (`particles.js`)
 
-For client-side data persistence, Papyr provides two storage tiers:
+Draws interactive, glassmorphic particle backgrounds that respond to pointer movement:
 
-### Obfuscated Storage (Synchronous)
-> [!WARNING]
-> The synchronous methods `papyr.storage.secureSet()` and `papyr.storage.secureGet()` use **XOR + Base64 obfuscation**. This protects data from casual inspection in LocalStorage, but it is **NOT** cryptographically secure.
+*   **`papyr.particles(options)`**: Spawns particles on a canvas. Options include `particleCount`, `particleColor`, `maxSpeed`, and `interactive` (reacting to pointer hover).
 
-### True AES-GCM Encryption (Asynchronous)
-For storing sensitive authentication tokens or API keys, use the asynchronous Web Crypto API wrappers:
-
+### Global Listener Disposal
+Particle canvasses require tracking screen size changes to rebuild boundaries. To avoid retaining window context, resize event listeners are wrapped and cleaned up when unmounted:
 ```javascript
-const password = "user-passphrase-key";
-
-// Encrypt and store data
-await papyr.storage.secureSetAsync("vault_key", { jwt: "123-secret" }, password);
-
-// Decrypt and retrieve data
-const decrypted = await papyr.storage.secureGetAsync("vault_key", password);
-console.log(decrypted.jwt); // "123-secret"
+const resizeHandler = () => resize();
+window.addEventListener('resize', resizeHandler);
+el._cleanups.push(() => window.removeEventListener('resize', resizeHandler));
 ```
 
-The underlying cryptography operations are detailed in [security.js](https://github.com/EldrexDelosReyesBula/PapyrusJS/blob/main/src/core/security.js).
+---
+
+## 3. Immersive 3D Space Plugin (`immersive.js`)
+
+Initializes high-fidelity 3D graphics inside the browser:
+
+*   **`papyr.immersive(options)`**: Spawns an interactive three-dimensional viewport. If Three.js (`window.Three` or `window.THREE`) is present, it sets up a WebGL 3D environment. If absent, it automatically cascades to a lightweight, canvas-based space fallback (pointer particle displacement).
+
+### Resource Deallocation
+Immersive viewports allocate substantial GPU memory. On unmount, the plugin performs complete garbage collection:
+1. Cancels active render loops using `cancelAnimationFrame`.
+2. Disposes of geometries, materials, and textures.
+3. Invokes WebGLRenderer disposal (`renderer.dispose()`).
+4. Disposes of mouse move and window resize listeners.
+
+---
+
+## 4. Power Throttling Plugin (`power.js` / `papyr-energy-adapter`)
+
+Automatically adjusts drawing rates to preserve device battery:
+
+*   **`papyr.power.state`**: Reactive state tracking battery levels and page visibility.
+*   **`papyr.power.mode`**: Auto-toggles between `'normal'`, `'low'`, and `'idle'`.
+*   **Actionable Pacing**: Loops check `papyr.power.mode` to introduce throttling `setTimeout` delays in idle or backgrounded tabs, saving device resource cycles.
+
+---
+
+## 5. Server-Side Rendering Integrations (`integrations.js` / `papyr-ssr`)
+
+Provides connectors for server contexts:
+
+*   **`papyr.ssr(component)`**: Compiles reactive declarations directly to static HTML strings. Heavy visual properties (WebGL, Canvas) fallback to simple structural wrappers on the server.
+*   **Express Middleware**: Provides simple routers to serve pre-rendered HTML to search crawlers while keeping hydration bundles available for interactive clients.
+
+---
+
+## 6. Behind the Scenes: The `_cleanups` Registry
+
+Every element instantiated by the Papyr DOM builder (`papyrInstance`) has an optional hidden `_cleanups` array.
+
+1. **Registration**: When a plugin or watcher starts a task attached to an element, it pushes a teardown function into `el._cleanups`.
+2. **Mutation Monitoring**: The core framework maintains a global, low-overhead `MutationObserver` watching elements removed from the document tree.
+3. **Execution**: Once an element is removed, the framework recursively runs all cleanup functions in `_cleanups` for the element and all its children, ensuring complete memory recycling.

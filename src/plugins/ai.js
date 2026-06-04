@@ -31,19 +31,22 @@
                         const result = {};
                         for (let key in schema) {
                             if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue;
-                            // eslint-disable-next-line security/detect-object-injection
-                            const type = schema[key];
+                            const type = Reflect.get(schema, key);
                             let val = null;
                             if (type === 'number') {
-                                // Sanitize key to completely eliminate any possibility of ReDoS
-                                const safeKey = String(key).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                                // eslint-disable-next-line security/detect-non-literal-regexp
-                                const numRegex = new RegExp(`(?:${safeKey}\\b.*?|\\b)(\\d+)(?:\\s*(?:years|yr|s)?\\b|$)`, 'i');
-                                const m = input.match(numRegex);
-                                if (m) {
-                                    val = Number(m[1]);
-                                } else {
-                                    const anyNum = input.match(/\d+/);
+                                // Safe alternative to dynamic RegExp to avoid ReDoS and security warnings
+                                const lowerInput = input.toLowerCase();
+                                const lowerKey = String(key).toLowerCase();
+                                const keyIndex = lowerInput.indexOf(lowerKey);
+                                if (keyIndex !== -1) {
+                                    const sub = input.slice(keyIndex + lowerKey.length);
+                                    const m = sub.match(/\b(\d+)\b/);
+                                    if (m) {
+                                        val = Number(m[1]);
+                                    }
+                                }
+                                if (val === null) {
+                                    const anyNum = input.match(/\b(\d+)\b/);
                                     if (anyNum) val = Number(anyNum[0]);
                                 }
                             } else {
@@ -68,8 +71,7 @@
                                     }
                                 }
                             }
-                            // eslint-disable-next-line security/detect-object-injection
-                            result[key] = val;
+                            Reflect.set(result, key, val);
                         }
                         return result;
                     }

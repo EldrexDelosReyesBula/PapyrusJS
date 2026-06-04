@@ -9,6 +9,16 @@ coreInitializers.push((papyr) => {
     let currentView = papyr.state(null);
     let pathParams = papyr.state({});
 
+    const safeRouteRegex = (cleanPath) => {
+        // Enforce route string format: must only contain alphanumeric, slash, colon, hyphen, underscore, dot, at-sign, tilde.
+        // This prevents injection of backtracking metacharacters (e.g. *, +, ?, (, ), [, ], etc.)
+        if (!/^[a-zA-Z0-9_/:.\-@~]*$/.test(cleanPath)) {
+            throw new Error("Security Violation: Unsafe characters in route path pattern");
+        }
+        // eslint-disable-next-line security/detect-non-literal-regexp
+        return new RegExp('^' + cleanPath.replace(/:\w+/g, '([^/]+)') + '$');
+    };
+
     /**
      * Define a hash route.
      * @param {string} path Route path (e.g., "#/about", "#/user/:id")
@@ -19,8 +29,7 @@ coreInitializers.push((papyr) => {
         let cleanPath = path.startsWith('#') ? path.substring(1) : path;
         routes.push({
             path: cleanPath,
-            // eslint-disable-next-line security/detect-non-literal-regexp
-            regex: new RegExp('^' + cleanPath.replace(/:\w+/g, '([^/]+)') + '$'),
+            regex: safeRouteRegex(cleanPath),
             keys: (cleanPath.match(/:\w+/g) || []).map(k => k.slice(1)),
             componentFn
         });
@@ -142,8 +151,7 @@ coreInitializers.push((papyr) => {
         let cleanPath = path;
         pageRoutes.push({
             path: cleanPath,
-            // eslint-disable-next-line security/detect-non-literal-regexp
-            regex: new RegExp('^' + cleanPath.replace(/:\w+/g, '([^/]+)') + '$'),
+            regex: safeRouteRegex(cleanPath),
             keys: (cleanPath.match(/:\w+/g) || []).map(k => k.slice(1)),
             componentFn
         });

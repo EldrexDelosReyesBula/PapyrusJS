@@ -1,0 +1,26 @@
+{
+  "name": "@eldrex/papyr-shapes",
+  "version": "3.0.4",
+  "description": "Mathematical shape generation system for Papyr.js",
+  "main": "dist/papyr-shapes.js",
+  "module": "dist/papyr-shapes.esm.js",
+  "files": [
+    "dist/papyr-shapes.js",
+    "dist/papyr-shapes.esm.js",
+    "README.md",
+    "LICENSE"
+  ],
+  "peerDependencies": {
+    "@eldrex/papyr": "^3.0.4"
+  },
+  "keywords": [
+    "shapes",
+    "svg",
+    "canvas",
+    "blob",
+    "wave",
+    "papyr"
+  ],
+  "author": "Eldrex Bula & Papyr Contributors",
+  "license": "MIT"
+}

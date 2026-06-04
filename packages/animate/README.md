@@ -46,6 +46,12 @@ Create an HTML file and run this minimal working code:
 ## 💡 What is Papyr?
 * **Direct DOM Rendering:** Updates only the targeted DOM nodes when state changes—bypassing Virtual DOM diff overhead.
 * **Reactive State Engine:** Precise, dependency-tracking subscription-based reactivity (inspired by SolidJS and Vue).
+* **Built-in Security Guards:** Employs safe Reflect API property proxies and whitelists to prevent Prototype Pollution, and strictly sanitizes routes/NLP schema fields to mitigate Regular Expression Denial of Service (ReDoS).
+* **Lag-Proof Predictive States:** Extrapolates user pointer interactions 16ms (2-frames) ahead using an integrated Kalman filter state estimator.
+* **WebGL2 GPU Layouts (`papyr.layout.gpu`):** Renders box hierarchies directly on WebGL2 fragment shaders to completely bypass CPU layout reflow computations.
+* **Biometric & Behavioral UI Adaptation:** Detects user interaction speeds (scroll rate, click tempo) to adapt hit targets and kerning states dynamically.
+* **Self-Healing State Mesh Network (`papyr.api.fetch`):** API interceptors caching JSON objects into an encrypted IndexedDB offline vault and queuing mutation ledgers for background sync.
+* **Pythonic Syntax Wrapper (`papyr.py`):** Declarative layout builder aliases (`Box`, `Text`, `Button`, `Input`) designed to look and write like clean, semantic Python code.
 * **Zero Dependencies:** A single unified file that packages layout grids, animations, local storage databases, and AI helpers.
 
 ---

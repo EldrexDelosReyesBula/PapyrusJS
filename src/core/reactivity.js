@@ -6,6 +6,38 @@
  */
 
 coreInitializers.push((papyr) => {
+    const pendingSubscribers = new Set();
+    let isSchedulerScheduled = false;
+
+    const queueSubscriber = (sub, val) => {
+        pendingSubscribers.add({ sub, val });
+        if (!isSchedulerScheduled) {
+            isSchedulerScheduled = true;
+            if (typeof requestAnimationFrame !== 'undefined') {
+                requestAnimationFrame(flushScheduler);
+            } else {
+                setTimeout(flushScheduler, 0);
+            }
+        }
+    };
+
+    const flushScheduler = () => {
+        const subsToNotify = new Map();
+        pendingSubscribers.forEach(({ sub, val }) => {
+            subsToNotify.set(sub, val);
+        });
+        pendingSubscribers.clear();
+        isSchedulerScheduled = false;
+        
+        subsToNotify.forEach((val, sub) => {
+            try {
+                sub(val);
+            } catch (err) {
+                papyr.diagnostics.reportError(err);
+            }
+        });
+    };
+
     
     /**
      * Creates an auto-tracking reactive state variable.
@@ -78,12 +110,127 @@ coreInitializers.push((papyr) => {
         });
     };
 
-    papyr.state = (val) => {
+    class KalmanFilter {
+        constructor(processNoise = 0.05, measurementNoise = 0.5) {
+            this.q = processNoise;
+            this.r = measurementNoise;
+            this.p = 1.0;
+            this.x = null;
+            this.v = 0.0;
+        }
+        update(val, dt) {
+            if (this.x === null) {
+                this.x = val;
+                return;
+            }
+            if (dt <= 0) dt = 0.016;
+            this.x = this.x + this.v * dt;
+            this.p = this.p + this.q;
+            let k = this.p / (this.p + this.r);
+            let diff = val - this.x;
+            this.x = this.x + k * diff;
+            this.v = this.v + k * (diff / dt - this.v);
+            this.p = (1.0 - k) * this.p;
+        }
+        predict(dtAhead) {
+            if (this.x === null) return 0;
+            return this.x + this.v * dtAhead;
+        }
+    }
+
+    class Predictor {
+        constructor(val, options = {}) {
+            this.options = options;
+            this.filters = {};
+            this.lastTime = typeof performance !== 'undefined' ? performance.now() : Date.now();
+            this.initialize(val);
+        }
+        initialize(val) {
+            const q = this.options.processNoise || 0.05;
+            const r = this.options.measurementNoise || 0.5;
+            if (typeof val === 'number') {
+                this.filters['root'] = new KalmanFilter(q, r);
+            } else if (Array.isArray(val)) {
+                val.forEach((item, index) => {
+                    if (typeof item === 'number') {
+                        this.filters[index] = new KalmanFilter(q, r);
+                    }
+                });
+            } else if (val && typeof val === 'object') {
+                Object.keys(val).forEach(key => {
+                    if (typeof val[key] === 'number') {
+                        this.filters[key] = new KalmanFilter(q, r);
+                    }
+                });
+            }
+        }
+        update(newVal) {
+            let now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+            let dt = (now - this.lastTime) / 1000.0;
+            this.lastTime = now;
+            const q = this.options.processNoise || 0.05;
+            const r = this.options.measurementNoise || 0.5;
+
+            if (typeof newVal === 'number') {
+                if (!this.filters['root']) this.filters['root'] = new KalmanFilter(q, r);
+                this.filters['root'].update(newVal, dt);
+            } else if (Array.isArray(newVal)) {
+                newVal.forEach((item, index) => {
+                    if (typeof item === 'number') {
+                        if (!this.filters[index]) this.filters[index] = new KalmanFilter(q, r);
+                        this.filters[index].update(item, dt);
+                    }
+                });
+            } else if (newVal && typeof newVal === 'object') {
+                Object.keys(newVal).forEach(key => {
+                    if (typeof newVal[key] === 'number') {
+                        if (!this.filters[key]) this.filters[key] = new KalmanFilter(q, r);
+                        this.filters[key].update(newVal[key], dt);
+                    }
+                });
+            }
+        }
+        predict(dtAheadSeconds) {
+            if (this.filters['root']) {
+                return this.filters['root'].predict(dtAheadSeconds);
+            }
+            let keys = Object.keys(this.filters);
+            if (keys.length === 0) return null;
+
+            let isArray = false;
+            for (let k of keys) {
+                if (!isNaN(k)) {
+                    isArray = true;
+                    break;
+                }
+            }
+
+            if (isArray) {
+                let res = [];
+                keys.forEach(k => {
+                    res[k] = this.filters[k].predict(dtAheadSeconds);
+                });
+                return res;
+            } else {
+                let res = {};
+                keys.forEach(k => {
+                    res[k] = this.filters[k].predict(dtAheadSeconds);
+                });
+                return res;
+            }
+        }
+    }
+
+    papyr.state = (val, options = {}) => {
         let subscribers = new Set();
+        let predictor = options.predictive ? new Predictor(val, options) : null;
         
         let notify = () => {
+            if (predictor) predictor.update(val);
             papyr.diagnostics.trackUpdate(stateObj, val, val);
-            Array.from(subscribers).forEach(sub => sub(val));
+            Array.from(subscribers).forEach(sub => {
+                queueSubscriber(sub, val);
+            });
             papyr.plugins.triggerHook('onUpdate', stateObj);
         };
 
@@ -102,8 +249,11 @@ coreInitializers.push((papyr) => {
                 if (val === newVal && (typeof newVal !== 'object' || newVal === null)) return;
                 let oldVal = val;
                 val = newVal;
+                if (predictor) predictor.update(newVal);
                 papyr.diagnostics.trackUpdate(stateObj, newVal, oldVal);
-                Array.from(subscribers).forEach(sub => sub(newVal));
+                Array.from(subscribers).forEach(sub => {
+                    queueSubscriber(sub, newVal);
+                });
                 
                 // Trigger hooks
                 papyr.plugins.triggerHook('onUpdate', stateObj);
@@ -113,12 +263,26 @@ coreInitializers.push((papyr) => {
                 sub(val);
                 return () => subscribers.delete(sub);
             },
+            predict(dtAheadMs) {
+                if (predictor) {
+                    const pred = predictor.predict(dtAheadMs / 1000.0);
+                    return pred !== null ? pred : val;
+                }
+                return val;
+            },
+            get predicted() {
+                return stateObj.predict(16);
+            },
             dump() {
                 return val;
             }
         };
         papyr.state.register(stateObj);
         return stateObj;
+    };
+
+    papyr.predictiveState = (val, options = {}) => {
+        return papyr.state(val, { ...options, predictive: true });
     };
 
     // Initialize state registries on the state function itself for this kernel instance
@@ -314,9 +478,7 @@ coreInitializers.push((papyr) => {
             arr.forEach((item, index) => {
                 let baseKey = (item && typeof item === 'object' && item.id !== undefined) 
                     ? item.id 
-                    : (item && typeof item === 'object') 
-                        ? item 
-                        : item;
+                    : item;
                 
                 let occurrence = (keyCounts.get(baseKey) || 0) + 1;
                 keyCounts.set(baseKey, occurrence);

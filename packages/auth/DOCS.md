@@ -153,6 +153,20 @@ let existingInput = document.getElementById("search");
 papyr.bind(existingInput, message);
 ```
 
+### F. Predictive State Estimation (`options.predictive`)
+For high-performance layouts, 3D panning, and drag/kinetic animations, pass `{ predictive: true }` to `papyr.state()` or call `papyr.predictiveState(val)`. It implements a Kalman filter and linear extrapolation to predict coordinates 2 frames (16ms) ahead.
+
+```javascript
+let cursor = papyr.predictiveState({ x: 0, y: 0 });
+
+window.addEventListener('mousemove', (e) => {
+    cursor.value = { x: e.clientX, y: e.clientY };
+});
+
+// Access predicted location 16ms ahead
+console.log(cursor.predicted); // { x: ..., y: ... }
+```
+
 ---
 
 ## 4. Control Flow Logic
@@ -291,6 +305,33 @@ papyr.security.setConsent(true); // Flushes all sandboxed values safely back to 
 #### WATT Under the Hood (Technical Interception Layer)
 WATT runs early inside the Papyrus kernel initialization sequence. It overrides the default browser storage APIs (`localStorage.getItem`, `localStorage.setItem`, `localStorage.removeItem`) with a Proxy layer. If WATT determines a storage key matches a tracking signature and consent is absent, the key is redirected to a temporary in-memory sandbox Map. When `setConsent(true)` is called, WATT automatically flushes all sandboxed memory keys into physical LocalStorage.
 
+#### WATT Customization & Custom Prompt Gateways
+Developers can customize WATT's styling parameters using `papyr.watt.configure()` or completely override WATT's prompt presentation logic to build custom floating banners, notifications, or drawer panels:
+
+```javascript
+// 1. Override labels and colors
+papyr.watt.configure({
+    branding: { title: "App Guard", primaryColor: "#4f46e5" },
+    reason: "Requires user permission to track app activities."
+});
+
+// 2. Complete override with custom UI banner
+papyr.watt.triggerWattPrompt = (capabilityName, onAllow, onDeny, permissions) => {
+    const banner = papyr.div(".custom-banner", {
+        style: {
+            position: 'fixed', bottom: 0, left: 0, width: '100%',
+            background: '#111827', padding: '16px', zIndex: 99999,
+            display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '16px', color: 'white'
+        }
+    },
+        papyr.p(`App requests ${capabilityName}`),
+        papyr.button("Grant", { onclick: () => { banner.remove(); onAllow(); } }),
+        papyr.button("Deny", { onclick: () => { banner.remove(); onDeny(); } })
+    );
+    document.body.appendChild(banner);
+};
+```
+
 ### B. XSS Sanitizer (`papyr.security.sanitize`)
 Blocks malicious script tags, pseudo-protocols (`javascript:`), and inline HTML event handler exploits (`onerror=`) from user inputs:
 
@@ -325,6 +366,30 @@ await papyr.storage.secureSetAsync("token", { jwt: "secret-data" }, "user-passph
 // ✅ Retrieve and decrypt
 let decrypted = await papyr.storage.secureGetAsync("token", "user-passphrase");
 ```
+
+### D. Biometric & Behavioral Adaptive UI
+Papyr runs a passive background cadence tracker evaluating user input tempo:
+- **`papyr.user.stress`**: Becomes `true` if mouse speed rises and changes direction erratically, or if mouse scroll/click rate spikes. This automatically toggles `.papyr-stress` on the document root, which scales button targets larger and disables background animations.
+- **`papyr.user.reading`**: Becomes `true` if no user inputs are detected for 5 seconds during idle states. It toggles `.papyr-reading` on the root, adding line-height and kerning padding to typography to reduce visual fatigue.
+
+```javascript
+// Manually observe user focus states
+papyr.user.stress.subscribe((isStressed) => {
+    if (isStressed) console.log("User is erratically clicking/scrolling!");
+});
+```
+
+### E. Prototype Pollution Mitigation Layer
+
+To block prototype pollution attacks (CWE-94) dynamically, Papyr implements safe `Reflect` proxies on all element creations and attribute assignments. Instead of direct bracket notations (`el[key] = val`), the framework routes lookups through `Reflect.set` and `Reflect.get` while strictly filtering properties:
+* Forbidden properties: `__proto__`, `constructor`, and `prototype`.
+* Fallbacks created during SSR utilize `Object.create(null)` dictionaries to guarantee complete prototype safety.
+
+### F. Regular Expression Denial of Service (ReDoS) Sanitizer
+
+To mitigate ReDoS risks (CWE-185):
+1. **Route Validator**: Route string patterns registered via `papyr.route()` and `papyr.page()` are checked against a strict character whitelist `/^[a-zA-Z0-9_/:.\-@~]*$/`. Any pattern containing regular expression metacharacters (such as `*`, `+`, `?`) is blocked to prevent backtracking exploits.
+2. **NLP Parser**: Natural language schema parsers (`papyr.ai.toSemanticJSON`) scan string indices and positions rather than compiling dynamic schemas to `new RegExp`, eliminating regex processing overhead.
 
 ---
 
@@ -501,6 +566,21 @@ let glassPanel = papyr.glass(
 );
 ```
 
+#### 6. GPU-Accelerated WebGL2 Renderer (`papyr.layout.gpu`)
+Offload layout structures to WebGL2 shader buffers using `papyr.layout.gpu(options, nodes)` to render thousands of dynamic graphic boxes, border radiuses, and shadow maps at 120 FPS using zero CPU cycles.
+
+```javascript
+let appLayout = papyr.layout.gpu({ width: 800, height: 600 }, [
+    {
+        x: 10, y: 10, width: 300, height: 200,
+        color: [0.1, 0.2, 0.4, 1.0],
+        borderRadius: 16,
+        text: "Interactive GPU Panel",
+        textColor: [1.0, 1.0, 1.0, 1.0]
+    }
+]);
+```
+
 ---
 
 ## 9. Progressive Web Apps (PWA) & Offline Caching
@@ -553,6 +633,22 @@ self.addEventListener('fetch', (e) => {
             });
         })
     );
+});
+```
+
+### D. Self-Healing network cache mesh (`papyr.api.fetch`)
+Replaces standard fetch wraps with offline resilience:
+- **Relational Cache Mesh**: GET payloads are cached in background encrypted IndexedDB stores. If offline, the cache response is returned directly.
+- **Deterministic Mutation Ledger**: Offline writes (POST, PUT, DELETE) are logged in local storage queues. They are simulated instantly in the UI, and automatically sync once a connection is re-established.
+
+```javascript
+// Cached and offline-resilient
+let data = await papyr.api.fetch("https://api.my-endpoint.com/data");
+
+// Offline mutation queued for automatic sync
+await papyr.api.fetch("https://api.my-endpoint.com/posts", {
+    method: "POST",
+    body: { title: "Offline Post" }
 });
 ```
 
@@ -885,6 +981,19 @@ graph LR
 - **Shifting to standard Vanilla JS**: Simply map `papyr.tag()` to `document.createElement('tag')` and events to `element.addEventListener()`.
 - **Shifting to Vue or SolidJS**: State patterns in Papyrus prepare you directly to use Vue's `ref()` / `computed()` and Solid's `createSignal()` / `createEffect()`.
 - **Shifting to Backend Programming**: Working with async database queries (`queryAsync()`, sqlite, firebase) makes learning database models in **Node.js (Express)**, **Python (Django/FastAPI)**, or **Rust (Axum)** straightforward.
+
+### C. Pythonic Syntax Bridge (`papyr.py`)
+To make transitioning to web development even easier for developers coming from Python (e.g. Tkinter, Streamlit, Flet, PyWebIO), Papyr includes a dedicated `papyr.py` wrapper namespace. This allows building layouts using declarative, key-value property structures:
+
+```javascript
+const { Box, Text, Button, Input } = papyr.py;
+
+const app = Box(
+    { direction: "column", padding: 20, gap: 10, bg: "var(--papyr-surface)" },
+    Text("Welcome to the Pythonic UI", { size: 24, weight: "bold" }),
+    Button("Click Me", () => alert("Hello from Py-wrapper!"))
+);
+```
 
 ---
 

@@ -231,15 +231,22 @@
 
             // Motion tracker
             let mouseX = 0, mouseY = 0;
+            let mouseMoveHandler = null;
             if (config.depth) {
-                window.addEventListener('mousemove', (e) => {
+                mouseMoveHandler = (e) => {
                     mouseX = (e.clientX / window.innerWidth) - 0.5;
                     mouseY = (e.clientY / window.innerHeight) - 0.5;
-                });
+                };
+                window.addEventListener('mousemove', mouseMoveHandler);
             }
 
             const clock = new THREE.Clock();
+            let animId = null;
             const tick = () => {
+                if (typeof document !== 'undefined' && !document.body.contains(canvas)) {
+                    if (animId) cancelAnimationFrame(animId);
+                    return;
+                }
                 const elapsedTime = clock.getElapsedTime();
 
                 // Rotate particles mesh
@@ -311,12 +318,12 @@
                 }
 
                 renderer.render(scene, camera);
-                requestAnimationFrame(tick);
+                animId = requestAnimationFrame(tick);
             };
             tick();
 
             // Resize support
-            window.addEventListener('resize', () => {
+            const resizeHandler = () => {
                 const parent = canvas.parentElement;
                 if (parent) {
                     const newW = parent.clientWidth;
@@ -327,6 +334,15 @@
                     camera.updateProjectionMatrix();
                     renderer.setSize(newW, newH);
                 }
+            };
+            window.addEventListener('resize', resizeHandler);
+
+            if (!canvas._cleanups) canvas._cleanups = [];
+            canvas._cleanups.push(() => {
+                if (mouseMoveHandler) window.removeEventListener('mousemove', mouseMoveHandler);
+                window.removeEventListener('resize', resizeHandler);
+                if (animId) cancelAnimationFrame(animId);
+                try { renderer.dispose(); } catch(e) {}
             });
         } catch (e) {
             console.warn("Three.js WebGL context initialization failed, falling back to Canvas2D.", e);
@@ -342,13 +358,16 @@
         let particles = [];
         let mouseX = 0, mouseY = 0;
         let currentMouseX = 0, currentMouseY = 0;
+        let animId = null;
+        let mouseMoveHandler = null;
 
         // Trace pointer coordinates for micro-smooth inertia panning depth
         if (config.depth) {
-            window.addEventListener('mousemove', (e) => {
+            mouseMoveHandler = (e) => {
                 mouseX = (e.clientX / window.innerWidth) - 0.5;
                 mouseY = (e.clientY / window.innerHeight) - 0.5;
-            });
+            };
+            window.addEventListener('mousemove', mouseMoveHandler);
         }
 
         // Initialize particles based on environment configuration
@@ -662,12 +681,11 @@
                 });
             }
 
-            requestAnimationFrame(draw);
+            animId = requestAnimationFrame(draw);
         };
-        requestAnimationFrame(draw);
+        animId = requestAnimationFrame(draw);
 
-        // Resize support
-        window.addEventListener('resize', () => {
+        const resizeHandler = () => {
             const parent = canvas.parentElement;
             if (parent) {
                 w = parent.clientWidth;
@@ -676,6 +694,14 @@
                 canvas.height = h;
                 initParticles();
             }
+        };
+        window.addEventListener('resize', resizeHandler);
+
+        if (!canvas._cleanups) canvas._cleanups = [];
+        canvas._cleanups.push(() => {
+            if (mouseMoveHandler) window.removeEventListener('mousemove', mouseMoveHandler);
+            window.removeEventListener('resize', resizeHandler);
+            if (animId) cancelAnimationFrame(animId);
         });
     }
 
@@ -798,8 +824,35 @@
                     }, 50);
 
                     return container;
+                },
+                tilt(el, options = {}) {
+                    if (!el || typeof window === 'undefined') return el;
+                    const { max = 15, perspective = 1000, scale = 1.02 } = options;
+
+                    const onMouseMove = (e) => {
+                        const rect = el.getBoundingClientRect();
+                        const x = e.clientX - rect.left;
+                        const y = e.clientY - rect.top;
+                        const xc = rect.width / 2;
+                        const yc = rect.height / 2;
+                        const rotateX = ((yc - y) / yc) * max;
+                        const rotateY = -((xc - x) / xc) * max;
+                        el.style.transform = `perspective(${perspective}px) rotateX(${rotateX}deg) rotateY(${rotateY}deg) scale3d(${scale}, ${scale}, ${scale})`;
+                        el.style.transition = 'none';
+                    };
+
+                    const onMouseLeave = () => {
+                        el.style.transition = 'transform 0.5s cubic-bezier(0.25, 1, 0.5, 1)';
+                        el.style.transform = `perspective(${perspective}px) rotateX(0deg) rotateY(0deg) scale3d(1, 1, 1)`;
+                    };
+
+                    el.addEventListener('mousemove', onMouseMove);
+                    el.addEventListener('mouseleave', onMouseLeave);
+
+                    return el;
                 }
             };
+
 
             // Attach to namespace
             window.papyr3d = papyr3d;

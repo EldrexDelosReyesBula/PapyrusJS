@@ -76,23 +76,41 @@
         };
 
         let stopThrottle = null;
+        let animId = null;
+
+        const resizeHandler = () => {
+            resize();
+            initParticles();
+        };
 
         // Mount hook
         setTimeout(() => {
             resize();
             initParticles();
-            window.addEventListener('resize', () => { resize(); initParticles(); });
+            window.addEventListener('resize', resizeHandler);
             
             if (papyr.power && typeof papyr.power.throttle === 'function') {
                 stopThrottle = papyr.power.throttle(render);
             } else {
                 const legacyLoop = () => {
+                    if (typeof document !== 'undefined' && !document.body.contains(canvas)) {
+                        if (animId) cancelAnimationFrame(animId);
+                        return;
+                    }
                     render();
-                    requestAnimationFrame(legacyLoop);
+                    animId = requestAnimationFrame(legacyLoop);
                 };
-                requestAnimationFrame(legacyLoop);
+                animId = requestAnimationFrame(legacyLoop);
             }
         }, 50);
+
+        const cleanup = () => {
+            window.removeEventListener('resize', resizeHandler);
+            if (stopThrottle) stopThrottle();
+            if (animId) cancelAnimationFrame(animId);
+        };
+        if (!canvas._cleanups) canvas._cleanups = [];
+        canvas._cleanups.push(cleanup);
 
         return canvas;
     };

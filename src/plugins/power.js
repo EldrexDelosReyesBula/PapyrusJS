@@ -117,7 +117,15 @@
 
         // Initialize first idle timer
         resetIdleTimer();
+
+        // Link adaptive effects toggle to the global low-end CSS class
+        adaptiveEffects.subscribe((enabled) => {
+            if (typeof document !== 'undefined' && document.documentElement && document.documentElement.classList) {
+                document.documentElement.classList.toggle('papyr-low-end', !enabled);
+            }
+        });
     }
+
 
     // 6. Power Engine API Exports
     papyr.power = {
@@ -207,11 +215,117 @@
             // Start loop execution
             requestAnimationFrame(tick);
 
-            // Return unsubscribe cleanup hook
             return () => {
                 active = false;
                 unsubscribe();
             };
         }
     };
+
+    // --- Biometric & Behavioral Cadence Tracker ---
+    const stressState = papyr.state(false);
+    const readingState = papyr.state(false);
+
+    papyr.user = {
+        stress: stressState,
+        reading: readingState
+    };
+
+    if (typeof window !== 'undefined' && typeof document !== 'undefined') {
+        let clickTimes = [];
+        let mouseEvents = [];
+        let scrollEvents = [];
+        let lastMousePos = null;
+        let lastMouseTime = null;
+        let readingTimer = null;
+
+        const trackUserCadence = (e) => {
+            const now = Date.now();
+            
+            readingState.value = false;
+            if (readingTimer) clearTimeout(readingTimer);
+            readingTimer = setTimeout(() => {
+                if (powerState.value === 'idle' || powerState.value === 'away') {
+                    readingState.value = true;
+                }
+            }, 5000);
+
+            if (e.type === 'click' || e.type === 'mousedown' || e.type === 'touchstart') {
+                clickTimes.push(now);
+                clickTimes = clickTimes.filter(t => now - t < 3000);
+                if (clickTimes.length >= 8) {
+                    stressState.value = true;
+                }
+            }
+
+            if (e.type === 'mousemove') {
+                const currentPos = { x: e.clientX, y: e.clientY };
+                if (lastMousePos && lastMouseTime) {
+                    const dx = currentPos.x - lastMousePos.x;
+                    const dy = currentPos.y - lastMousePos.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    const dt = now - lastMouseTime;
+                    if (dt > 0) {
+                        const speed = dist / dt;
+                        mouseEvents.push({ speed, time: now, dx, dy });
+                    }
+                }
+                lastMousePos = currentPos;
+                lastMouseTime = now;
+
+                mouseEvents = mouseEvents.filter(m => now - m.time < 3000);
+                if (mouseEvents.length > 10) {
+                    const avgSpeed = mouseEvents.reduce((acc, m) => acc + m.speed, 0) / mouseEvents.length;
+                    let dirSwitches = 0;
+                    for (let i = 1; i < mouseEvents.length; i++) {
+                        const prev = mouseEvents[i-1];
+                        const curr = mouseEvents[i];
+                        if ((prev.dx > 0 && curr.dx < 0) || (prev.dx < 0 && curr.dx > 0) ||
+                            (prev.dy > 0 && curr.dy < 0) || (prev.dy < 0 && curr.dy > 0)) {
+                            dirSwitches++;
+                        }
+                    }
+                    if (avgSpeed > 3.0 && dirSwitches > 6) {
+                        stressState.value = true;
+                    }
+                }
+            }
+
+            if (e.type === 'scroll') {
+                scrollEvents.push(now);
+                scrollEvents = scrollEvents.filter(t => now - t < 3000);
+                if (scrollEvents.length > 25) {
+                    stressState.value = true;
+                }
+            }
+        };
+
+        setInterval(() => {
+            const now = Date.now();
+            clickTimes = clickTimes.filter(t => now - t < 3000);
+            mouseEvents = mouseEvents.filter(m => now - m.time < 3000);
+            scrollEvents = scrollEvents.filter(t => now - t < 3000);
+            
+            if (clickTimes.length < 5 && mouseEvents.length < 5 && scrollEvents.length < 10) {
+                stressState.value = false;
+            }
+        }, 1500);
+
+        const trackedEvents = ['mousemove', 'mousedown', 'touchstart', 'click', 'scroll'];
+        trackedEvents.forEach(evt => {
+            window.addEventListener(evt, trackUserCadence, { passive: true });
+        });
+
+        stressState.subscribe((isStressed) => {
+            if (document.documentElement && document.documentElement.classList) {
+                document.documentElement.classList.toggle('papyr-stress', isStressed);
+            }
+        });
+
+        readingState.subscribe((isReading) => {
+            if (document.documentElement && document.documentElement.classList) {
+                document.documentElement.classList.toggle('papyr-reading', isReading);
+            }
+        });
+    }
 })(typeof window !== 'undefined' ? window : this);

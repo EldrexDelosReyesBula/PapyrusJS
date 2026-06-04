@@ -46,7 +46,11 @@ if (typeof document === 'undefined') {
                 tagName: tag.toUpperCase(),
                 attributes: {},
                 style: {
-                    setProperty(k, v) { this[k] = v; }
+                    setProperty(k, v) {
+                        if (k !== '__proto__' && k !== 'constructor' && k !== 'prototype') {
+                            Reflect.set(this, k, v);
+                        }
+                    }
                 },
                 classList: {
                     _classes: [],
@@ -68,15 +72,29 @@ if (typeof document === 'undefined') {
                 removeChild(n) {
                     this.childNodes = this.childNodes.filter(c => c !== n);
                 },
-                setAttribute(k, v) { this.attributes[k] = v; },
-                getAttribute(k) { return this.attributes[k]; },
-                removeAttribute(k) { delete this.attributes[k]; },
-                hasAttribute(k) { return k in this.attributes; },
+                setAttribute(k, v) {
+                    if (k !== '__proto__' && k !== 'constructor' && k !== 'prototype') {
+                        Reflect.set(this.attributes, k, v);
+                    }
+                },
+                getAttribute(k) {
+                    if (k === '__proto__' || k === 'constructor' || k === 'prototype') return undefined;
+                    return Reflect.get(this.attributes, k);
+                },
+                removeAttribute(k) {
+                    if (k !== '__proto__' && k !== 'constructor' && k !== 'prototype') {
+                        Reflect.deleteProperty(this.attributes, k);
+                    }
+                },
+                hasAttribute(k) {
+                    if (k === '__proto__' || k === 'constructor' || k === 'prototype') return false;
+                    return Reflect.has(this.attributes, k);
+                },
                 addEventListener() {},
                 removeEventListener() {},
                 get innerHTML() {
                     const attrs = Object.entries(this.attributes).map(([k, v]) => `${k}="${v}"`).join(' ');
-                    const styles = Object.entries(this.style).filter(([k]) => typeof this.style[k] !== 'function').map(([k, v]) => `${k.replace(/[A-Z]/g, m => '-' + m.toLowerCase())}: ${v}`).join('; ');
+                    const styles = Object.entries(this.style).filter(([k]) => typeof Reflect.get(this.style, k) !== 'function').map(([k, v]) => `${k.replace(/[A-Z]/g, m => '-' + m.toLowerCase())}: ${v}`).join('; ');
                     const classStr = this.classList._classes.length > 0 ? `class="${this.classList._classes.join(' ')}"` : '';
                     const allAttrs = [classStr, attrs, styles ? `style="${styles}"` : ''].filter(Boolean).join(' ');
                     const inner = this.childNodes.map(c => typeof c === 'string' ? c : (c.innerHTML || c.text || '')).join('');
@@ -111,7 +129,7 @@ if (typeof document === 'undefined') {
 function parseClass(val) {
     if (Array.isArray(val)) return val.filter(Boolean).join(' ');
     if (typeof val === 'object' && val !== null) {
-        return Object.keys(val).filter(k => val[k]).join(' ');
+        return Object.keys(val).filter(k => Reflect.get(val, k)).join(' ');
     }
     return String(val);
 }
@@ -230,7 +248,7 @@ const parsePapyrUtilities = (el, utilities) => {
                         el._papyrUniqueClass = uniqueClass;
                     }
                     
-                    let styleText = Object.entries(utilitySet[ut])
+                    let styleText = Object.entries(Reflect.get(utilitySet, ut))
                         .map(([k, v]) => `${k.replace(/[A-Z]/g, m => '-' + m.toLowerCase())}: ${v};`)
                         .join(' ');
                     
@@ -240,10 +258,13 @@ const parsePapyrUtilities = (el, utilities) => {
             }
         } else {
             // Standard utility class
-            let utilitySet = papyrUtilities[trimmedItem] ? papyrUtilities : (typeof paperUtilities !== 'undefined' ? paperUtilities : {});
-            if (utilitySet[trimmedItem]) {
-                Object.entries(utilitySet[trimmedItem]).forEach(([k, v]) => {
-                    el.style[k] = v;
+            let utilitySet = Reflect.get(papyrUtilities, trimmedItem) ? papyrUtilities : (typeof paperUtilities !== 'undefined' ? paperUtilities : {});
+            let targetUtility = Reflect.get(utilitySet, trimmedItem);
+            if (targetUtility) {
+                Object.entries(targetUtility).forEach(([k, v]) => {
+                    if (k !== '__proto__' && k !== 'constructor' && k !== 'prototype') {
+                        Reflect.set(el.style, k, v);
+                    }
                 });
             } else {
                 el.classList.add(trimmedItem);
@@ -261,19 +282,29 @@ function levenshtein(a, b) {
     const key = a < b ? a + ',' + b : b + ',' + a;
     if (levenshteinCache.has(key)) return levenshteinCache.get(key);
 
-    let tmp = [];
-    for (let i = 0; i <= a.length; i++) {
-        let row = [i];
-        for (let j = 1; j <= b.length; j++) {
-            row.push(i === 0 ? j : Math.min(
-                tmp[i - 1][j] + 1,
-                row[j - 1] + 1,
-                tmp[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)
-            ));
-        }
-        tmp.push(row);
+    const m = a.length;
+    const n = b.length;
+    let prev = new Int32Array(n + 1);
+    let curr = new Int32Array(n + 1);
+
+    for (let j = 0; j <= n; j++) {
+        prev[j] = j;
     }
-    const result = tmp[a.length][b.length];
+
+    for (let i = 1; i <= m; i++) {
+        curr[0] = i;
+        for (let j = 1; j <= n; j++) {
+            curr[j] = Math.min(
+                prev[j] + 1,
+                curr[j - 1] + 1,
+                prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)
+            );
+        }
+        let temp = prev;
+        prev = curr;
+        curr = temp;
+    }
+    const result = prev[n];
     levenshteinCache.set(key, result);
     return result;
 }
@@ -319,7 +350,7 @@ class StateManager {
         const result = {};
         let idx = 0;
         this.states.forEach(s => {
-            result[`state_${idx++}`] = s.value;
+            Reflect.set(result, `state_${idx++}`, s.value);
         });
         return result;
     }
@@ -382,11 +413,14 @@ class PluginSystem {
     }
     triggerHook(hookName, ...args) {
         this.installed.forEach(plugin => {
-            if (plugin.hooks && typeof plugin.hooks[hookName] === 'function') {
-                try {
-                    plugin.hooks[hookName](...args);
-                } catch(e) {
-                    this.kernel.diagnostics.reportError(e);
+            if (plugin.hooks && hookName !== '__proto__' && hookName !== 'constructor' && hookName !== 'prototype') {
+                const hookFn = Reflect.get(plugin.hooks, hookName);
+                if (typeof hookFn === 'function') {
+                    try {
+                        hookFn(...args);
+                    } catch(e) {
+                        this.kernel.diagnostics.reportError(e);
+                    }
                 }
             }
         });
@@ -645,8 +679,7 @@ function createPapyr() {
                             if (key.startsWith('--')) {
                                 el.style.setProperty(key, String(v));
                             } else if (key !== '__proto__' && key !== 'constructor' && key !== 'prototype') {
-                                // eslint-disable-next-line security/detect-object-injection
-                                el.style[key] = v;
+                                Reflect.set(el.style, key, v);
                             }
                         };
                         let unsubscribe;
@@ -737,13 +770,11 @@ function createPapyr() {
                                 }
                             } else if (k in el && k !== '__proto__' && k !== 'constructor' && k !== 'prototype') {
                                 if (typeof newVal === 'boolean') {
-                                    // eslint-disable-next-line security/detect-object-injection
-                                    el[k] = newVal;
+                                    Reflect.set(el, k, newVal);
                                     if (newVal) el.setAttribute(k, '');
                                     else el.removeAttribute(k);
                                 } else {
-                                    // eslint-disable-next-line security/detect-object-injection
-                                    el[k] = newVal;
+                                    Reflect.set(el, k, newVal);
                                 }
                             } else {
                                 if (newVal === null || newVal === undefined || newVal === false) {
@@ -810,11 +841,24 @@ function createPapyr() {
     // Context Export API
     papyrInstance.exportContext = () => {
         return {
-            components: papyrInstance.components.list(),
-            state: papyrInstance.state.dump(),
-            routes: papyrInstance.runtime.routes || [],
-            errors: papyrInstance.diagnostics.errors,
-            plugins: papyrInstance.plugins.list()
+            components: papyrInstance.components ? papyrInstance.components.list() : [],
+            state: papyrInstance.state ? papyrInstance.state.dump() : {},
+            routes: papyrInstance.runtime ? (papyrInstance.runtime.routes || []) : [],
+            errors: papyrInstance.diagnostics ? papyrInstance.diagnostics.errors : [],
+            plugins: papyrInstance.plugins ? papyrInstance.plugins.list() : [],
+            power: papyrInstance.power ? {
+                state: papyrInstance.power.state ? papyrInstance.power.state.value : 'unknown',
+                fps: papyrInstance.power.fps ? papyrInstance.power.fps.value : 0,
+                targetFps: papyrInstance.power.targetFps ? papyrInstance.power.targetFps.value : 0,
+                battery: papyrInstance.power.battery ? {
+                    level: papyrInstance.power.battery.level ? papyrInstance.power.battery.level.value : 1.0,
+                    charging: papyrInstance.power.battery.charging ? papyrInstance.power.battery.charging.value : true
+                } : {}
+            } : {},
+            gateways: papyrInstance.gateway ? papyrInstance.gateway.list() : [],
+            diagnostics: papyrInstance.diagnostics ? {
+                updateCounts: Array.from(papyrInstance.diagnostics.updateCounts || []).map(([k, v]) => ({ key: k, count: v }))
+            } : {}
         };
     };
 
@@ -831,14 +875,27 @@ function createPapyr() {
     // Design Tokens Theme engine for dynamic custom property updates
     papyrInstance.theme = (config) => {
         if (!config || typeof doc === 'undefined') return papyrInstance;
-        Object.entries(config).forEach(([key, val]) => {
-            if (doc.documentElement && doc.documentElement.style) {
-                doc.documentElement.style.setProperty(`--papyr-${key}`, val);
-                doc.documentElement.style.setProperty(`--${key}`, val);
+        if (typeof config === 'string') {
+            const presets = ['liquid', 'material', 'minimal', 'enterprise'];
+            const presetLower = config.toLowerCase();
+            if (presets.includes(presetLower)) {
+                const rootEl = doc.documentElement || doc.body;
+                if (rootEl && rootEl.classList) {
+                    presets.forEach(p => rootEl.classList.remove(`papyr-theme-${p}`));
+                    rootEl.classList.add(`papyr-theme-${presetLower}`);
+                }
             }
-        });
+        } else if (typeof config === 'object') {
+            Object.entries(config).forEach(([key, val]) => {
+                if (doc.documentElement && doc.documentElement.style) {
+                    doc.documentElement.style.setProperty(`--papyr-${key}`, val);
+                    doc.documentElement.style.setProperty(`--${key}`, val);
+                }
+            });
+        }
         return papyrInstance;
     };
+
 
     // Dynamic plugin registration alias matching the roadmap API layout
     papyrInstance.plugin = (p) => papyrInstance.use(p);
@@ -871,6 +928,84 @@ function createPapyr() {
         }
     }
     papyrInstance.component = PapyrComponent;
+
+    // Python-like syntax wrapper (papyr.py namespace)
+    papyrInstance.py = {
+        state: (val, options) => papyrInstance.state(val, options),
+        computed: (fn) => papyrInstance.computed(fn),
+        effect: (fn) => papyrInstance.effect(fn),
+
+        Box: (...args) => {
+            let props = {};
+            let children = args;
+            if (args[0] && typeof args[0] === 'object' && !args[0].tagName && !args[0]._subscribers && !args[0].value) {
+                props = args[0];
+                children = args.slice(1);
+            }
+            const style = {
+                display: 'flex',
+                flexDirection: props.direction || 'column',
+                padding: typeof props.padding === 'number' ? `${props.padding}px` : props.padding,
+                margin: typeof props.margin === 'number' ? `${props.margin}px` : props.margin,
+                gap: typeof props.gap === 'number' ? `${props.gap}px` : props.gap,
+                alignItems: props.align || 'stretch',
+                justifyContent: props.justify || 'flex-start',
+                background: props.bg,
+                color: props.color,
+                borderRadius: typeof props.radius === 'number' ? `${props.radius}px` : props.radius,
+                ...props.style
+            };
+            const elProps = { style, class: props.class, id: props.id };
+            if (props.on_click) elProps.onClick = props.on_click;
+            return papyrInstance.div(elProps, ...children);
+        },
+
+        Text: (content, props = {}) => {
+            const style = {
+                fontSize: typeof props.size === 'number' ? `${props.size}px` : props.size,
+                color: props.color,
+                fontWeight: props.weight,
+                lineHeight: props.line_height,
+                letterSpacing: props.kerning,
+                ...props.style
+            };
+            const elProps = { style, class: props.class, id: props.id };
+            if (props.on_click) elProps.onClick = props.on_click;
+            return papyrInstance.span(elProps, content);
+        },
+
+        Button: (label, on_click, props = {}) => {
+            const style = {
+                padding: props.padding || '8px 16px',
+                borderRadius: props.radius || '8px',
+                background: props.bg,
+                color: props.color,
+                ...props.style
+            };
+            const elProps = { style, class: props.class, id: props.id };
+            elProps.onClick = on_click;
+            return papyrInstance.button(elProps, label);
+        },
+
+        Input: (props = {}) => {
+            const style = {
+                padding: props.padding || '8px 12px',
+                borderRadius: props.radius || '6px',
+                border: props.border,
+                ...props.style
+            };
+            const elProps = {
+                style,
+                class: props.class,
+                id: props.id,
+                type: props.type || 'text',
+                placeholder: props.placeholder || '',
+                value: props.value !== undefined ? props.value : ''
+            };
+            if (props.on_change) elProps.onInput = (e) => props.on_change(e.target.value, e);
+            return papyrInstance.input(elProps);
+        }
+    };
 
     // Error boundary wrapper
     papyrInstance.errorBoundary = (renderFn, fallbackFn) => {
@@ -1515,6 +1650,38 @@ if (typeof module !== 'undefined' && module.exports) {
  */
 
 coreInitializers.push((papyr) => {
+    const pendingSubscribers = new Set();
+    let isSchedulerScheduled = false;
+
+    const queueSubscriber = (sub, val) => {
+        pendingSubscribers.add({ sub, val });
+        if (!isSchedulerScheduled) {
+            isSchedulerScheduled = true;
+            if (typeof requestAnimationFrame !== 'undefined') {
+                requestAnimationFrame(flushScheduler);
+            } else {
+                setTimeout(flushScheduler, 0);
+            }
+        }
+    };
+
+    const flushScheduler = () => {
+        const subsToNotify = new Map();
+        pendingSubscribers.forEach(({ sub, val }) => {
+            subsToNotify.set(sub, val);
+        });
+        pendingSubscribers.clear();
+        isSchedulerScheduled = false;
+        
+        subsToNotify.forEach((val, sub) => {
+            try {
+                sub(val);
+            } catch (err) {
+                papyr.diagnostics.reportError(err);
+            }
+        });
+    };
+
     
     /**
      * Creates an auto-tracking reactive state variable.
@@ -1587,12 +1754,127 @@ coreInitializers.push((papyr) => {
         });
     };
 
-    papyr.state = (val) => {
+    class KalmanFilter {
+        constructor(processNoise = 0.05, measurementNoise = 0.5) {
+            this.q = processNoise;
+            this.r = measurementNoise;
+            this.p = 1.0;
+            this.x = null;
+            this.v = 0.0;
+        }
+        update(val, dt) {
+            if (this.x === null) {
+                this.x = val;
+                return;
+            }
+            if (dt <= 0) dt = 0.016;
+            this.x = this.x + this.v * dt;
+            this.p = this.p + this.q;
+            let k = this.p / (this.p + this.r);
+            let diff = val - this.x;
+            this.x = this.x + k * diff;
+            this.v = this.v + k * (diff / dt - this.v);
+            this.p = (1.0 - k) * this.p;
+        }
+        predict(dtAhead) {
+            if (this.x === null) return 0;
+            return this.x + this.v * dtAhead;
+        }
+    }
+
+    class Predictor {
+        constructor(val, options = {}) {
+            this.options = options;
+            this.filters = {};
+            this.lastTime = typeof performance !== 'undefined' ? performance.now() : Date.now();
+            this.initialize(val);
+        }
+        initialize(val) {
+            const q = this.options.processNoise || 0.05;
+            const r = this.options.measurementNoise || 0.5;
+            if (typeof val === 'number') {
+                this.filters['root'] = new KalmanFilter(q, r);
+            } else if (Array.isArray(val)) {
+                val.forEach((item, index) => {
+                    if (typeof item === 'number') {
+                        this.filters[index] = new KalmanFilter(q, r);
+                    }
+                });
+            } else if (val && typeof val === 'object') {
+                Object.keys(val).forEach(key => {
+                    if (typeof val[key] === 'number') {
+                        this.filters[key] = new KalmanFilter(q, r);
+                    }
+                });
+            }
+        }
+        update(newVal) {
+            let now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+            let dt = (now - this.lastTime) / 1000.0;
+            this.lastTime = now;
+            const q = this.options.processNoise || 0.05;
+            const r = this.options.measurementNoise || 0.5;
+
+            if (typeof newVal === 'number') {
+                if (!this.filters['root']) this.filters['root'] = new KalmanFilter(q, r);
+                this.filters['root'].update(newVal, dt);
+            } else if (Array.isArray(newVal)) {
+                newVal.forEach((item, index) => {
+                    if (typeof item === 'number') {
+                        if (!this.filters[index]) this.filters[index] = new KalmanFilter(q, r);
+                        this.filters[index].update(item, dt);
+                    }
+                });
+            } else if (newVal && typeof newVal === 'object') {
+                Object.keys(newVal).forEach(key => {
+                    if (typeof newVal[key] === 'number') {
+                        if (!this.filters[key]) this.filters[key] = new KalmanFilter(q, r);
+                        this.filters[key].update(newVal[key], dt);
+                    }
+                });
+            }
+        }
+        predict(dtAheadSeconds) {
+            if (this.filters['root']) {
+                return this.filters['root'].predict(dtAheadSeconds);
+            }
+            let keys = Object.keys(this.filters);
+            if (keys.length === 0) return null;
+
+            let isArray = false;
+            for (let k of keys) {
+                if (!isNaN(k)) {
+                    isArray = true;
+                    break;
+                }
+            }
+
+            if (isArray) {
+                let res = [];
+                keys.forEach(k => {
+                    res[k] = this.filters[k].predict(dtAheadSeconds);
+                });
+                return res;
+            } else {
+                let res = {};
+                keys.forEach(k => {
+                    res[k] = this.filters[k].predict(dtAheadSeconds);
+                });
+                return res;
+            }
+        }
+    }
+
+    papyr.state = (val, options = {}) => {
         let subscribers = new Set();
+        let predictor = options.predictive ? new Predictor(val, options) : null;
         
         let notify = () => {
+            if (predictor) predictor.update(val);
             papyr.diagnostics.trackUpdate(stateObj, val, val);
-            Array.from(subscribers).forEach(sub => sub(val));
+            Array.from(subscribers).forEach(sub => {
+                queueSubscriber(sub, val);
+            });
             papyr.plugins.triggerHook('onUpdate', stateObj);
         };
 
@@ -1611,8 +1893,11 @@ coreInitializers.push((papyr) => {
                 if (val === newVal && (typeof newVal !== 'object' || newVal === null)) return;
                 let oldVal = val;
                 val = newVal;
+                if (predictor) predictor.update(newVal);
                 papyr.diagnostics.trackUpdate(stateObj, newVal, oldVal);
-                Array.from(subscribers).forEach(sub => sub(newVal));
+                Array.from(subscribers).forEach(sub => {
+                    queueSubscriber(sub, newVal);
+                });
                 
                 // Trigger hooks
                 papyr.plugins.triggerHook('onUpdate', stateObj);
@@ -1622,12 +1907,26 @@ coreInitializers.push((papyr) => {
                 sub(val);
                 return () => subscribers.delete(sub);
             },
+            predict(dtAheadMs) {
+                if (predictor) {
+                    const pred = predictor.predict(dtAheadMs / 1000.0);
+                    return pred !== null ? pred : val;
+                }
+                return val;
+            },
+            get predicted() {
+                return stateObj.predict(16);
+            },
             dump() {
                 return val;
             }
         };
         papyr.state.register(stateObj);
         return stateObj;
+    };
+
+    papyr.predictiveState = (val, options = {}) => {
+        return papyr.state(val, { ...options, predictive: true });
     };
 
     // Initialize state registries on the state function itself for this kernel instance
@@ -1823,9 +2122,7 @@ coreInitializers.push((papyr) => {
             arr.forEach((item, index) => {
                 let baseKey = (item && typeof item === 'object' && item.id !== undefined) 
                     ? item.id 
-                    : (item && typeof item === 'object') 
-                        ? item 
-                        : item;
+                    : item;
                 
                 let occurrence = (keyCounts.get(baseKey) || 0) + 1;
                 keyCounts.set(baseKey, occurrence);
@@ -2022,6 +2319,16 @@ coreInitializers.push((papyr) => {
     let currentView = papyr.state(null);
     let pathParams = papyr.state({});
 
+    const safeRouteRegex = (cleanPath) => {
+        // Enforce route string format: must only contain alphanumeric, slash, colon, hyphen, underscore, dot, at-sign, tilde.
+        // This prevents injection of backtracking metacharacters (e.g. *, +, ?, (, ), [, ], etc.)
+        if (!/^[a-zA-Z0-9_/:.\-@~]*$/.test(cleanPath)) {
+            throw new Error("Security Violation: Unsafe characters in route path pattern");
+        }
+        // eslint-disable-next-line security/detect-non-literal-regexp
+        return new RegExp('^' + cleanPath.replace(/:\w+/g, '([^/]+)') + '$');
+    };
+
     /**
      * Define a hash route.
      * @param {string} path Route path (e.g., "#/about", "#/user/:id")
@@ -2032,8 +2339,7 @@ coreInitializers.push((papyr) => {
         let cleanPath = path.startsWith('#') ? path.substring(1) : path;
         routes.push({
             path: cleanPath,
-            // eslint-disable-next-line security/detect-non-literal-regexp
-            regex: new RegExp('^' + cleanPath.replace(/:\w+/g, '([^/]+)') + '$'),
+            regex: safeRouteRegex(cleanPath),
             keys: (cleanPath.match(/:\w+/g) || []).map(k => k.slice(1)),
             componentFn
         });
@@ -2155,8 +2461,7 @@ coreInitializers.push((papyr) => {
         let cleanPath = path;
         pageRoutes.push({
             path: cleanPath,
-            // eslint-disable-next-line security/detect-non-literal-regexp
-            regex: new RegExp('^' + cleanPath.replace(/:\w+/g, '([^/]+)') + '$'),
+            regex: safeRouteRegex(cleanPath),
             keys: (cleanPath.match(/:\w+/g) || []).map(k => k.slice(1)),
             componentFn
         });
@@ -3771,47 +4076,172 @@ coreInitializers.push((papyr) => {
  */
 
 coreInitializers.push((papyr) => {
-    papyr.api = {
-        /**
-         * Perform an async GET request
-         */
-        async get(url, headers = {}) {
-            try {
-                const response = await fetch(url, {
-                    method: 'GET',
-                    headers: {
-                        'Accept': 'application/json',
-                        ...headers
+    const getCacheDB = () => {
+        return new Promise((resolve, reject) => {
+            if (typeof window === 'undefined' || !window.indexedDB) return reject("No IndexedDB support");
+            const req = window.indexedDB.open("papyr_network_cache", 1);
+            req.onupgradeneeded = (e) => {
+                const db = e.target.result;
+                if (!db.objectStoreNames.contains("cache")) {
+                    db.createObjectStore("cache", { keyPath: "url" });
+                }
+            };
+            req.onsuccess = (e) => resolve(e.target.result);
+            req.onerror = (e) => reject(e.target.error);
+        });
+    };
+
+    const getCachedResponse = async (url, password) => {
+        try {
+            const db = await getCacheDB();
+            return new Promise((resolve, reject) => {
+                const tx = db.transaction("cache", "readonly");
+                const store = tx.objectStore("cache");
+                const getReq = store.get(url);
+                getReq.onsuccess = () => {
+                    db.close();
+                    const item = getReq.result;
+                    if (item && item.payload) {
+                        try {
+                            const decrypted = papyr.security ? papyr.security.decrypt(item.payload, password) : item.payload;
+                            resolve(JSON.parse(decrypted));
+                        } catch (e) {
+                            reject(e);
+                        }
+                    } else {
+                        reject(new Error("No cache entry"));
                     }
+                };
+                getReq.onerror = () => {
+                    db.close();
+                    reject(getReq.error);
+                };
+            });
+        } catch (err) {
+            return null;
+        }
+    };
+
+    const cacheResponse = async (url, data, password) => {
+        try {
+            const db = await getCacheDB();
+            const text = JSON.stringify(data);
+            const encrypted = papyr.security ? papyr.security.encrypt(text, password) : text;
+            return new Promise((resolve) => {
+                const tx = db.transaction("cache", "readwrite");
+                const store = tx.objectStore("cache");
+                store.put({ url, payload: encrypted, timestamp: Date.now() }).onsuccess = () => {
+                    db.close();
+                    resolve();
+                };
+            });
+        } catch (err) {
+            console.error("Cache error:", err);
+        }
+    };
+
+    const syncLedger = async () => {
+        if (typeof navigator !== 'undefined' && !navigator.onLine) return;
+        let ledger = [];
+        try {
+            ledger = JSON.parse(localStorage.getItem("papyr_mutation_ledger") || "[]");
+        } catch (e) {}
+        if (ledger.length === 0) return;
+
+        const remaining = [];
+        for (let op of ledger) {
+            try {
+                const res = await fetch(op.url, {
+                    method: op.method,
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...op.headers
+                    },
+                    body: op.data ? JSON.stringify(op.data) : undefined
                 });
-                if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
-                return await response.json();
-            } catch (error) {
-                if (papyr.warn) papyr.warn(`papyr.api.get failed for ${url}`, error);
-                throw error;
+                if (!res.ok) throw new Error("Sync server returned error " + res.status);
+                if (papyr.emit) {
+                    papyr.emit('sync:success', { op, response: await res.json() });
+                }
+            } catch (err) {
+                console.error("Ledger replay failed for", op.url, err);
+                remaining.push(op);
+            }
+        }
+        localStorage.setItem("papyr_mutation_ledger", JSON.stringify(remaining));
+    };
+
+    if (typeof window !== 'undefined') {
+        window.addEventListener('online', () => {
+            syncLedger().catch(console.error);
+        });
+        setInterval(() => {
+            syncLedger().catch(console.error);
+        }, 15000);
+    }
+
+    papyr.api = {
+        async fetch(url, options = {}) {
+            const method = (options.method || 'GET').toUpperCase();
+            const headers = options.headers || {};
+            const password = options.encryptionKey || "papyr_secure_mesh_cache";
+            const isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
+
+            if (method === 'GET') {
+                if (isOnline) {
+                    try {
+                        const res = await fetch(url, { method, headers });
+                        if (!res.ok) throw new Error(`HTTP error! Status: ${res.status}`);
+                        const data = await res.json();
+                        await cacheResponse(url, data, password);
+                        return data;
+                    } catch (error) {
+                        const cached = await getCachedResponse(url, password);
+                        if (cached) return cached;
+                        throw error;
+                    }
+                } else {
+                    const cached = await getCachedResponse(url, password);
+                    if (cached) return cached;
+                    throw new Error("Offline and no cached data available");
+                }
+            } else {
+                if (isOnline) {
+                    const body = options.body || options.data;
+                    const res = await fetch(url, {
+                        method,
+                        headers: {
+                            'Content-Type': 'application/json',
+                            ...headers
+                        },
+                        body: body ? JSON.stringify(body) : undefined
+                    });
+                    if (!res.ok) throw new Error(`HTTP error! Status: ${res.status}`);
+                    return await res.json();
+                } else {
+                    let ledger = [];
+                    try {
+                        ledger = JSON.parse(localStorage.getItem("papyr_mutation_ledger") || "[]");
+                    } catch (e) {}
+                    const body = options.body || options.data;
+                    ledger.push({ url, method, data: body, headers, timestamp: Date.now() });
+                    localStorage.setItem("papyr_mutation_ledger", JSON.stringify(ledger));
+
+                    return {
+                        id: "temp_" + Math.random().toString(36).substr(2, 9),
+                        ...(typeof body === 'object' ? body : {}),
+                        status: "pending_sync"
+                    };
+                }
             }
         },
 
-        /**
-         * Perform an async POST request
-         */
+        async get(url, headers = {}) {
+            return this.fetch(url, { method: 'GET', headers });
+        },
+
         async post(url, data, headers = {}) {
-            try {
-                const response = await fetch(url, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json',
-                        ...headers
-                    },
-                    body: JSON.stringify(data)
-                });
-                if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
-                return await response.json();
-            } catch (error) {
-                if (papyr.warn) papyr.warn(`papyr.api.post failed for ${url}`, error);
-                throw error;
-            }
+            return this.fetch(url, { method: 'POST', data, headers });
         }
     };
 

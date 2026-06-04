@@ -36,7 +36,11 @@ if (typeof document === 'undefined') {
                 tagName: tag.toUpperCase(),
                 attributes: {},
                 style: {
-                    setProperty(k, v) { this[k] = v; }
+                    setProperty(k, v) {
+                        if (k !== '__proto__' && k !== 'constructor' && k !== 'prototype') {
+                            Reflect.set(this, k, v);
+                        }
+                    }
                 },
                 classList: {
                     _classes: [],
@@ -58,15 +62,29 @@ if (typeof document === 'undefined') {
                 removeChild(n) {
                     this.childNodes = this.childNodes.filter(c => c !== n);
                 },
-                setAttribute(k, v) { this.attributes[k] = v; },
-                getAttribute(k) { return this.attributes[k]; },
-                removeAttribute(k) { delete this.attributes[k]; },
-                hasAttribute(k) { return k in this.attributes; },
+                setAttribute(k, v) {
+                    if (k !== '__proto__' && k !== 'constructor' && k !== 'prototype') {
+                        Reflect.set(this.attributes, k, v);
+                    }
+                },
+                getAttribute(k) {
+                    if (k === '__proto__' || k === 'constructor' || k === 'prototype') return undefined;
+                    return Reflect.get(this.attributes, k);
+                },
+                removeAttribute(k) {
+                    if (k !== '__proto__' && k !== 'constructor' && k !== 'prototype') {
+                        Reflect.deleteProperty(this.attributes, k);
+                    }
+                },
+                hasAttribute(k) {
+                    if (k === '__proto__' || k === 'constructor' || k === 'prototype') return false;
+                    return Reflect.has(this.attributes, k);
+                },
                 addEventListener() {},
                 removeEventListener() {},
                 get innerHTML() {
                     const attrs = Object.entries(this.attributes).map(([k, v]) => `${k}="${v}"`).join(' ');
-                    const styles = Object.entries(this.style).filter(([k]) => typeof this.style[k] !== 'function').map(([k, v]) => `${k.replace(/[A-Z]/g, m => '-' + m.toLowerCase())}: ${v}`).join('; ');
+                    const styles = Object.entries(this.style).filter(([k]) => typeof Reflect.get(this.style, k) !== 'function').map(([k, v]) => `${k.replace(/[A-Z]/g, m => '-' + m.toLowerCase())}: ${v}`).join('; ');
                     const classStr = this.classList._classes.length > 0 ? `class="${this.classList._classes.join(' ')}"` : '';
                     const allAttrs = [classStr, attrs, styles ? `style="${styles}"` : ''].filter(Boolean).join(' ');
                     const inner = this.childNodes.map(c => typeof c === 'string' ? c : (c.innerHTML || c.text || '')).join('');
@@ -101,7 +119,7 @@ if (typeof document === 'undefined') {
 function parseClass(val) {
     if (Array.isArray(val)) return val.filter(Boolean).join(' ');
     if (typeof val === 'object' && val !== null) {
-        return Object.keys(val).filter(k => val[k]).join(' ');
+        return Object.keys(val).filter(k => Reflect.get(val, k)).join(' ');
     }
     return String(val);
 }
@@ -220,7 +238,7 @@ const parsePapyrUtilities = (el, utilities) => {
                         el._papyrUniqueClass = uniqueClass;
                     }
                     
-                    let styleText = Object.entries(utilitySet[ut])
+                    let styleText = Object.entries(Reflect.get(utilitySet, ut))
                         .map(([k, v]) => `${k.replace(/[A-Z]/g, m => '-' + m.toLowerCase())}: ${v};`)
                         .join(' ');
                     
@@ -230,10 +248,13 @@ const parsePapyrUtilities = (el, utilities) => {
             }
         } else {
             // Standard utility class
-            let utilitySet = papyrUtilities[trimmedItem] ? papyrUtilities : (typeof paperUtilities !== 'undefined' ? paperUtilities : {});
-            if (utilitySet[trimmedItem]) {
-                Object.entries(utilitySet[trimmedItem]).forEach(([k, v]) => {
-                    el.style[k] = v;
+            let utilitySet = Reflect.get(papyrUtilities, trimmedItem) ? papyrUtilities : (typeof paperUtilities !== 'undefined' ? paperUtilities : {});
+            let targetUtility = Reflect.get(utilitySet, trimmedItem);
+            if (targetUtility) {
+                Object.entries(targetUtility).forEach(([k, v]) => {
+                    if (k !== '__proto__' && k !== 'constructor' && k !== 'prototype') {
+                        Reflect.set(el.style, k, v);
+                    }
                 });
             } else {
                 el.classList.add(trimmedItem);
@@ -251,19 +272,29 @@ function levenshtein(a, b) {
     const key = a < b ? a + ',' + b : b + ',' + a;
     if (levenshteinCache.has(key)) return levenshteinCache.get(key);
 
-    let tmp = [];
-    for (let i = 0; i <= a.length; i++) {
-        let row = [i];
-        for (let j = 1; j <= b.length; j++) {
-            row.push(i === 0 ? j : Math.min(
-                tmp[i - 1][j] + 1,
-                row[j - 1] + 1,
-                tmp[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)
-            ));
-        }
-        tmp.push(row);
+    const m = a.length;
+    const n = b.length;
+    let prev = new Int32Array(n + 1);
+    let curr = new Int32Array(n + 1);
+
+    for (let j = 0; j <= n; j++) {
+        prev[j] = j;
     }
-    const result = tmp[a.length][b.length];
+
+    for (let i = 1; i <= m; i++) {
+        curr[0] = i;
+        for (let j = 1; j <= n; j++) {
+            curr[j] = Math.min(
+                prev[j] + 1,
+                curr[j - 1] + 1,
+                prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)
+            );
+        }
+        let temp = prev;
+        prev = curr;
+        curr = temp;
+    }
+    const result = prev[n];
     levenshteinCache.set(key, result);
     return result;
 }
@@ -309,7 +340,7 @@ class StateManager {
         const result = {};
         let idx = 0;
         this.states.forEach(s => {
-            result[`state_${idx++}`] = s.value;
+            Reflect.set(result, `state_${idx++}`, s.value);
         });
         return result;
     }
@@ -372,11 +403,14 @@ class PluginSystem {
     }
     triggerHook(hookName, ...args) {
         this.installed.forEach(plugin => {
-            if (plugin.hooks && typeof plugin.hooks[hookName] === 'function') {
-                try {
-                    plugin.hooks[hookName](...args);
-                } catch(e) {
-                    this.kernel.diagnostics.reportError(e);
+            if (plugin.hooks && hookName !== '__proto__' && hookName !== 'constructor' && hookName !== 'prototype') {
+                const hookFn = Reflect.get(plugin.hooks, hookName);
+                if (typeof hookFn === 'function') {
+                    try {
+                        hookFn(...args);
+                    } catch(e) {
+                        this.kernel.diagnostics.reportError(e);
+                    }
                 }
             }
         });
@@ -635,8 +669,7 @@ function createPapyr() {
                             if (key.startsWith('--')) {
                                 el.style.setProperty(key, String(v));
                             } else if (key !== '__proto__' && key !== 'constructor' && key !== 'prototype') {
-                                // eslint-disable-next-line security/detect-object-injection
-                                el.style[key] = v;
+                                Reflect.set(el.style, key, v);
                             }
                         };
                         let unsubscribe;
@@ -727,13 +760,11 @@ function createPapyr() {
                                 }
                             } else if (k in el && k !== '__proto__' && k !== 'constructor' && k !== 'prototype') {
                                 if (typeof newVal === 'boolean') {
-                                    // eslint-disable-next-line security/detect-object-injection
-                                    el[k] = newVal;
+                                    Reflect.set(el, k, newVal);
                                     if (newVal) el.setAttribute(k, '');
                                     else el.removeAttribute(k);
                                 } else {
-                                    // eslint-disable-next-line security/detect-object-injection
-                                    el[k] = newVal;
+                                    Reflect.set(el, k, newVal);
                                 }
                             } else {
                                 if (newVal === null || newVal === undefined || newVal === false) {
@@ -800,11 +831,24 @@ function createPapyr() {
     // Context Export API
     papyrInstance.exportContext = () => {
         return {
-            components: papyrInstance.components.list(),
-            state: papyrInstance.state.dump(),
-            routes: papyrInstance.runtime.routes || [],
-            errors: papyrInstance.diagnostics.errors,
-            plugins: papyrInstance.plugins.list()
+            components: papyrInstance.components ? papyrInstance.components.list() : [],
+            state: papyrInstance.state ? papyrInstance.state.dump() : {},
+            routes: papyrInstance.runtime ? (papyrInstance.runtime.routes || []) : [],
+            errors: papyrInstance.diagnostics ? papyrInstance.diagnostics.errors : [],
+            plugins: papyrInstance.plugins ? papyrInstance.plugins.list() : [],
+            power: papyrInstance.power ? {
+                state: papyrInstance.power.state ? papyrInstance.power.state.value : 'unknown',
+                fps: papyrInstance.power.fps ? papyrInstance.power.fps.value : 0,
+                targetFps: papyrInstance.power.targetFps ? papyrInstance.power.targetFps.value : 0,
+                battery: papyrInstance.power.battery ? {
+                    level: papyrInstance.power.battery.level ? papyrInstance.power.battery.level.value : 1.0,
+                    charging: papyrInstance.power.battery.charging ? papyrInstance.power.battery.charging.value : true
+                } : {}
+            } : {},
+            gateways: papyrInstance.gateway ? papyrInstance.gateway.list() : [],
+            diagnostics: papyrInstance.diagnostics ? {
+                updateCounts: Array.from(papyrInstance.diagnostics.updateCounts || []).map(([k, v]) => ({ key: k, count: v }))
+            } : {}
         };
     };
 
@@ -821,14 +865,27 @@ function createPapyr() {
     // Design Tokens Theme engine for dynamic custom property updates
     papyrInstance.theme = (config) => {
         if (!config || typeof doc === 'undefined') return papyrInstance;
-        Object.entries(config).forEach(([key, val]) => {
-            if (doc.documentElement && doc.documentElement.style) {
-                doc.documentElement.style.setProperty(`--papyr-${key}`, val);
-                doc.documentElement.style.setProperty(`--${key}`, val);
+        if (typeof config === 'string') {
+            const presets = ['liquid', 'material', 'minimal', 'enterprise'];
+            const presetLower = config.toLowerCase();
+            if (presets.includes(presetLower)) {
+                const rootEl = doc.documentElement || doc.body;
+                if (rootEl && rootEl.classList) {
+                    presets.forEach(p => rootEl.classList.remove(`papyr-theme-${p}`));
+                    rootEl.classList.add(`papyr-theme-${presetLower}`);
+                }
             }
-        });
+        } else if (typeof config === 'object') {
+            Object.entries(config).forEach(([key, val]) => {
+                if (doc.documentElement && doc.documentElement.style) {
+                    doc.documentElement.style.setProperty(`--papyr-${key}`, val);
+                    doc.documentElement.style.setProperty(`--${key}`, val);
+                }
+            });
+        }
         return papyrInstance;
     };
+
 
     // Dynamic plugin registration alias matching the roadmap API layout
     papyrInstance.plugin = (p) => papyrInstance.use(p);
@@ -861,6 +918,84 @@ function createPapyr() {
         }
     }
     papyrInstance.component = PapyrComponent;
+
+    // Python-like syntax wrapper (papyr.py namespace)
+    papyrInstance.py = {
+        state: (val, options) => papyrInstance.state(val, options),
+        computed: (fn) => papyrInstance.computed(fn),
+        effect: (fn) => papyrInstance.effect(fn),
+
+        Box: (...args) => {
+            let props = {};
+            let children = args;
+            if (args[0] && typeof args[0] === 'object' && !args[0].tagName && !args[0]._subscribers && !args[0].value) {
+                props = args[0];
+                children = args.slice(1);
+            }
+            const style = {
+                display: 'flex',
+                flexDirection: props.direction || 'column',
+                padding: typeof props.padding === 'number' ? `${props.padding}px` : props.padding,
+                margin: typeof props.margin === 'number' ? `${props.margin}px` : props.margin,
+                gap: typeof props.gap === 'number' ? `${props.gap}px` : props.gap,
+                alignItems: props.align || 'stretch',
+                justifyContent: props.justify || 'flex-start',
+                background: props.bg,
+                color: props.color,
+                borderRadius: typeof props.radius === 'number' ? `${props.radius}px` : props.radius,
+                ...props.style
+            };
+            const elProps = { style, class: props.class, id: props.id };
+            if (props.on_click) elProps.onClick = props.on_click;
+            return papyrInstance.div(elProps, ...children);
+        },
+
+        Text: (content, props = {}) => {
+            const style = {
+                fontSize: typeof props.size === 'number' ? `${props.size}px` : props.size,
+                color: props.color,
+                fontWeight: props.weight,
+                lineHeight: props.line_height,
+                letterSpacing: props.kerning,
+                ...props.style
+            };
+            const elProps = { style, class: props.class, id: props.id };
+            if (props.on_click) elProps.onClick = props.on_click;
+            return papyrInstance.span(elProps, content);
+        },
+
+        Button: (label, on_click, props = {}) => {
+            const style = {
+                padding: props.padding || '8px 16px',
+                borderRadius: props.radius || '8px',
+                background: props.bg,
+                color: props.color,
+                ...props.style
+            };
+            const elProps = { style, class: props.class, id: props.id };
+            elProps.onClick = on_click;
+            return papyrInstance.button(elProps, label);
+        },
+
+        Input: (props = {}) => {
+            const style = {
+                padding: props.padding || '8px 12px',
+                borderRadius: props.radius || '6px',
+                border: props.border,
+                ...props.style
+            };
+            const elProps = {
+                style,
+                class: props.class,
+                id: props.id,
+                type: props.type || 'text',
+                placeholder: props.placeholder || '',
+                value: props.value !== undefined ? props.value : ''
+            };
+            if (props.on_change) elProps.onInput = (e) => props.on_change(e.target.value, e);
+            return papyrInstance.input(elProps);
+        }
+    };
 
     // Error boundary wrapper
     papyrInstance.errorBoundary = (renderFn, fallbackFn) => {

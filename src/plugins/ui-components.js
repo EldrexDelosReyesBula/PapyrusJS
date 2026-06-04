@@ -419,7 +419,7 @@
             style: { background: 'transparent', border: 'none', color: 'white', cursor: 'pointer' },
             onclick: () => { month.value = (month.value - 1 + 12) % 12; if (month.value === 11) year.value--; renderDays(); }
         });
-        let title = papyr.span(() => `${monthNames[month.value]} ${year.value}`, { style: { fontWeight: 'bold', color: 'white' } });
+        let title = papyr.span(() => `${Reflect.get(monthNames, Math.max(0, Math.min(11, Number(month.value))))} ${year.value}`, { style: { fontWeight: 'bold', color: 'white' } });
         let header = papyr.flex.between({ style: { padding: '4px' } }, prevBtn, title, nextBtn);
         
         let container = papyr.div('.papyr-calendar', { style: { padding: '16px', background: '#0f172a', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', maxWidth: '260px' } }, header, grid);
@@ -459,5 +459,84 @@
             if (!container.contains(e.target)) open.value = false;
         });
         return container;
+    };
+
+    // 20. Virtual scroll list for performance scaling
+    papyr.virtualList = (options = {}) => {
+        const {
+            items = [],
+            itemHeight = 40,
+            renderItem = (item, idx) => papyr.div(String(item)),
+            viewportHeight = 300,
+            style = {}
+        } = options;
+
+        const arrayState = (items && typeof items.subscribe === 'function') ? items : papyr.state(items);
+        const scrollTop = papyr.state(0);
+
+        const totalHeight = papyr.computed(() => arrayState.value.length * itemHeight);
+        const startIndex = papyr.computed(() => Math.max(0, Math.floor(scrollTop.value / itemHeight) - 2));
+        const endIndex = papyr.computed(() => Math.min(arrayState.value.length, Math.floor((scrollTop.value + viewportHeight) / itemHeight) + 2));
+
+        const visibleItems = papyr.computed(() => {
+            const arr = arrayState.value;
+            const start = startIndex.value;
+            const end = endIndex.value;
+            const result = [];
+            for (let i = start; i < end; i++) {
+                result.push({ item: Reflect.get(arr, i), index: i });
+            }
+            return result;
+        });
+
+        const listContainer = papyr.div({
+            style: {
+                position: 'relative',
+                width: '100%',
+                height: '100%',
+                overflow: 'hidden'
+            }
+        },
+            papyr.div({
+                style: {
+                    position: 'absolute',
+                    top: 0, left: 0, right: 0, bottom: 0,
+                    overflowY: 'auto'
+                },
+                onscroll: (e) => {
+                    scrollTop.value = e.target.scrollTop;
+                }
+            },
+                papyr.div({
+                    style: () => ({
+                        height: `${totalHeight.value}px`,
+                        width: '100%',
+                        position: 'relative'
+                    })
+                },
+                    papyr.for(visibleItems, (entry) => {
+                        const childEl = renderItem(entry.item, entry.index);
+                        if (childEl && childEl.style) {
+                            childEl.style.position = 'absolute';
+                            childEl.style.top = `${entry.index * itemHeight}px`;
+                            childEl.style.left = '0';
+                            childEl.style.width = '100%';
+                            childEl.style.height = `${itemHeight}px`;
+                            childEl.style.boxSizing = 'border-box';
+                        }
+                        return childEl;
+                    })
+                )
+            )
+        );
+
+        Object.assign(listContainer.style, {
+            height: typeof viewportHeight === 'number' ? `${viewportHeight}px` : viewportHeight,
+            border: '1px solid rgba(255,255,255,0.08)',
+            borderRadius: '12px',
+            background: 'rgba(255,255,255,0.02)'
+        }, style);
+
+        return listContainer;
     };
 })();

@@ -1,4 +1,5 @@
 :root {
+    /* Foundation Accent Colors */
     --papyr-primary: #6366f1;
     --papyr-primary-hover: #4f46e5;
     --papyr-primary-light: rgba(99, 102, 241, 0.15);
@@ -12,7 +13,116 @@
     --papyr-info: #0ea5e9;
     --papyr-radius: 12px;
     --papyr-font: system-ui, -apple-system, sans-serif;
+
+    /* Layer 1 - Spacing Scale */
+    --papyr-space-4: 4px;
+    --papyr-space-8: 8px;
+    --papyr-space-12: 12px;
+    --papyr-space-16: 16px;
+    --papyr-space-20: 20px;
+    --papyr-space-24: 24px;
+    --papyr-space-32: 32px;
+    --papyr-space-40: 40px;
+    --papyr-space-48: 48px;
+    --papyr-space-64: 64px;
+
+    /* Layer 1 - Radius Scale */
+    --papyr-radius-xs: 2px;
+    --papyr-radius-sm: 4px;
+    --papyr-radius-md: 8px;
+    --papyr-radius-lg: 12px;
+    --papyr-radius-xl: 16px;
+    --papyr-radius-2xl: 24px;
+    --papyr-radius-full: 9999px;
+
+    /* Layer 1 - Elevation Scale */
+    --papyr-shadow-0: none;
+    --papyr-shadow-1: 0 1px 3px rgba(0,0,0,0.1), 0 1px 2px rgba(0,0,0,0.06);
+    --papyr-shadow-2: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06);
+    --papyr-shadow-3: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05);
+    --papyr-shadow-4: 0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04);
+    --papyr-shadow-5: 0 25px 50px -12px rgba(0,0,0,0.25);
+
+    /* Layer 1 - Typography Scale */
+    --papyr-font-display: 3.5rem;
+    --papyr-font-headline: 2.25rem;
+    --papyr-font-title: 1.5rem;
+    --papyr-font-body: 1rem;
+    --papyr-font-caption: 0.875rem;
+    --papyr-font-label: 0.75rem;
+
+    /* Layer 1 - Motion Scale */
+    --papyr-motion-fast: 150ms;
+    --papyr-motion-normal: 300ms;
+    --papyr-motion-slow: 600ms;
+
+    /* Transition curves */
+    --papyr-ease: cubic-bezier(0.16, 1, 0.3, 1);
+    --papyr-duration: 0.4s;
+    --papyr-transition: all var(--papyr-duration) var(--papyr-ease);
 }
+
+/* Preset Layer 2 - Papyr Liquid Theme overrides */
+.papyr-theme-liquid {
+    --papyr-bg: #030712;
+    --papyr-surface: rgba(255, 255, 255, 0.02);
+    --papyr-border: rgba(255, 255, 255, 0.08);
+    --papyr-text: #f9fafb;
+    --papyr-text-muted: #9ca3af;
+    --papyr-glow: rgba(99, 102, 241, 0.15);
+    --papyr-radius: var(--papyr-radius-xl);
+    --papyr-blur-level: 16px;
+}
+
+/* Preset Layer 2 - Papyr Material Theme overrides */
+.papyr-theme-material {
+    --papyr-bg: #121212;
+    --papyr-surface: #1e1e1e;
+    --papyr-border: rgba(255, 255, 255, 0.12);
+    --papyr-text: rgba(255, 255, 255, 0.87);
+    --papyr-text-muted: rgba(255, 255, 255, 0.6);
+    --papyr-primary: #bb86fc;
+    --papyr-primary-hover: #9a66da;
+    --papyr-radius: var(--papyr-radius-sm);
+    --papyr-blur-level: 0px;
+}
+
+/* Preset Layer 2 - Papyr Minimal Theme overrides */
+.papyr-theme-minimal {
+    --papyr-bg: #ffffff;
+    --papyr-surface: #ffffff;
+    --papyr-border: #e5e7eb;
+    --papyr-text: #111827;
+    --papyr-text-muted: #6b7280;
+    --papyr-primary: #111827;
+    --papyr-primary-hover: #374151;
+    --papyr-radius: var(--papyr-radius-xs);
+    --papyr-blur-level: 0px;
+}
+
+/* Preset Layer 2 - Papyr Enterprise Theme overrides */
+.papyr-theme-enterprise {
+    --papyr-bg: #f3f4f6;
+    --papyr-surface: #ffffff;
+    --papyr-border: #d1d5db;
+    --papyr-text: #1f2937;
+    --papyr-text-muted: #4b5563;
+    --papyr-primary: #2563eb;
+    --papyr-primary-hover: #1d4ed8;
+    --papyr-radius: var(--papyr-radius-xs);
+    --papyr-blur-level: 0px;
+}
+
+/* GPU acceleration hooks for Liquid Theme */
+.papyr-theme-liquid .papyr-card, 
+.papyr-theme-liquid .papyr-glass-panel,
+.papyr-theme-liquid .papyr-hero-glass {
+    backdrop-filter: blur(var(--papyr-blur-level, 16px));
+    -webkit-backdrop-filter: blur(var(--papyr-blur-level, 16px));
+    will-change: transform, opacity;
+    transform: translate3d(0, 0, 0);
+}
+
 
 /* Flexbox System */
 .flex-row { display: flex; flex-direction: row; gap: 1rem; }
@@ -258,6 +368,17 @@ input[type="text"]:focus, input[type="email"]:focus, input[type="password"]:focu
         opacity: 1 !important;
     }
 }
+
+/* Low-end device performance overrides */
+.papyr-low-end, .papyr-low-end * {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+    animation: none !important;
+    transition: none !important;
+}
+
 
 
 /* Papyr.js Responsive Grid System */
@@ -576,5 +697,32 @@ input[type="text"]:focus, input[type="email"]:focus, input[type="password"]:focu
     color: var(--papyr-text-muted);
     font-size: var(--papyr-fs, 14px);
     line-height: 1.5;
+}
+
+/* Biometric & Behavioral Adaptive UI Overrides */
+.papyr-stress .papyr-btn,
+.papyr-stress button {
+    padding: 16px 32px !important;
+    font-size: 16px !important;
+    transform: scale(1.05) !important; /* Larger hit target */
+}
+
+.papyr-stress .papyr-card {
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    border-color: var(--papyr-border) !important;
+}
+
+.papyr-stress .papyr-particle-canvas,
+.papyr-stress canvas:not(.papyr-gpu-layout-container) {
+    display: none !important;
+}
+
+.papyr-reading p,
+.papyr-reading .papyr-muted {
+    line-height: 1.8 !important;
+    letter-spacing: 0.03em !important;
+    transition: line-height 0.4s ease, letter-spacing 0.4s ease;
 }
 

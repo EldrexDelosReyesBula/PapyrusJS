@@ -120,26 +120,35 @@
          * Auto-splits layout if a fold viewport is detected.
          */
         foldable(options = {}, ...children) {
-            const isFolded = typeof window !== 'undefined' && (
-                window.matchMedia('(spanning: single-fold-vertical)').matches || 
-                window.matchMedia('(spanning: single-fold-horizontal)').matches ||
-                window.innerWidth < 900 // Fallback breakpoint for fold simulation
-            );
-
             let config = Object.assign({
                 gap: '24px'
             }, options);
 
+            const isFold = papyr.state(false);
+
+            if (typeof window !== 'undefined') {
+                const checkFold = () => {
+                    const hasSpanning = window.matchMedia('(spanning: single-fold-vertical)').matches || 
+                                        window.matchMedia('(spanning: single-fold-horizontal)').matches;
+                    // Dual screen detection fallback (simulating fold split on medium-sized landscape devices)
+                    const isFoldDevice = hasSpanning || (window.innerWidth >= 768 && window.innerWidth < 1200 && window.innerWidth / window.innerHeight > 1.3);
+                    isFold.value = isFoldDevice;
+                };
+                window.addEventListener('resize', checkFold);
+                checkFold();
+            }
+
             return papyr.div({
                 class: 'papyr-foldable-layout',
-                style: {
+                style: () => ({
                     display: 'grid',
-                    gridTemplateColumns: isFolded ? '1fr' : '1fr 1fr',
+                    gridTemplateColumns: isFold.value ? '1fr 1fr' : '1fr',
                     gap: config.gap,
                     width: '100%'
-                }
+                })
             }, ...children);
         },
+
 
         mobile(options = {}, ...children) {
             const { header = null, nav = null } = options;
@@ -420,6 +429,343 @@
             }
 
             return papyr.div({ style: containerStyle }, heroContent);
+        },
+
+        gpu(options = {}, nodes = []) {
+            const width = options.width || 800;
+            const height = options.height || 600;
+            
+            const container = document.createElement('div');
+            container.className = 'papyr-gpu-layout-container';
+            container.style.position = 'relative';
+            container.style.width = typeof width === 'number' ? `${width}px` : width;
+            container.style.height = typeof height === 'number' ? `${height}px` : height;
+            container.style.overflow = 'hidden';
+            container.style.borderRadius = options.borderRadius || '12px';
+
+            const glCanvas = document.createElement('canvas');
+            glCanvas.width = typeof width === 'number' ? width : 800;
+            glCanvas.height = typeof height === 'number' ? height : 600;
+            glCanvas.style.position = 'absolute';
+            glCanvas.style.left = '0';
+            glCanvas.style.top = '0';
+            glCanvas.style.width = '100%';
+            glCanvas.style.height = '100%';
+            container.appendChild(glCanvas);
+
+            const textCanvas = document.createElement('canvas');
+            textCanvas.width = glCanvas.width;
+            textCanvas.height = glCanvas.height;
+            textCanvas.style.position = 'absolute';
+            textCanvas.style.left = '0';
+            textCanvas.style.top = '0';
+            textCanvas.style.width = '100%';
+            textCanvas.style.height = '100%';
+            textCanvas.style.pointerEvents = 'none';
+            container.appendChild(textCanvas);
+
+            const gl = glCanvas.getContext('webgl2', { alpha: true, antialias: true });
+            const ctx2d = textCanvas.getContext('2d');
+
+            const vsSource = `#version 300 es
+            in vec2 position;
+            in vec4 a_rect;
+            in vec4 a_color;
+            in vec4 a_borderColor;
+            in vec4 a_border_radius_width;
+            out vec2 v_localCoords;
+            out vec2 v_size;
+            out vec4 v_color;
+            out vec4 v_borderColor;
+            out float v_borderWidth;
+            out float v_radius;
+            uniform vec2 u_resolution;
+
+            void main() {
+                vec2 rectPos = a_rect.xy;
+                vec2 rectSize = a_rect.zw;
+                vec2 p = position * rectSize + rectPos;
+                vec2 clipSpace = (p / u_resolution) * 2.0 - 1.0;
+                gl_Position = vec4(clipSpace.x, -clipSpace.y, 0.0, 1.0);
+
+                v_localCoords = (position - 0.5) * rectSize;
+                v_size = rectSize;
+                v_color = a_color;
+                v_borderColor = a_borderColor;
+                v_radius = a_border_radius_width.x;
+                v_borderWidth = a_border_radius_width.y;
+            }`;
+
+            const fsSource = `#version 300 es
+            precision highp float;
+            in vec2 v_localCoords;
+            in vec2 v_size;
+            in vec4 v_color;
+            in vec4 v_borderColor;
+            in float v_borderWidth;
+            in float v_radius;
+            out vec4 outColor;
+
+            float sdRoundedBox(vec2 p, vec2 b, float r) {
+                vec2 q = abs(p) - b + vec2(r);
+                return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - r;
+            }
+
+            void main() {
+                vec2 halfSize = v_size * 0.5;
+                float d = sdRoundedBox(v_localCoords, halfSize, v_radius);
+                float fillAlpha = 1.0 - smoothstep(-1.0, 1.0, d);
+                
+                vec4 col = v_color;
+                if (v_borderWidth > 0.0) {
+                    float borderDist = d + v_borderWidth;
+                    float borderAlpha = smoothstep(-1.0, 1.0, d) - smoothstep(-1.0, 1.0, borderDist);
+                    col = mix(v_color, v_borderColor, borderAlpha);
+                }
+                outColor = col;
+                outColor.a *= fillAlpha;
+                if (outColor.a == 0.0) discard;
+            }`;
+
+            let program, vao, instanceBuffer;
+            let positionLoc, rectLoc, colorLoc, borderColorLoc, borderRadiusWidthLoc;
+
+            if (gl) {
+                const vs = gl.createShader(gl.VERTEX_SHADER);
+                gl.shaderSource(vs, vsSource);
+                gl.compileShader(vs);
+                if (!gl.getShaderParameter(vs, gl.COMPILE_STATUS)) {
+                    console.error("VS compile error:", gl.getShaderInfoLog(vs));
+                }
+
+                const fs = gl.createShader(gl.FRAGMENT_SHADER);
+                gl.shaderSource(fs, fsSource);
+                gl.compileShader(fs);
+                if (!gl.getShaderParameter(fs, gl.COMPILE_STATUS)) {
+                    console.error("FS compile error:", gl.getShaderInfoLog(fs));
+                }
+
+                program = gl.createProgram();
+                gl.attachShader(program, vs);
+                gl.attachShader(program, fs);
+                gl.linkProgram(program);
+                if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+                    console.error("Program link error:", gl.getProgramInfoLog(program));
+                }
+
+                gl.useProgram(program);
+                const resLoc = gl.getUniformLocation(program, "u_resolution");
+                gl.uniform2f(resLoc, glCanvas.width, glCanvas.height);
+
+                vao = gl.createVertexArray();
+                gl.bindVertexArray(vao);
+
+                const positionBuffer = gl.createBuffer();
+                gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+                const vertices = new Float32Array([
+                    0, 0,
+                    1, 0,
+                    0, 1,
+                    0, 1,
+                    1, 0,
+                    1, 1
+                ]);
+                gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
+                
+                positionLoc = gl.getAttribLocation(program, "position");
+                gl.enableVertexAttribArray(positionLoc);
+                gl.vertexAttribPointer(positionLoc, 2, gl.FLOAT, false, 0, 0);
+
+                instanceBuffer = gl.createBuffer();
+                gl.bindBuffer(gl.ARRAY_BUFFER, instanceBuffer);
+
+                const stride = 16 * 4;
+
+                rectLoc = gl.getAttribLocation(program, "a_rect");
+                gl.enableVertexAttribArray(rectLoc);
+                gl.vertexAttribPointer(rectLoc, 4, gl.FLOAT, false, stride, 0);
+                gl.vertexAttribDivisor(rectLoc, 1);
+
+                colorLoc = gl.getAttribLocation(program, "a_color");
+                gl.enableVertexAttribArray(colorLoc);
+                gl.vertexAttribPointer(colorLoc, 4, gl.FLOAT, false, stride, 4 * 4);
+                gl.vertexAttribDivisor(colorLoc, 1);
+
+                borderColorLoc = gl.getAttribLocation(program, "a_borderColor");
+                gl.enableVertexAttribArray(borderColorLoc);
+                gl.vertexAttribPointer(borderColorLoc, 4, gl.FLOAT, false, stride, 8 * 4);
+                gl.vertexAttribDivisor(borderColorLoc, 1);
+
+                borderRadiusWidthLoc = gl.getAttribLocation(program, "a_border_radius_width");
+                gl.enableVertexAttribArray(borderRadiusWidthLoc);
+                gl.vertexAttribPointer(borderRadiusWidthLoc, 4, gl.FLOAT, false, stride, 12 * 4);
+                gl.vertexAttribDivisor(borderRadiusWidthLoc, 1);
+            }
+
+            function solveLayout(node, parentX, parentY, parentW, parentH) {
+                let solved = {
+                    x: parentX + (node.x || 0),
+                    y: parentY + (node.y || 0),
+                    width: node.width || parentW,
+                    height: node.height || parentH,
+                    color: node.color || [0.1, 0.1, 0.1, 1],
+                    borderColor: node.borderColor || [0, 0, 0, 0],
+                    borderWidth: node.borderWidth || 0,
+                    borderRadius: node.borderRadius || 0,
+                    text: node.text || null,
+                    textColor: node.textColor || [1, 1, 1, 1],
+                    fontSize: node.fontSize || 14,
+                    fontFamily: node.fontFamily || 'sans-serif'
+                };
+
+                let children = node.children || [];
+                let solvedChildren = [];
+                if (children.length > 0) {
+                    const direction = node.direction || 'column';
+                    const padding = node.padding || 0;
+                    const gap = node.gap || 0;
+                    
+                    let curX = solved.x + padding;
+                    let curY = solved.y + padding;
+                    let innerW = solved.width - padding * 2;
+                    let innerH = solved.height - padding * 2;
+
+                    children.forEach(child => {
+                        let childW = child.width || (direction === 'row' ? (innerW - gap * (children.length - 1)) / children.length : innerW);
+                        let childH = child.height || (direction === 'column' ? (innerH - gap * (children.length - 1)) / children.length : innerH);
+                        
+                        let childSolved = solveLayout(child, curX, curY, childW, childH);
+                        solvedChildren.push(childSolved);
+
+                        if (direction === 'row') {
+                            curX += childW + gap;
+                        } else {
+                            curY += childH + gap;
+                        }
+                    });
+                }
+
+                solved.solvedChildren = solvedChildren;
+                return solved;
+            }
+
+            function flattenTree(solvedNode, list = []) {
+                list.push(solvedNode);
+                (solvedNode.solvedChildren || []).forEach(child => flattenTree(child, list));
+                return list;
+            }
+
+            function render(nodesList = []) {
+                const rootSolved = solveLayout({ children: nodesList }, 0, 0, glCanvas.width, glCanvas.height);
+                const flatNodes = flattenTree(rootSolved).filter(n => n !== rootSolved);
+
+                if (gl) {
+                    gl.viewport(0, 0, glCanvas.width, glCanvas.height);
+                    gl.clearColor(0, 0, 0, 0);
+                    gl.clear(gl.COLOR_BUFFER_BIT);
+                    gl.enable(gl.BLEND);
+                    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+
+                    const data = new Float32Array(flatNodes.length * 16);
+                    for (let i = 0; i < flatNodes.length; i++) {
+                        const n = flatNodes[i];
+                        const offset = i * 16;
+                        data[offset + 0] = n.x;
+                        data[offset + 1] = n.y;
+                        data[offset + 2] = n.width;
+                        data[offset + 3] = n.height;
+                        data[offset + 4] = n.color[0];
+                        data[offset + 5] = n.color[1];
+                        data[offset + 6] = n.color[2];
+                        data[offset + 7] = n.color[3];
+                        data[offset + 8] = n.borderColor[0];
+                        data[offset + 9] = n.borderColor[1];
+                        data[offset + 10] = n.borderColor[2];
+                        data[offset + 11] = n.borderColor[3];
+                        data[offset + 12] = n.borderRadius;
+                        data[offset + 13] = n.borderWidth;
+                        data[offset + 14] = 0;
+                        data[offset + 15] = 0;
+                    }
+
+                    gl.bindBuffer(gl.ARRAY_BUFFER, instanceBuffer);
+                    gl.bufferData(gl.ARRAY_BUFFER, data, gl.DYNAMIC_DRAW);
+
+                    gl.useProgram(program);
+                    gl.bindVertexArray(vao);
+                    gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, flatNodes.length);
+                } else {
+                    ctx2d.clearRect(0, 0, textCanvas.width, textCanvas.height);
+                    flatNodes.forEach(n => {
+                        ctx2d.fillStyle = `rgba(${n.color[0]*255}, ${n.color[1]*255}, ${n.color[2]*255}, ${n.color[3]})`;
+                        ctx2d.fillRect(n.x, n.y, n.width, n.height);
+                    });
+                }
+
+                ctx2d.clearRect(0, 0, textCanvas.width, textCanvas.height);
+                flatNodes.forEach(n => {
+                    if (n.text) {
+                        ctx2d.fillStyle = `rgba(${n.textColor[0]*255}, ${n.textColor[1]*255}, ${n.textColor[2]*255}, ${n.textColor[3]})`;
+                        ctx2d.font = `${n.fontSize}px ${n.fontFamily}`;
+                        ctx2d.textBaseline = 'middle';
+                        ctx2d.textAlign = 'center';
+                        ctx2d.fillText(n.text, n.x + n.width / 2, n.y + n.height / 2);
+                    }
+                });
+            }
+
+            if (nodes && typeof nodes.subscribe === 'function') {
+                const unsub = nodes.subscribe((latestNodes) => {
+                    render(latestNodes);
+                });
+                if (!container._cleanups) container._cleanups = [];
+                container._cleanups.push(unsub);
+            } else {
+                render(nodes);
+            }
+
+            if (options.responsive) {
+                const ro = new ResizeObserver((entries) => {
+                    for (let entry of entries) {
+                        const w = entry.contentRect.width;
+                        const h = entry.contentRect.height;
+                        glCanvas.width = w;
+                        glCanvas.height = h;
+                        textCanvas.width = w;
+                        textCanvas.height = h;
+                        if (gl) {
+                            gl.viewport(0, 0, w, h);
+                            gl.useProgram(program);
+                            const resLoc = gl.getUniformLocation(program, "u_resolution");
+                            gl.uniform2f(resLoc, w, h);
+                        }
+                        render(nodes.value || nodes);
+                    }
+                });
+                ro.observe(container);
+                if (!container._cleanups) container._cleanups = [];
+                container._cleanups.push(() => ro.disconnect());
+            }
+
+            return container;
         }
     };
+
+    // Reactive Device Class State
+    let currentDeviceClass = 'desktop';
+    if (typeof window !== 'undefined') {
+        const getDeviceClass = (width) => {
+            if (width < 768) return 'mobile';
+            if (width < 1024) return 'tablet';
+            if (width < 1440) return 'laptop';
+            return 'desktop';
+        };
+        currentDeviceClass = papyr.state(getDeviceClass(window.innerWidth));
+        window.addEventListener('resize', () => {
+            currentDeviceClass.value = getDeviceClass(window.innerWidth);
+        });
+    } else {
+        currentDeviceClass = { value: 'desktop', subscribe: () => {} };
+    }
+    papyr.layout.deviceClass = currentDeviceClass;
 })();

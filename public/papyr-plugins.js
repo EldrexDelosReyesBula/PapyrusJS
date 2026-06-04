@@ -259,7 +259,21 @@
             if (isInteractive) {
                 options.interactive = 'true';
             }
-            return papyr('div', '.papyr-card', options, ...children);
+
+            let hasTilt = options.tilt;
+            delete options.tilt;
+            
+            let cardEl = papyr('div', '.papyr-card', options, ...children);
+            if (hasTilt) {
+                const oldMounted = cardEl._onMounted;
+                cardEl._onMounted = (el) => {
+                    if (oldMounted) oldMounted(el);
+                    if (papyr['3d'] && typeof papyr['3d'].tilt === 'function') {
+                        papyr['3d'].tilt(el);
+                    }
+                };
+            }
+            return cardEl;
         } else {
             let [title, content, footer] = args;
             let headerEl = title ? (typeof title === 'string' ? papyr.h3(title, '.card-title') : title) : null;
@@ -276,6 +290,7 @@
             return papyr.div('.papyr-card', ...children);
         }
     };
+
 
     papyr.title = (...args) => {
         return papyr('h1', '.papyr-title', ...args);
@@ -1174,6 +1189,45 @@
 (function () {
     const prefersReducedMotion = typeof window !== 'undefined' && typeof window.matchMedia === 'function' ? window.matchMedia('(prefers-reduced-motion: reduce)').matches : false;
 
+    const isLowEnd = () => {
+        return prefersReducedMotion || (typeof document !== 'undefined' && document.documentElement.classList.contains('papyr-low-end'));
+    };
+
+    // Fluid Engine (Performance-aware frame monitor)
+    if (typeof window !== 'undefined' && typeof requestAnimationFrame !== 'undefined') {
+        let lastTime = performance.now();
+        let frameCount = 0;
+        let lowFpsCount = 0;
+        const checkFPS = () => {
+            const now = performance.now();
+            frameCount++;
+            if (now - lastTime >= 1000) {
+                const fps = (frameCount * 1000) / (now - lastTime);
+                frameCount = 0;
+                lastTime = now;
+                
+                if (fps < 45) {
+                    lowFpsCount++;
+                    if (lowFpsCount >= 3) {
+                        if (typeof document !== 'undefined' && document.documentElement) {
+                            document.documentElement.classList.add('papyr-low-end');
+                            console.warn("Papyr Fluid Engine: Low frame rate detected. Visual quality degraded to optimize performance.");
+                            if (window.papyr && typeof window.papyr.emit === 'function') {
+                                window.papyr.emit('performance-degraded', { fps });
+                            }
+                        }
+                        return; // stop checking once downgraded
+                    }
+                } else {
+                    lowFpsCount = 0;
+                }
+            }
+            requestAnimationFrame(checkFPS);
+        };
+        setTimeout(() => requestAnimationFrame(checkFPS), 1000);
+    }
+
+
     // Intersection Observer for scroll animations
     let observer = null;
     if (typeof window !== 'undefined' && 'IntersectionObserver' in window) {
@@ -1299,6 +1353,10 @@
     // Cinematic transition wrappers
     papyr.animate.fade = (el, duration = 600) => {
         if (!el) return el;
+        if (isLowEnd()) {
+            el.style.opacity = '1';
+            return el;
+        }
         el.style.opacity = '0';
         el.style.transition = `opacity ${duration}ms cubic-bezier(0.4, 0, 0.2, 1)`;
         requestAnimationFrame(() => {
@@ -1311,6 +1369,11 @@
 
     papyr.animate.slide = (el, duration = 600) => {
         if (!el) return el;
+        if (isLowEnd()) {
+            el.style.opacity = '1';
+            el.style.transform = 'translateY(0px)';
+            return el;
+        }
         el.style.opacity = '0';
         el.style.transform = 'translateY(30px)';
         el.style.transition = `opacity ${duration}ms cubic-bezier(0.4, 0, 0.2, 1), transform ${duration}ms cubic-bezier(0.4, 0, 0.2, 1.15)`;
@@ -1325,6 +1388,11 @@
 
     papyr.animate.zoom = (el, duration = 600) => {
         if (!el) return el;
+        if (isLowEnd()) {
+            el.style.opacity = '1';
+            el.style.transform = 'scale(1)';
+            return el;
+        }
         el.style.opacity = '0';
         el.style.transform = 'scale(0.9)';
         el.style.transition = `opacity ${duration}ms cubic-bezier(0.4, 0, 0.2, 1), transform ${duration}ms cubic-bezier(0.4, 0, 0.2, 1.15)`;
@@ -1339,6 +1407,11 @@
 
     papyr.animate.pop = (el, duration = 600) => {
         if (!el) return el;
+        if (isLowEnd()) {
+            el.style.opacity = '1';
+            el.style.transform = 'scale(1)';
+            return el;
+        }
         el.style.opacity = '0';
         el.style.transform = 'scale(0.3)';
         el.style.transition = `opacity ${duration}ms ease, transform ${duration}ms cubic-bezier(0.34, 1.56, 0.64, 1)`;
@@ -1351,9 +1424,45 @@
         return el;
     };
 
+
     // Spring physics animator solver
     papyr.animate.spring = (el, properties, config = {}) => {
         if (!el || typeof window === 'undefined') return el;
+
+        // Auto-cancellation on mousedown/touchstart to ensure interactions are never blocked
+        if (!el._hasSpringCancelListeners) {
+            el._hasSpringCancelListeners = true;
+            const cancelEvent = () => {
+                if (el._springCancel) {
+                    el._springCancel();
+                }
+            };
+            el.addEventListener('mousedown', cancelEvent);
+            el.addEventListener('touchstart', cancelEvent);
+        }
+
+        if (isLowEnd()) {
+            // Apply target values immediately for low-end / reduced motion
+            let transformParts = [];
+            if ('x' in properties || 'y' in properties) {
+                transformParts.push(`translate(${properties.x !== undefined ? properties.x : 0}px, ${properties.y !== undefined ? properties.y : 0}px)`);
+            }
+            if ('scale' in properties) {
+                transformParts.push(`scale(${properties.scale})`);
+            }
+            if (transformParts.length > 0) {
+                el.style.transform = transformParts.join(' ');
+            }
+            Object.entries(properties).forEach(([prop, targetVal]) => {
+                if (prop !== 'x' && prop !== 'y' && prop !== 'scale') {
+                    if (prop !== '__proto__' && prop !== 'constructor' && prop !== 'prototype') {
+                        el.style[prop] = prop === 'opacity' ? targetVal : `${targetVal}px`;
+                    }
+                }
+            });
+            return el;
+        }
+
         const { tension = 170, friction = 26, mass = 1 } = config;
 
         if (el._springCancel) {
@@ -1460,6 +1569,7 @@
         step();
         return el;
     };
+
 
     // Gesture swipe controls and dynamic touch trackers
     papyr.animate.gesture = (el, options = {}) => {
@@ -2322,7 +2432,15 @@
 
         // Initialize first idle timer
         resetIdleTimer();
+
+        // Link adaptive effects toggle to the global low-end CSS class
+        adaptiveEffects.subscribe((enabled) => {
+            if (typeof document !== 'undefined' && document.documentElement && document.documentElement.classList) {
+                document.documentElement.classList.toggle('papyr-low-end', !enabled);
+            }
+        });
     }
+
 
     // 6. Power Engine API Exports
     papyr.power = {
@@ -2412,13 +2530,119 @@
             // Start loop execution
             requestAnimationFrame(tick);
 
-            // Return unsubscribe cleanup hook
             return () => {
                 active = false;
                 unsubscribe();
             };
         }
     };
+
+    // --- Biometric & Behavioral Cadence Tracker ---
+    const stressState = papyr.state(false);
+    const readingState = papyr.state(false);
+
+    papyr.user = {
+        stress: stressState,
+        reading: readingState
+    };
+
+    if (typeof window !== 'undefined' && typeof document !== 'undefined') {
+        let clickTimes = [];
+        let mouseEvents = [];
+        let scrollEvents = [];
+        let lastMousePos = null;
+        let lastMouseTime = null;
+        let readingTimer = null;
+
+        const trackUserCadence = (e) => {
+            const now = Date.now();
+            
+            readingState.value = false;
+            if (readingTimer) clearTimeout(readingTimer);
+            readingTimer = setTimeout(() => {
+                if (powerState.value === 'idle' || powerState.value === 'away') {
+                    readingState.value = true;
+                }
+            }, 5000);
+
+            if (e.type === 'click' || e.type === 'mousedown' || e.type === 'touchstart') {
+                clickTimes.push(now);
+                clickTimes = clickTimes.filter(t => now - t < 3000);
+                if (clickTimes.length >= 8) {
+                    stressState.value = true;
+                }
+            }
+
+            if (e.type === 'mousemove') {
+                const currentPos = { x: e.clientX, y: e.clientY };
+                if (lastMousePos && lastMouseTime) {
+                    const dx = currentPos.x - lastMousePos.x;
+                    const dy = currentPos.y - lastMousePos.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    const dt = now - lastMouseTime;
+                    if (dt > 0) {
+                        const speed = dist / dt;
+                        mouseEvents.push({ speed, time: now, dx, dy });
+                    }
+                }
+                lastMousePos = currentPos;
+                lastMouseTime = now;
+
+                mouseEvents = mouseEvents.filter(m => now - m.time < 3000);
+                if (mouseEvents.length > 10) {
+                    const avgSpeed = mouseEvents.reduce((acc, m) => acc + m.speed, 0) / mouseEvents.length;
+                    let dirSwitches = 0;
+                    for (let i = 1; i < mouseEvents.length; i++) {
+                        const prev = mouseEvents[i-1];
+                        const curr = mouseEvents[i];
+                        if ((prev.dx > 0 && curr.dx < 0) || (prev.dx < 0 && curr.dx > 0) ||
+                            (prev.dy > 0 && curr.dy < 0) || (prev.dy < 0 && curr.dy > 0)) {
+                            dirSwitches++;
+                        }
+                    }
+                    if (avgSpeed > 3.0 && dirSwitches > 6) {
+                        stressState.value = true;
+                    }
+                }
+            }
+
+            if (e.type === 'scroll') {
+                scrollEvents.push(now);
+                scrollEvents = scrollEvents.filter(t => now - t < 3000);
+                if (scrollEvents.length > 25) {
+                    stressState.value = true;
+                }
+            }
+        };
+
+        setInterval(() => {
+            const now = Date.now();
+            clickTimes = clickTimes.filter(t => now - t < 3000);
+            mouseEvents = mouseEvents.filter(m => now - m.time < 3000);
+            scrollEvents = scrollEvents.filter(t => now - t < 3000);
+            
+            if (clickTimes.length < 5 && mouseEvents.length < 5 && scrollEvents.length < 10) {
+                stressState.value = false;
+            }
+        }, 1500);
+
+        const trackedEvents = ['mousemove', 'mousedown', 'touchstart', 'click', 'scroll'];
+        trackedEvents.forEach(evt => {
+            window.addEventListener(evt, trackUserCadence, { passive: true });
+        });
+
+        stressState.subscribe((isStressed) => {
+            if (document.documentElement && document.documentElement.classList) {
+                document.documentElement.classList.toggle('papyr-stress', isStressed);
+            }
+        });
+
+        readingState.subscribe((isReading) => {
+            if (document.documentElement && document.documentElement.classList) {
+                document.documentElement.classList.toggle('papyr-reading', isReading);
+            }
+        });
+    }
 })(typeof window !== 'undefined' ? window : this);
 
 
@@ -2501,23 +2725,41 @@
         };
 
         let stopThrottle = null;
+        let animId = null;
+
+        const resizeHandler = () => {
+            resize();
+            initParticles();
+        };
 
         // Mount hook
         setTimeout(() => {
             resize();
             initParticles();
-            window.addEventListener('resize', () => { resize(); initParticles(); });
+            window.addEventListener('resize', resizeHandler);
             
             if (papyr.power && typeof papyr.power.throttle === 'function') {
                 stopThrottle = papyr.power.throttle(render);
             } else {
                 const legacyLoop = () => {
+                    if (typeof document !== 'undefined' && !document.body.contains(canvas)) {
+                        if (animId) cancelAnimationFrame(animId);
+                        return;
+                    }
                     render();
-                    requestAnimationFrame(legacyLoop);
+                    animId = requestAnimationFrame(legacyLoop);
                 };
-                requestAnimationFrame(legacyLoop);
+                animId = requestAnimationFrame(legacyLoop);
             }
         }, 50);
+
+        const cleanup = () => {
+            window.removeEventListener('resize', resizeHandler);
+            if (stopThrottle) stopThrottle();
+            if (animId) cancelAnimationFrame(animId);
+        };
+        if (!canvas._cleanups) canvas._cleanups = [];
+        canvas._cleanups.push(cleanup);
 
         return canvas;
     };
@@ -2946,7 +3188,7 @@
             style: { background: 'transparent', border: 'none', color: 'white', cursor: 'pointer' },
             onclick: () => { month.value = (month.value - 1 + 12) % 12; if (month.value === 11) year.value--; renderDays(); }
         });
-        let title = papyr.span(() => `${monthNames[month.value]} ${year.value}`, { style: { fontWeight: 'bold', color: 'white' } });
+        let title = papyr.span(() => `${Reflect.get(monthNames, Math.max(0, Math.min(11, Number(month.value))))} ${year.value}`, { style: { fontWeight: 'bold', color: 'white' } });
         let header = papyr.flex.between({ style: { padding: '4px' } }, prevBtn, title, nextBtn);
         
         let container = papyr.div('.papyr-calendar', { style: { padding: '16px', background: '#0f172a', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', maxWidth: '260px' } }, header, grid);
@@ -2986,6 +3228,85 @@
             if (!container.contains(e.target)) open.value = false;
         });
         return container;
+    };
+
+    // 20. Virtual scroll list for performance scaling
+    papyr.virtualList = (options = {}) => {
+        const {
+            items = [],
+            itemHeight = 40,
+            renderItem = (item, idx) => papyr.div(String(item)),
+            viewportHeight = 300,
+            style = {}
+        } = options;
+
+        const arrayState = (items && typeof items.subscribe === 'function') ? items : papyr.state(items);
+        const scrollTop = papyr.state(0);
+
+        const totalHeight = papyr.computed(() => arrayState.value.length * itemHeight);
+        const startIndex = papyr.computed(() => Math.max(0, Math.floor(scrollTop.value / itemHeight) - 2));
+        const endIndex = papyr.computed(() => Math.min(arrayState.value.length, Math.floor((scrollTop.value + viewportHeight) / itemHeight) + 2));
+
+        const visibleItems = papyr.computed(() => {
+            const arr = arrayState.value;
+            const start = startIndex.value;
+            const end = endIndex.value;
+            const result = [];
+            for (let i = start; i < end; i++) {
+                result.push({ item: Reflect.get(arr, i), index: i });
+            }
+            return result;
+        });
+
+        const listContainer = papyr.div({
+            style: {
+                position: 'relative',
+                width: '100%',
+                height: '100%',
+                overflow: 'hidden'
+            }
+        },
+            papyr.div({
+                style: {
+                    position: 'absolute',
+                    top: 0, left: 0, right: 0, bottom: 0,
+                    overflowY: 'auto'
+                },
+                onscroll: (e) => {
+                    scrollTop.value = e.target.scrollTop;
+                }
+            },
+                papyr.div({
+                    style: () => ({
+                        height: `${totalHeight.value}px`,
+                        width: '100%',
+                        position: 'relative'
+                    })
+                },
+                    papyr.for(visibleItems, (entry) => {
+                        const childEl = renderItem(entry.item, entry.index);
+                        if (childEl && childEl.style) {
+                            childEl.style.position = 'absolute';
+                            childEl.style.top = `${entry.index * itemHeight}px`;
+                            childEl.style.left = '0';
+                            childEl.style.width = '100%';
+                            childEl.style.height = `${itemHeight}px`;
+                            childEl.style.boxSizing = 'border-box';
+                        }
+                        return childEl;
+                    })
+                )
+            )
+        );
+
+        Object.assign(listContainer.style, {
+            height: typeof viewportHeight === 'number' ? `${viewportHeight}px` : viewportHeight,
+            border: '1px solid rgba(255,255,255,0.08)',
+            borderRadius: '12px',
+            background: 'rgba(255,255,255,0.02)'
+        }, style);
+
+        return listContainer;
     };
 })();
 
@@ -3334,26 +3655,35 @@
          * Auto-splits layout if a fold viewport is detected.
          */
         foldable(options = {}, ...children) {
-            const isFolded = typeof window !== 'undefined' && (
-                window.matchMedia('(spanning: single-fold-vertical)').matches || 
-                window.matchMedia('(spanning: single-fold-horizontal)').matches ||
-                window.innerWidth < 900 // Fallback breakpoint for fold simulation
-            );
-
             let config = Object.assign({
                 gap: '24px'
             }, options);
 
+            const isFold = papyr.state(false);
+
+            if (typeof window !== 'undefined') {
+                const checkFold = () => {
+                    const hasSpanning = window.matchMedia('(spanning: single-fold-vertical)').matches || 
+                                        window.matchMedia('(spanning: single-fold-horizontal)').matches;
+                    // Dual screen detection fallback (simulating fold split on medium-sized landscape devices)
+                    const isFoldDevice = hasSpanning || (window.innerWidth >= 768 && window.innerWidth < 1200 && window.innerWidth / window.innerHeight > 1.3);
+                    isFold.value = isFoldDevice;
+                };
+                window.addEventListener('resize', checkFold);
+                checkFold();
+            }
+
             return papyr.div({
                 class: 'papyr-foldable-layout',
-                style: {
+                style: () => ({
                     display: 'grid',
-                    gridTemplateColumns: isFolded ? '1fr' : '1fr 1fr',
+                    gridTemplateColumns: isFold.value ? '1fr 1fr' : '1fr',
                     gap: config.gap,
                     width: '100%'
-                }
+                })
             }, ...children);
         },
+
 
         mobile(options = {}, ...children) {
             const { header = null, nav = null } = options;
@@ -3634,9 +3964,566 @@
             }
 
             return papyr.div({ style: containerStyle }, heroContent);
+        },
+
+        gpu(options = {}, nodes = []) {
+            const width = options.width || 800;
+            const height = options.height || 600;
+            
+            const container = document.createElement('div');
+            container.className = 'papyr-gpu-layout-container';
+            container.style.position = 'relative';
+            container.style.width = typeof width === 'number' ? `${width}px` : width;
+            container.style.height = typeof height === 'number' ? `${height}px` : height;
+            container.style.overflow = 'hidden';
+            container.style.borderRadius = options.borderRadius || '12px';
+
+            const glCanvas = document.createElement('canvas');
+            glCanvas.width = typeof width === 'number' ? width : 800;
+            glCanvas.height = typeof height === 'number' ? height : 600;
+            glCanvas.style.position = 'absolute';
+            glCanvas.style.left = '0';
+            glCanvas.style.top = '0';
+            glCanvas.style.width = '100%';
+            glCanvas.style.height = '100%';
+            container.appendChild(glCanvas);
+
+            const textCanvas = document.createElement('canvas');
+            textCanvas.width = glCanvas.width;
+            textCanvas.height = glCanvas.height;
+            textCanvas.style.position = 'absolute';
+            textCanvas.style.left = '0';
+            textCanvas.style.top = '0';
+            textCanvas.style.width = '100%';
+            textCanvas.style.height = '100%';
+            textCanvas.style.pointerEvents = 'none';
+            container.appendChild(textCanvas);
+
+            const gl = glCanvas.getContext('webgl2', { alpha: true, antialias: true });
+            const ctx2d = textCanvas.getContext('2d');
+
+            const vsSource = `#version 300 es
+            in vec2 position;
+            in vec4 a_rect;
+            in vec4 a_color;
+            in vec4 a_borderColor;
+            in vec4 a_border_radius_width;
+            out vec2 v_localCoords;
+            out vec2 v_size;
+            out vec4 v_color;
+            out vec4 v_borderColor;
+            out float v_borderWidth;
+            out float v_radius;
+            uniform vec2 u_resolution;
+
+            void main() {
+                vec2 rectPos = a_rect.xy;
+                vec2 rectSize = a_rect.zw;
+                vec2 p = position * rectSize + rectPos;
+                vec2 clipSpace = (p / u_resolution) * 2.0 - 1.0;
+                gl_Position = vec4(clipSpace.x, -clipSpace.y, 0.0, 1.0);
+
+                v_localCoords = (position - 0.5) * rectSize;
+                v_size = rectSize;
+                v_color = a_color;
+                v_borderColor = a_borderColor;
+                v_radius = a_border_radius_width.x;
+                v_borderWidth = a_border_radius_width.y;
+            }`;
+
+            const fsSource = `#version 300 es
+            precision highp float;
+            in vec2 v_localCoords;
+            in vec2 v_size;
+            in vec4 v_color;
+            in vec4 v_borderColor;
+            in float v_borderWidth;
+            in float v_radius;
+            out vec4 outColor;
+
+            float sdRoundedBox(vec2 p, vec2 b, float r) {
+                vec2 q = abs(p) - b + vec2(r);
+                return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - r;
+            }
+
+            void main() {
+                vec2 halfSize = v_size * 0.5;
+                float d = sdRoundedBox(v_localCoords, halfSize, v_radius);
+                float fillAlpha = 1.0 - smoothstep(-1.0, 1.0, d);
+                
+                vec4 col = v_color;
+                if (v_borderWidth > 0.0) {
+                    float borderDist = d + v_borderWidth;
+                    float borderAlpha = smoothstep(-1.0, 1.0, d) - smoothstep(-1.0, 1.0, borderDist);
+                    col = mix(v_color, v_borderColor, borderAlpha);
+                }
+                outColor = col;
+                outColor.a *= fillAlpha;
+                if (outColor.a == 0.0) discard;
+            }`;
+
+            let program, vao, instanceBuffer;
+            let positionLoc, rectLoc, colorLoc, borderColorLoc, borderRadiusWidthLoc;
+
+            if (gl) {
+                const vs = gl.createShader(gl.VERTEX_SHADER);
+                gl.shaderSource(vs, vsSource);
+                gl.compileShader(vs);
+                if (!gl.getShaderParameter(vs, gl.COMPILE_STATUS)) {
+                    console.error("VS compile error:", gl.getShaderInfoLog(vs));
+                }
+
+                const fs = gl.createShader(gl.FRAGMENT_SHADER);
+                gl.shaderSource(fs, fsSource);
+                gl.compileShader(fs);
+                if (!gl.getShaderParameter(fs, gl.COMPILE_STATUS)) {
+                    console.error("FS compile error:", gl.getShaderInfoLog(fs));
+                }
+
+                program = gl.createProgram();
+                gl.attachShader(program, vs);
+                gl.attachShader(program, fs);
+                gl.linkProgram(program);
+                if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+                    console.error("Program link error:", gl.getProgramInfoLog(program));
+                }
+
+                gl.useProgram(program);
+                const resLoc = gl.getUniformLocation(program, "u_resolution");
+                gl.uniform2f(resLoc, glCanvas.width, glCanvas.height);
+
+                vao = gl.createVertexArray();
+                gl.bindVertexArray(vao);
+
+                const positionBuffer = gl.createBuffer();
+                gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+                const vertices = new Float32Array([
+                    0, 0,
+                    1, 0,
+                    0, 1,
+                    0, 1,
+                    1, 0,
+                    1, 1
+                ]);
+                gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
+                
+                positionLoc = gl.getAttribLocation(program, "position");
+                gl.enableVertexAttribArray(positionLoc);
+                gl.vertexAttribPointer(positionLoc, 2, gl.FLOAT, false, 0, 0);
+
+                instanceBuffer = gl.createBuffer();
+                gl.bindBuffer(gl.ARRAY_BUFFER, instanceBuffer);
+
+                const stride = 16 * 4;
+
+                rectLoc = gl.getAttribLocation(program, "a_rect");
+                gl.enableVertexAttribArray(rectLoc);
+                gl.vertexAttribPointer(rectLoc, 4, gl.FLOAT, false, stride, 0);
+                gl.vertexAttribDivisor(rectLoc, 1);
+
+                colorLoc = gl.getAttribLocation(program, "a_color");
+                gl.enableVertexAttribArray(colorLoc);
+                gl.vertexAttribPointer(colorLoc, 4, gl.FLOAT, false, stride, 4 * 4);
+                gl.vertexAttribDivisor(colorLoc, 1);
+
+                borderColorLoc = gl.getAttribLocation(program, "a_borderColor");
+                gl.enableVertexAttribArray(borderColorLoc);
+                gl.vertexAttribPointer(borderColorLoc, 4, gl.FLOAT, false, stride, 8 * 4);
+                gl.vertexAttribDivisor(borderColorLoc, 1);
+
+                borderRadiusWidthLoc = gl.getAttribLocation(program, "a_border_radius_width");
+                gl.enableVertexAttribArray(borderRadiusWidthLoc);
+                gl.vertexAttribPointer(borderRadiusWidthLoc, 4, gl.FLOAT, false, stride, 12 * 4);
+                gl.vertexAttribDivisor(borderRadiusWidthLoc, 1);
+            }
+
+            function solveLayout(node, parentX, parentY, parentW, parentH) {
+                let solved = {
+                    x: parentX + (node.x || 0),
+                    y: parentY + (node.y || 0),
+                    width: node.width || parentW,
+                    height: node.height || parentH,
+                    color: node.color || [0.1, 0.1, 0.1, 1],
+                    borderColor: node.borderColor || [0, 0, 0, 0],
+                    borderWidth: node.borderWidth || 0,
+                    borderRadius: node.borderRadius || 0,
+                    text: node.text || null,
+                    textColor: node.textColor || [1, 1, 1, 1],
+                    fontSize: node.fontSize || 14,
+                    fontFamily: node.fontFamily || 'sans-serif'
+                };
+
+                let children = node.children || [];
+                let solvedChildren = [];
+                if (children.length > 0) {
+                    const direction = node.direction || 'column';
+                    const padding = node.padding || 0;
+                    const gap = node.gap || 0;
+                    
+                    let curX = solved.x + padding;
+                    let curY = solved.y + padding;
+                    let innerW = solved.width - padding * 2;
+                    let innerH = solved.height - padding * 2;
+
+                    children.forEach(child => {
+                        let childW = child.width || (direction === 'row' ? (innerW - gap * (children.length - 1)) / children.length : innerW);
+                        let childH = child.height || (direction === 'column' ? (innerH - gap * (children.length - 1)) / children.length : innerH);
+                        
+                        let childSolved = solveLayout(child, curX, curY, childW, childH);
+                        solvedChildren.push(childSolved);
+
+                        if (direction === 'row') {
+                            curX += childW + gap;
+                        } else {
+                            curY += childH + gap;
+                        }
+                    });
+                }
+
+                solved.solvedChildren = solvedChildren;
+                return solved;
+            }
+
+            function flattenTree(solvedNode, list = []) {
+                list.push(solvedNode);
+                (solvedNode.solvedChildren || []).forEach(child => flattenTree(child, list));
+                return list;
+            }
+
+            function render(nodesList = []) {
+                const rootSolved = solveLayout({ children: nodesList }, 0, 0, glCanvas.width, glCanvas.height);
+                const flatNodes = flattenTree(rootSolved).filter(n => n !== rootSolved);
+
+                if (gl) {
+                    gl.viewport(0, 0, glCanvas.width, glCanvas.height);
+                    gl.clearColor(0, 0, 0, 0);
+                    gl.clear(gl.COLOR_BUFFER_BIT);
+                    gl.enable(gl.BLEND);
+                    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+
+                    const data = new Float32Array(flatNodes.length * 16);
+                    for (let i = 0; i < flatNodes.length; i++) {
+                        const n = flatNodes[i];
+                        const offset = i * 16;
+                        data[offset + 0] = n.x;
+                        data[offset + 1] = n.y;
+                        data[offset + 2] = n.width;
+                        data[offset + 3] = n.height;
+                        data[offset + 4] = n.color[0];
+                        data[offset + 5] = n.color[1];
+                        data[offset + 6] = n.color[2];
+                        data[offset + 7] = n.color[3];
+                        data[offset + 8] = n.borderColor[0];
+                        data[offset + 9] = n.borderColor[1];
+                        data[offset + 10] = n.borderColor[2];
+                        data[offset + 11] = n.borderColor[3];
+                        data[offset + 12] = n.borderRadius;
+                        data[offset + 13] = n.borderWidth;
+                        data[offset + 14] = 0;
+                        data[offset + 15] = 0;
+                    }
+
+                    gl.bindBuffer(gl.ARRAY_BUFFER, instanceBuffer);
+                    gl.bufferData(gl.ARRAY_BUFFER, data, gl.DYNAMIC_DRAW);
+
+                    gl.useProgram(program);
+                    gl.bindVertexArray(vao);
+                    gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, flatNodes.length);
+                } else {
+                    ctx2d.clearRect(0, 0, textCanvas.width, textCanvas.height);
+                    flatNodes.forEach(n => {
+                        ctx2d.fillStyle = `rgba(${n.color[0]*255}, ${n.color[1]*255}, ${n.color[2]*255}, ${n.color[3]})`;
+                        ctx2d.fillRect(n.x, n.y, n.width, n.height);
+                    });
+                }
+
+                ctx2d.clearRect(0, 0, textCanvas.width, textCanvas.height);
+                flatNodes.forEach(n => {
+                    if (n.text) {
+                        ctx2d.fillStyle = `rgba(${n.textColor[0]*255}, ${n.textColor[1]*255}, ${n.textColor[2]*255}, ${n.textColor[3]})`;
+                        ctx2d.font = `${n.fontSize}px ${n.fontFamily}`;
+                        ctx2d.textBaseline = 'middle';
+                        ctx2d.textAlign = 'center';
+                        ctx2d.fillText(n.text, n.x + n.width / 2, n.y + n.height / 2);
+                    }
+                });
+            }
+
+            if (nodes && typeof nodes.subscribe === 'function') {
+                const unsub = nodes.subscribe((latestNodes) => {
+                    render(latestNodes);
+                });
+                if (!container._cleanups) container._cleanups = [];
+                container._cleanups.push(unsub);
+            } else {
+                render(nodes);
+            }
+
+            if (options.responsive) {
+                const ro = new ResizeObserver((entries) => {
+                    for (let entry of entries) {
+                        const w = entry.contentRect.width;
+                        const h = entry.contentRect.height;
+                        glCanvas.width = w;
+                        glCanvas.height = h;
+                        textCanvas.width = w;
+                        textCanvas.height = h;
+                        if (gl) {
+                            gl.viewport(0, 0, w, h);
+                            gl.useProgram(program);
+                            const resLoc = gl.getUniformLocation(program, "u_resolution");
+                            gl.uniform2f(resLoc, w, h);
+                        }
+                        render(nodes.value || nodes);
+                    }
+                });
+                ro.observe(container);
+                if (!container._cleanups) container._cleanups = [];
+                container._cleanups.push(() => ro.disconnect());
+            }
+
+            return container;
         }
     };
+
+    // Reactive Device Class State
+    let currentDeviceClass = 'desktop';
+    if (typeof window !== 'undefined') {
+        const getDeviceClass = (width) => {
+            if (width < 768) return 'mobile';
+            if (width < 1024) return 'tablet';
+            if (width < 1440) return 'laptop';
+            return 'desktop';
+        };
+        currentDeviceClass = papyr.state(getDeviceClass(window.innerWidth));
+        window.addEventListener('resize', () => {
+            currentDeviceClass.value = getDeviceClass(window.innerWidth);
+        });
+    } else {
+        currentDeviceClass = { value: 'desktop', subscribe: () => {} };
+    }
+    papyr.layout.deviceClass = currentDeviceClass;
 })();
+
+
+// --- MODULE: plugins/shapes.js ---
+/**
+ * PAPYR SHAPES SYSTEM
+ * Package: @papyr/shapes
+ * Premium, customizable mathematical shape generators with elastic morph support.
+ */
+(function(window) {
+    function createBlobPath(rad, points, offset) {
+        const angleStep = (Math.PI * 2) / points;
+        const pathPoints = [];
+        for (let i = 0; i < points; i++) {
+            const theta = i * angleStep;
+            const r = rad + offset[i];
+            const x = rad + r * Math.cos(theta);
+            const y = rad + r * Math.sin(theta);
+            pathPoints.push({ x, y });
+        }
+        let d = `M ${pathPoints[0].x} ${pathPoints[0].y}`;
+        for (let i = 0; i < points; i++) {
+            const p1 = pathPoints[i];
+            const p2 = pathPoints[(i + 1) % points];
+            const xc = (p1.x + p2.x) / 2;
+            const yc = (p1.y + p2.y) / 2;
+            d += ` Q ${p1.x} ${p1.y}, ${xc} ${yc}`;
+        }
+        d += " Z";
+        return d;
+    }
+
+    const shapesPlugin = {
+        name: 'papyr-shapes',
+        version: '1.0.0',
+        install(papyr) {
+            // Blob shape generator
+            papyr.blob = (options = {}) => {
+                const {
+                    size = 200,
+                    color = 'var(--papyr-primary)',
+                    points = 6,
+                    amplitude = 20,
+                    speed = 2000,
+                    animate = false
+                } = options;
+                const offsets = Array.from({ length: points }, () => (Math.random() - 0.5) * amplitude * 2);
+                const pathD = createBlobPath(size / 2, points, offsets);
+                const svgEl = papyr.html(`
+                    <svg viewBox="0 0 ${size} ${size}" width="${size}" height="${size}" style="overflow: visible;">
+                        <path d="${pathD}" fill="${color}" style="transition: d ${speed}ms cubic-bezier(0.4, 0, 0.2, 1);" />
+                    </svg>
+                `).firstElementChild;
+                
+                if (animate === 'morph' || animate === true) {
+                    const interval = setInterval(() => {
+                        if (typeof document !== 'undefined' && !document.body.contains(svgEl)) {
+                            clearInterval(interval);
+                            return;
+                        }
+                        const path = svgEl.querySelector('path');
+                        if (path) {
+                            const newOffsets = Array.from({ length: points }, () => (Math.random() - 0.5) * amplitude * 2);
+                            path.setAttribute('d', createBlobPath(size / 2, points, newOffsets));
+                        }
+                    }, speed);
+                    if (!svgEl._cleanups) svgEl._cleanups = [];
+                    svgEl._cleanups.push(() => clearInterval(interval));
+                }
+                return svgEl;
+            };
+
+            // Wave shape generator
+            papyr.wave = (options = {}) => {
+                const {
+                    width = 800,
+                    height = 100,
+                    color = 'var(--papyr-primary)',
+                    amplitude = 20,
+                    frequency = 0.02,
+                    speed = 0.05,
+                    animate = false
+                } = options;
+                const svgEl = papyr.html(`
+                    <svg viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" preserveAspectRatio="none" style="display: block;">
+                        <path fill="${color}" />
+                    </svg>
+                `).firstElementChild;
+                const path = svgEl.querySelector('path');
+                let phase = 0;
+                const updatePath = () => {
+                    let points = [];
+                    for (let x = 0; x <= width; x += 10) {
+                        let y = height / 2 + Math.sin(x * frequency + phase) * amplitude;
+                        points.push(`${x},${y}`);
+                    }
+                    let d = `M 0,${height} L 0,${height/2} ` + points.map(p => `L ${p}`).join(' ') + ` L ${width},${height} Z`;
+                    path.setAttribute('d', d);
+                };
+                updatePath();
+                if (animate) {
+                    let animId = null;
+                    const loop = () => {
+                        if (typeof document !== 'undefined' && !document.body.contains(svgEl)) {
+                            if (animId) cancelAnimationFrame(animId);
+                            return;
+                        }
+                        phase += speed;
+                        updatePath();
+                        animId = requestAnimationFrame(loop);
+                    };
+                    animId = requestAnimationFrame(loop);
+                    if (!svgEl._cleanups) svgEl._cleanups = [];
+                    svgEl._cleanups.push(() => {
+                        if (animId) cancelAnimationFrame(animId);
+                    });
+                }
+                return svgEl;
+            };
+
+            // Organic rounded panel
+            papyr.organic = (options = {}) => {
+                const {
+                    width = 200,
+                    height = 200,
+                    color = 'var(--papyr-surface)',
+                    border = '1px solid var(--papyr-border)',
+                    animate = false,
+                    speed = 3000
+                } = options;
+                const generateBorderRadius = () => {
+                    const r = () => Math.floor(Math.random() * 40) + 30;
+                    return `${r()}% ${100-r()}% ${r()}% ${100-r()}% / ${r()}% ${r()}% ${100-r()}% ${100-r()}%`;
+                };
+                const el = papyr.div({
+                    style: {
+                        width: typeof width === 'number' ? `${width}px` : width,
+                        height: typeof height === 'number' ? `${height}px` : height,
+                        backgroundColor: color,
+                        border: border,
+                        borderRadius: generateBorderRadius(),
+                        transition: `border-radius ${speed}ms cubic-bezier(0.4, 0, 0.2, 1)`
+                    }
+                });
+                if (animate === 'morph' || animate === true) {
+                    const interval = setInterval(() => {
+                        if (typeof document !== 'undefined' && !document.body.contains(el)) {
+                            clearInterval(interval);
+                            return;
+                        }
+                        el.style.borderRadius = generateBorderRadius();
+                    }, speed);
+                    if (!el._cleanups) el._cleanups = [];
+                    el._cleanups.push(() => clearInterval(interval));
+                }
+                return el;
+            };
+
+            // Custom Polygon generator
+            papyr.polygon = (sides = 5, options = {}) => {
+                const {
+                    size = 150,
+                    color = 'var(--papyr-primary)',
+                    animate = false,
+                    speed = 0.02
+                } = options;
+                const svgEl = papyr.html(`
+                    <svg viewBox="0 0 ${size} ${size}" width="${size}" height="${size}">
+                        <polygon fill="${color}" />
+                    </svg>
+                `).firstElementChild;
+                const poly = svgEl.querySelector('polygon');
+                const radius = size / 2;
+                const cx = size / 2;
+                const cy = size / 2;
+                let rotation = 0;
+                const updatePoints = () => {
+                    let points = [];
+                    for (let i = 0; i < sides; i++) {
+                        let angle = (i * 2 * Math.PI) / sides + rotation;
+                        let x = cx + radius * Math.cos(angle);
+                        let y = cy + radius * Math.sin(angle);
+                        points.push(`${x},${y}`);
+                    }
+                    poly.setAttribute('points', points.join(' '));
+                };
+                updatePoints();
+                if (animate) {
+                    let animId = null;
+                    const loop = () => {
+                        if (typeof document !== 'undefined' && !document.body.contains(svgEl)) {
+                            if (animId) cancelAnimationFrame(animId);
+                            return;
+                        }
+                        rotation += speed;
+                        updatePoints();
+                        animId = requestAnimationFrame(loop);
+                    };
+                    animId = requestAnimationFrame(loop);
+                    if (!svgEl._cleanups) svgEl._cleanups = [];
+                    svgEl._cleanups.push(() => {
+                        if (animId) cancelAnimationFrame(animId);
+                    });
+                }
+                return svgEl;
+            };
+        }
+    };
+
+    const targetPapyr = window.papyr || (typeof global !== 'undefined' && global.papyr);
+    if (targetPapyr) {
+        targetPapyr.use(shapesPlugin);
+    }
+    if (typeof module !== 'undefined' && module.exports) {
+        module.exports = shapesPlugin;
+    } else if (typeof exports !== 'undefined') {
+        exports.default = shapesPlugin;
+    } else {
+        window.papyrShapes = shapesPlugin;
+    }
+})(typeof window !== 'undefined' ? window : this);
 
 
 // --- MODULE: plugins/immersive.js ---
@@ -3873,15 +4760,22 @@
 
             // Motion tracker
             let mouseX = 0, mouseY = 0;
+            let mouseMoveHandler = null;
             if (config.depth) {
-                window.addEventListener('mousemove', (e) => {
+                mouseMoveHandler = (e) => {
                     mouseX = (e.clientX / window.innerWidth) - 0.5;
                     mouseY = (e.clientY / window.innerHeight) - 0.5;
-                });
+                };
+                window.addEventListener('mousemove', mouseMoveHandler);
             }
 
             const clock = new THREE.Clock();
+            let animId = null;
             const tick = () => {
+                if (typeof document !== 'undefined' && !document.body.contains(canvas)) {
+                    if (animId) cancelAnimationFrame(animId);
+                    return;
+                }
                 const elapsedTime = clock.getElapsedTime();
 
                 // Rotate particles mesh
@@ -3953,12 +4847,12 @@
                 }
 
                 renderer.render(scene, camera);
-                requestAnimationFrame(tick);
+                animId = requestAnimationFrame(tick);
             };
             tick();
 
             // Resize support
-            window.addEventListener('resize', () => {
+            const resizeHandler = () => {
                 const parent = canvas.parentElement;
                 if (parent) {
                     const newW = parent.clientWidth;
@@ -3969,6 +4863,15 @@
                     camera.updateProjectionMatrix();
                     renderer.setSize(newW, newH);
                 }
+            };
+            window.addEventListener('resize', resizeHandler);
+
+            if (!canvas._cleanups) canvas._cleanups = [];
+            canvas._cleanups.push(() => {
+                if (mouseMoveHandler) window.removeEventListener('mousemove', mouseMoveHandler);
+                window.removeEventListener('resize', resizeHandler);
+                if (animId) cancelAnimationFrame(animId);
+                try { renderer.dispose(); } catch(e) {}
             });
         } catch (e) {
             console.warn("Three.js WebGL context initialization failed, falling back to Canvas2D.", e);
@@ -3984,13 +4887,16 @@
         let particles = [];
         let mouseX = 0, mouseY = 0;
         let currentMouseX = 0, currentMouseY = 0;
+        let animId = null;
+        let mouseMoveHandler = null;
 
         // Trace pointer coordinates for micro-smooth inertia panning depth
         if (config.depth) {
-            window.addEventListener('mousemove', (e) => {
+            mouseMoveHandler = (e) => {
                 mouseX = (e.clientX / window.innerWidth) - 0.5;
                 mouseY = (e.clientY / window.innerHeight) - 0.5;
-            });
+            };
+            window.addEventListener('mousemove', mouseMoveHandler);
         }
 
         // Initialize particles based on environment configuration
@@ -4304,12 +5210,11 @@
                 });
             }
 
-            requestAnimationFrame(draw);
+            animId = requestAnimationFrame(draw);
         };
-        requestAnimationFrame(draw);
+        animId = requestAnimationFrame(draw);
 
-        // Resize support
-        window.addEventListener('resize', () => {
+        const resizeHandler = () => {
             const parent = canvas.parentElement;
             if (parent) {
                 w = parent.clientWidth;
@@ -4318,6 +5223,14 @@
                 canvas.height = h;
                 initParticles();
             }
+        };
+        window.addEventListener('resize', resizeHandler);
+
+        if (!canvas._cleanups) canvas._cleanups = [];
+        canvas._cleanups.push(() => {
+            if (mouseMoveHandler) window.removeEventListener('mousemove', mouseMoveHandler);
+            window.removeEventListener('resize', resizeHandler);
+            if (animId) cancelAnimationFrame(animId);
         });
     }
 
@@ -4440,8 +5353,35 @@
                     }, 50);
 
                     return container;
+                },
+                tilt(el, options = {}) {
+                    if (!el || typeof window === 'undefined') return el;
+                    const { max = 15, perspective = 1000, scale = 1.02 } = options;
+
+                    const onMouseMove = (e) => {
+                        const rect = el.getBoundingClientRect();
+                        const x = e.clientX - rect.left;
+                        const y = e.clientY - rect.top;
+                        const xc = rect.width / 2;
+                        const yc = rect.height / 2;
+                        const rotateX = ((yc - y) / yc) * max;
+                        const rotateY = -((xc - x) / xc) * max;
+                        el.style.transform = `perspective(${perspective}px) rotateX(${rotateX}deg) rotateY(${rotateY}deg) scale3d(${scale}, ${scale}, ${scale})`;
+                        el.style.transition = 'none';
+                    };
+
+                    const onMouseLeave = () => {
+                        el.style.transition = 'transform 0.5s cubic-bezier(0.25, 1, 0.5, 1)';
+                        el.style.transform = `perspective(${perspective}px) rotateX(0deg) rotateY(0deg) scale3d(1, 1, 1)`;
+                    };
+
+                    el.addEventListener('mousemove', onMouseMove);
+                    el.addEventListener('mouseleave', onMouseLeave);
+
+                    return el;
                 }
             };
+
 
             // Attach to namespace
             window.papyr3d = papyr3d;
@@ -4842,6 +5782,114 @@
 
             return papyr(json.tag || 'div', ...args);
         }
+    };
+
+    // ==========================================
+    // 6. PAPYR GAMING & ADAPTER PROTOCOL GATEWAY
+    // ==========================================
+    papyr.game = {
+        canvas(options = {}) {
+            const { width = 600, height = 400, onInit = null } = options;
+            const container = papyr.div('.papyr-game-container', {
+                style: {
+                    position: 'relative',
+                    width: typeof width === 'number' ? `${width}px` : width,
+                    height: typeof height === 'number' ? `${height}px` : height,
+                    background: '#020205',
+                    borderRadius: '16px',
+                    overflow: 'hidden',
+                    border: '1px solid rgba(255,255,255,0.06)'
+                }
+            });
+            const cv = document.createElement('canvas');
+            cv.width = parseInt(width);
+            cv.height = parseInt(height);
+            cv.style.display = 'block';
+            cv.style.width = '100%';
+            cv.style.height = '100%';
+            container.appendChild(cv);
+            
+            if (onInit) {
+                setTimeout(() => onInit(cv), 50);
+            }
+            return container;
+        },
+        loop(cb) {
+            let active = true;
+            const step = () => {
+                if (!active) return;
+                cb();
+                requestAnimationFrame(step);
+            };
+            requestAnimationFrame(step);
+            return () => { active = false; };
+        },
+        input(el) {
+            const keys = {};
+            const onKeyDown = (e) => { keys[e.key] = true; };
+            const onKeyUp = (e) => { keys[e.key] = false; };
+            const target = el || window;
+            target.addEventListener('keydown', onKeyDown);
+            target.addEventListener('keyup', onKeyUp);
+            return {
+                isDown(key) { return !!keys[key]; },
+                destroy() {
+                    target.removeEventListener('keydown', onKeyDown);
+                    target.removeEventListener('keyup', onKeyUp);
+                }
+            };
+        }
+    };
+
+    const registeredGateways = new Map();
+    papyr.gateway = {
+        register(name, adapter) {
+            if (!name || !adapter) return;
+            registeredGateways.set(name, adapter);
+            console.log(`🔌 Papyr Gateway: Registered adapter "${name}" successfully.`);
+            if (typeof adapter.initialize === 'function') {
+                adapter.initialize(papyr);
+            }
+        },
+        resolve(name) {
+            return registeredGateways.get(name);
+        },
+        list() {
+            return Array.from(registeredGateways.keys());
+        }
+    };
+
+    // Override use to support dynamic runtime loads
+    const originalUse = papyr.use;
+    papyr.use = (plugin) => {
+        if (typeof plugin === 'string') {
+            const cdnUrls = {
+                phaser: 'https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js',
+                three: 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js',
+                pixi: 'https://cdn.jsdelivr.net/npm/pixi.js@7.3.2/dist/pixi.min.js',
+                babylon: 'https://cdn.jsdelivr.net/npm/babylonjs@6.30.0/babylon.js'
+            };
+            const url = cdnUrls[plugin.toLowerCase()];
+            if (url) {
+                return new Promise((resolve, reject) => {
+                    const scriptId = `papyr-lib-${plugin.toLowerCase()}`;
+                    if (document.getElementById(scriptId)) {
+                        resolve(window[plugin]);
+                        return;
+                    }
+                    const script = document.createElement('script');
+                    script.id = scriptId;
+                    script.src = url;
+                    script.onload = () => {
+                        console.log(`📦 Papyr Gateway: Dynamic library "${plugin}" loaded successfully.`);
+                        resolve(window[plugin]);
+                    };
+                    script.onerror = (err) => reject(err);
+                    document.head.appendChild(script);
+                });
+            }
+        }
+        return originalUse(plugin);
     };
 
 })(typeof window !== 'undefined' ? window : this);
@@ -5786,19 +6834,22 @@
                         const result = {};
                         for (let key in schema) {
                             if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue;
-                            // eslint-disable-next-line security/detect-object-injection
-                            const type = schema[key];
+                            const type = Reflect.get(schema, key);
                             let val = null;
                             if (type === 'number') {
-                                // Sanitize key to completely eliminate any possibility of ReDoS
-                                const safeKey = String(key).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                                // eslint-disable-next-line security/detect-non-literal-regexp
-                                const numRegex = new RegExp(`(?:${safeKey}\\b.*?|\\b)(\\d+)(?:\\s*(?:years|yr|s)?\\b|$)`, 'i');
-                                const m = input.match(numRegex);
-                                if (m) {
-                                    val = Number(m[1]);
-                                } else {
-                                    const anyNum = input.match(/\d+/);
+                                // Safe alternative to dynamic RegExp to avoid ReDoS and security warnings
+                                const lowerInput = input.toLowerCase();
+                                const lowerKey = String(key).toLowerCase();
+                                const keyIndex = lowerInput.indexOf(lowerKey);
+                                if (keyIndex !== -1) {
+                                    const sub = input.slice(keyIndex + lowerKey.length);
+                                    const m = sub.match(/\b(\d+)\b/);
+                                    if (m) {
+                                        val = Number(m[1]);
+                                    }
+                                }
+                                if (val === null) {
+                                    const anyNum = input.match(/\b(\d+)\b/);
                                     if (anyNum) val = Number(anyNum[0]);
                                 }
                             } else {
@@ -5823,8 +6874,7 @@
                                     }
                                 }
                             }
-                            // eslint-disable-next-line security/detect-object-injection
-                            result[key] = val;
+                            Reflect.set(result, key, val);
                         }
                         return result;
                     }

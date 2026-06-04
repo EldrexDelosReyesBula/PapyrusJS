@@ -373,4 +373,112 @@
         }
     };
 
+    // ==========================================
+    // 6. PAPYR GAMING & ADAPTER PROTOCOL GATEWAY
+    // ==========================================
+    papyr.game = {
+        canvas(options = {}) {
+            const { width = 600, height = 400, onInit = null } = options;
+            const container = papyr.div('.papyr-game-container', {
+                style: {
+                    position: 'relative',
+                    width: typeof width === 'number' ? `${width}px` : width,
+                    height: typeof height === 'number' ? `${height}px` : height,
+                    background: '#020205',
+                    borderRadius: '16px',
+                    overflow: 'hidden',
+                    border: '1px solid rgba(255,255,255,0.06)'
+                }
+            });
+            const cv = document.createElement('canvas');
+            cv.width = parseInt(width);
+            cv.height = parseInt(height);
+            cv.style.display = 'block';
+            cv.style.width = '100%';
+            cv.style.height = '100%';
+            container.appendChild(cv);
+            
+            if (onInit) {
+                setTimeout(() => onInit(cv), 50);
+            }
+            return container;
+        },
+        loop(cb) {
+            let active = true;
+            const step = () => {
+                if (!active) return;
+                cb();
+                requestAnimationFrame(step);
+            };
+            requestAnimationFrame(step);
+            return () => { active = false; };
+        },
+        input(el) {
+            const keys = {};
+            const onKeyDown = (e) => { keys[e.key] = true; };
+            const onKeyUp = (e) => { keys[e.key] = false; };
+            const target = el || window;
+            target.addEventListener('keydown', onKeyDown);
+            target.addEventListener('keyup', onKeyUp);
+            return {
+                isDown(key) { return !!keys[key]; },
+                destroy() {
+                    target.removeEventListener('keydown', onKeyDown);
+                    target.removeEventListener('keyup', onKeyUp);
+                }
+            };
+        }
+    };
+
+    const registeredGateways = new Map();
+    papyr.gateway = {
+        register(name, adapter) {
+            if (!name || !adapter) return;
+            registeredGateways.set(name, adapter);
+            console.log(`🔌 Papyr Gateway: Registered adapter "${name}" successfully.`);
+            if (typeof adapter.initialize === 'function') {
+                adapter.initialize(papyr);
+            }
+        },
+        resolve(name) {
+            return registeredGateways.get(name);
+        },
+        list() {
+            return Array.from(registeredGateways.keys());
+        }
+    };
+
+    // Override use to support dynamic runtime loads
+    const originalUse = papyr.use;
+    papyr.use = (plugin) => {
+        if (typeof plugin === 'string') {
+            const cdnUrls = {
+                phaser: 'https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js',
+                three: 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js',
+                pixi: 'https://cdn.jsdelivr.net/npm/pixi.js@7.3.2/dist/pixi.min.js',
+                babylon: 'https://cdn.jsdelivr.net/npm/babylonjs@6.30.0/babylon.js'
+            };
+            const url = cdnUrls[plugin.toLowerCase()];
+            if (url) {
+                return new Promise((resolve, reject) => {
+                    const scriptId = `papyr-lib-${plugin.toLowerCase()}`;
+                    if (document.getElementById(scriptId)) {
+                        resolve(window[plugin]);
+                        return;
+                    }
+                    const script = document.createElement('script');
+                    script.id = scriptId;
+                    script.src = url;
+                    script.onload = () => {
+                        console.log(`📦 Papyr Gateway: Dynamic library "${plugin}" loaded successfully.`);
+                        resolve(window[plugin]);
+                    };
+                    script.onerror = (err) => reject(err);
+                    document.head.appendChild(script);
+                });
+            }
+        }
+        return originalUse(plugin);
+    };
+
 })(typeof window !== 'undefined' ? window : this);

@@ -1,14 +1,14 @@
-# Architecture & Builds
+# Architecture, Monorepo & Isomorphic Builds
 
-Papyr.js is managed as a monorepo workspace. This allows publishing the core framework alongside modular subpackages.
-
-The papyr configuration is defined in the root [package.json](package.json) and built using the compiler script [build.js](build.js).
+This document serves as the technical reference manual for Papyr.js's monorepo architecture, compile-time distribution systems, and isomorphic server-side rendering configurations.
 
 ---
 
-## 📂 1. Workspace Layout
+## 1. Workspace Monorepo Layout
 
-The code is split into several workspaces in the `packages/` folder:
+Papyr is managed as a decoupled monorepo structure. This maintains a lean baseline kernel size (~10KB) while allowing optional, high-capacity subpackages to be imported independently.
+
+The workspace definitions reside in the root `package.json`, splitting functions into separate directories under `packages/`:
 
 *   **`packages/core` (`@eldrex/papyr`):** The reactive engine, base DOM builder, security wrappers, and standard element APIs.
 *   **`packages/router` (`@eldrex/papyr-router`):** SPA router supporting hash and clean URL navigation.
@@ -21,33 +21,77 @@ The code is split into several workspaces in the `packages/` folder:
 
 ---
 
-## ⚙️ 2. Build Pipeline (`build.js`)
+## 2. Compilation Pipeline (`build.js`)
 
-The compilation script processes all files in `src/` to output production-ready scripts.
+The root `build.js` script handles raw module resolution, IIFE bundling, ES Modules compilation, CDN distributions, and minification.
 
-### Build Phases
-1.  **Merge:** Concatenates separate ES modules and source files into singular packages.
-2.  **ESM Wrap:** Wraps code in ESM export blocks supporting named exports.
-    ```javascript
-    export const signal = papyr.signal;
-    export const computed = papyr.computed;
-    ```
-3.  **Minify:** Compresses code using `uglify-js` and generates sourcemaps.
-4.  **Distribute:** Copies the generated assets and documentation files into `packages/<package-name>/dist/`.
+```
+       [src/core/* Modules]           [src/plugins/* Modules]
+                │                                │
+                ▼                                ▼
+       ┌─────────────────┐              ┌─────────────────┐
+       │ Concatenate Core│              │Concatenate Plugs│
+       └────────┬────────┘              └────────┬────────┘
+                │                                │
+                ├────────────────────────────────┘
+                ▼
+       [Bundling Targets]
+       ├── papyr.js             (Browser Core IIFE)
+       ├── papyr-complete.js    (IIFE Bundle + All Plugins + Styles)
+       ├── papyr.esm.js         (ES Module Core)
+       ├── papyr-complete.esm.js(ES Module Complete)
+       └── papyr-ssr.js         (Decoupled Server Side Module)
+```
 
-### Standalone SSR Build
-The build script compiles a dedicated SSR module. This module merges the reactivity engine and core DOM builder but omits heavy browser-only dependencies (like WebGL, Canvas, and machine learning models), maintaining a small package size.
+### Bundle Architectures & Layouts
+1.  **IIFE Wrappers**: For legacy browser CDNs, code is wrapped in an immediately invoked function expression (IIFE) exporting the isomorphic `papyrInstance` directly to the `window` scope.
+2.  **ES Module (ESM)**: Generates explicit named exports for Reactivity, Router, and System bindings (e.g. `export { papyr, signal, computed, watch, effect, mount }`).
+3.  **Style Injections**: CSS stylesheets (`complete.css`) are parsed, escaped, and compiled into the complete bundles as inline string literals. When the script loads in a browser environment, it dynamically injects these stylesheet nodes into the document header.
 
 ---
 
-## 🛠️ Running a Build
+## 3. Package Workspaces Distribution Specs
 
-To build the packages locally, install developer dependencies and run the build script:
+Once compilation resolves in the `/public` folder, the build pipeline automatically packages and distributes assets into the target monorepo subworkspaces:
 
-```bash
-# Install dependencies (such as uglify-js)
-npm install
-
-# Run the compiler
-npm run build
+```javascript
+// Distributes compiled outputs and synchronizes docs
+copyFile(path.join(publicDir, 'papyr.js'),          path.join(corePackDir, 'papyr.js'));
+copyFile(path.join(publicDir, 'papyr.esm.js'),      path.join(corePackDir, 'papyr.esm.js'));
+syncSharedDocs(path.join(packagesDir, 'core'));
 ```
+
+### Shared Documentation Sync
+To avoid documentation fragmentation, root manuals (`README.md`, `DOCS.md`, `LICENSE`, `TRANSLATION_GUIDE.md`) are automatically synchronized across all nested workspace folders during the distribution phase, maintaining a single source of truth.
+
+---
+
+## 4. Standalone Isomorphic SSR Architecture
+
+The SSR build compiles a dedicated package target (`papyr-ssr.js` / `@eldrex/papyr-ssr`). 
+
+### Core DOM Fallback Layer
+When running in Node.js, `document` and `window` objects are absent. Papyr compiles these targets by initializing a mock environment fallback (`docFallback`):
+
+```javascript
+docFallback = {
+    createElement(tag) {
+        return {
+            tagName: tag.toUpperCase(),
+            attributes: {},
+            style: {
+                setProperty(k, v) { Reflect.set(this, k, v); }
+            },
+            childNodes: [],
+            appendChild(c) { this.childNodes.push(c); },
+            setAttribute(k, v) { Reflect.set(this.attributes, k, v); },
+            getAttribute(k) { return Reflect.get(this.attributes, k); },
+            get innerHTML() {
+                // Serializes elements dynamically to HTML strings
+            }
+        };
+    }
+}
+```
+
+This mock fallback is lightweight (~2KB) and serializes the DOM trees to standard strings inside `papyr.ssr()`. Browser-only plugins (like WebGL layouts, 3D immersive renders, and camera trackers) detect the node environment and fallback to simple semantic placeholder tags.

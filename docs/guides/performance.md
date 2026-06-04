@@ -1,6 +1,6 @@
-# Performance Optimization
+# Performance Optimization & Memory Management
 
-This guide outlines advanced performance optimization practices, memory disposal procedures, and data batching configurations inside the Papyr runtime.
+This guide outlines advanced performance optimization practices, memory disposal procedures, data batching configurations, and garbage collection mechanisms inside the Papyr runtime.
 
 ---
 
@@ -70,25 +70,47 @@ papyr.mount("#target", children);
 
 ---
 
-## 4. Unsubscribe Manual Subscriptions
+## 4. Automatic Memory Leak & Event Listener Disposal
 
-Papyr automatically cleans up dependencies bound inside layout templates when elements are unmounted. However, if you establish manual watchers or database event listeners, you must invoke the returned unsubscribe functions when they are no longer needed to prevent memory leaks:
+When elements are removed from the DOM, active loops and global event listeners can trigger memory leaks, continuing to run in the background and keeping references in memory.
 
-```javascript
-let count = papyr.state(0);
+### Element Cleanup Lifecycle (`_cleanups`)
+Papyr introduces a standard cleanup array `_cleanups` bound directly to DOM nodes. When the runtime detects (via a Mutation Observer) that a node has been removed from the DOM:
+1. It executes all callback functions stored in the node's `_cleanups` registry.
+2. It triggers the component's `onUnmounted` lifecycle hooks.
+3. It disconnects active Mutation Observers.
+4. It recursively cleans up all child elements.
 
-// Establish subscriber listener
-const unsubscribe = count.subscribe(val => {
-    console.log("Telemetry check:", val);
-});
+### How Plugins Prevent Memory Leaks
+Official plugins hook into this lifecycle to dispose of their background tasks:
 
-// Teardown when component is destroyed
-unsubscribe();
-```
+* **Canvas Shapes (`shapes.js`)**:
+  Canvas drawing loops (like wave and polygon rendering) capture animation frame IDs:
+  ```javascript
+  const animId = requestAnimationFrame(tick);
+  el._cleanups.push(() => cancelAnimationFrame(animId));
+  ```
+* **Particle Systems (`particles.js`)**:
+  Particle systems store and remove resize listeners bound to `window`, preventing window context retention:
+  ```javascript
+  const resizeHandler = () => resizeCanvas();
+  window.addEventListener('resize', resizeHandler);
+  el._cleanups.push(() => window.removeEventListener('resize', resizeHandler));
+  ```
+* **3D Immersive fallbacks (`immersive.js`)**:
+  Disposes of active Three.js renderer structures (`renderer.dispose()`), halts animation renders (`cancelAnimationFrame`), and cleans up global event listeners.
 
 ---
 
-## 5. Enable Energy Performance Pacing
+## 5. Optimized Levenshtein Spellcheck
+
+The core self-healing plugin (`papyr-self-heal`) checks invalid tags using Levenshtein distance calculations. 
+
+Rather than compiling a multi-dimensional array mapping (`tmp[i-1][j]`), which suffers from memory allocation overhead and triggers static analyzer prototype alerts, Papyr uses a high-performance **1D flat typed array mapping** (`Int32Array`). This reduces garbage collection pause times and ensures safe, local numeric operations.
+
+---
+
+## 6. Energy Performance Pacing
 
 For apps with heavy particle backgrounds or active canvas graphing simulators, subscribe to `papyr.power` states. This throttles your loops down when the tab is backgrounded:
 

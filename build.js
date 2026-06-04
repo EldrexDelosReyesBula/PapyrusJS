@@ -35,6 +35,7 @@ const pluginFiles = [
     'plugins/ui-components.js',
     'plugins/watt.js',
     'plugins/layout.js',
+    'plugins/shapes.js',
     'plugins/immersive.js',
     'plugins/integrations.js',
     'plugins/system.js',
@@ -260,6 +261,7 @@ ${pluginsContent}
         'plugins/official.js',
         'plugins/design.js',
         'plugins/layout.js',
+        'plugins/shapes.js',
         'plugins/ui-components.js',
         'plugins/animate.js',
         'plugins/charts.js'
@@ -561,6 +563,23 @@ copyFile(path.join(publicDir, 'papyr-ui.js'),       path.join(chartsPackDir, 'pa
 copyFile(path.join(publicDir, 'papyr-ui.min.js'),   path.join(chartsPackDir, 'papyr-charts.esm.js'));
 syncSharedDocs(path.join(packagesDir, 'charts'));
 console.log("   ✅ @eldrex/papyr-charts distributed.");
+
+// ── @eldrex/papyr-shapes ─────────────────────────────────
+const shapesPackDir = path.join(packagesDir, 'shapes', 'dist');
+ensureDir(shapesPackDir);
+copyFile(path.join(publicDir, 'papyr-ui.js'),       path.join(shapesPackDir, 'papyr-shapes.js'));
+copyFile(path.join(publicDir, 'papyr-ui.min.js'),   path.join(shapesPackDir, 'papyr-shapes.esm.js'));
+syncSharedDocs(path.join(packagesDir, 'shapes'));
+console.log("   ✅ @eldrex/papyr-shapes distributed.");
+
+// ── @eldrex/papyr-3d ─────────────────────────────────────
+const threeDPackDir = path.join(packagesDir, '3d', 'dist');
+ensureDir(threeDPackDir);
+copyFile(path.join(publicDir, 'papyr-advanced.js'),     path.join(threeDPackDir, 'papyr-3d.js'));
+copyFile(path.join(publicDir, 'papyr-advanced.min.js'), path.join(threeDPackDir, 'papyr-3d.esm.js'));
+syncSharedDocs(path.join(packagesDir, '3d'));
+console.log("   ✅ @eldrex/papyr-3d distributed.");
+
 
 // ── @eldrex/papyr-db ─────────────────────────────────────
 const dbPackDir = path.join(packagesDir, 'db', 'dist');

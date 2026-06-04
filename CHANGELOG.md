@@ -4,6 +4,31 @@ All notable changes to **Papyr.js** will be documented in this file.
 
 ---
 
+## [3.1.1] - 2026-06-04
+
+### Fixed
+* **Compiler Syntax Error**: Resolved an unexpected token syntax error `]` at line 530 in `src/plugins/ui-components.js` virtual list.
+
+### Security Hardening
+* **Prototype Pollution Guard Layer**: Updated mock document fallbacks, dynamic styles, and element attribute updaters inside `src/core/papyr-core.js` to utilize safe `Reflect` APIs and filter unsafe keys (`__proto__`, `constructor`, `prototype`).
+* **ReDoS Mitigation Guards**:
+  * Added route path whitelisting checking `/^[a-zA-Z0-9_/:.\-@~]*$/` inside `src/core/router.js` to protect routing template compilation from regular expression injection.
+  * Refactored the natural language number schema parser inside `src/plugins/ai.js` to use safe string substring index scanning, removing the dynamic `new RegExp` constructor entirely.
+
+### Performance
+* **1D Typed Array Levenshtein Optimization**: Rewrote the spellchecking Levenshtein distance solver in `src/core/papyr-core.js` using a single 1D flat typed array mapping to reduce garbage collection overhead and improve check speeds.
+
+---
+
+## [3.1.0] - 2026-06-03
+* **Predictive Reactivity Engine:** Implemented 1D/2D Kalman Filters and velocity-based linear extrapolation in `papyr.state` allowing 16ms/2-frame future predictions via `state.predicted` / `state.predict(dt)`.
+* **GPU-Accelerated Layout Engine (`papyr.layout.gpu`):** Implemented a high-performance WebGL2 canvas box layout compiler running entirely on shaders (avoiding CPU layout calculations).
+* **Biometric & Behavioral UI Cadences:** Background interactive trackers evaluating click tempo, scroll jitter, and mouse speeds to auto-toggle stress levels (`papyr.user.stress`) and reading mode (`papyr.user.reading`) with matching CSS responsive target overrides.
+* **Self-Healing State Mesh (`papyr.api.fetch`):** Integrated IndexedDB caching, AES encrypted relational storage mapping, deterministic local mock success writes for offline sessions, and transaction re-sync loops.
+* **Pythonic Declarative Wrapper API (`papyr.py`):** Added a python-inspired layout namespace exposing simple keyword-driven widgets (`Box`, `Text`, `Button`, `Input`).
+
+---
+
 ## [3.0.0] - 2026-06-03
 
 ### Added
