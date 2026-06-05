@@ -4,64 +4,22 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Papyrus.js — Official Documentation</title>
+    <title>Papyrus.js — Isomorphic Fine-Grained Reactive Framework</title>
     <meta name="description"
-        content="The official documentation and interactive playground for Papyrus.js — the isomorphic fine-grained reactive UI framework for the modern web.">
-    <meta name="keywords" content="Papyrus.js, Papyr, JavaScript framework, reactive, documentation">
-    <meta property="og:title" content="Papyrus.js — Official Documentation">
+        content="Official documentation, guides, and interactive sandbox playground for Papyrus.js — the isomorphic, fine-grained reactive UI framework for modern web applications.">
+    <meta name="keywords" content="Papyrus.js, Papyr, reactive framework, javascript framework, fine-grained reactivity, web developer studio, single page application, verlet physics, WebGL 3D">
+    <meta property="og:title" content="Papyrus.js — Isomorphic Fine-Grained Reactive Framework">
     <meta property="og:description"
-        content="Explore guides, API references, recipes, and an interactive playground for Papyrus.js.">
+        content="Explore comprehensive guides, API references, code recipes, and run interactive WebGL, Verlet physics, and database presets live in the playground.">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://papyrus-js.vercel.app/">
     <meta name="robots" content="index, follow">
-    <link rel="canonical" href="https://eldrex.landecs.org/papyrusjs/docs/">
+    <link rel="canonical" href="https://papyrus-js.vercel.app/docs/">
 
-    <!-- Papyr package scripts from unpkg CDN -->
-    <script src="https://unpkg.com/@eldrex/papyr@3.0.4/dist/papyr.js"></script>
-    <script>window.papyrCore = window.papyr;</script>
-    <script src="https://unpkg.com/@eldrex/papyr-animate@3.0.4/dist/papyr-animate.js"></script>
-    <script>window.papyrAnimate = window.papyr;</script>
-    <script src="https://unpkg.com/@eldrex/papyr-charts@3.0.4/dist/papyr-charts.js"></script>
-    <script>window.papyrCharts = window.papyr;</script>
-    <script src="https://unpkg.com/@eldrex/papyr-db@3.0.4/dist/papyr-db.js"></script>
-    <script>window.papyrDb = window.papyr;</script>
-    <script src="https://unpkg.com/@eldrex/papyr-router@3.0.4/dist/papyr-router.js"></script>
-    <script>window.papyrRouter = window.papyr;</script>
-    <script src="https://unpkg.com/@eldrex/papyr-ai@3.1.1/dist/papyr-ai.js"></script>
-    <script>window.papyrAi = window.papyr;</script>
-    <script src="https://unpkg.com/@eldrex/papyr-3d@3.1.1/dist/papyr-3d.js"></script>
-
-    <!-- Merge independent global instances to resolve clobbering conflicts -->
-    <script>
-        (function () {
-            const finalPapyr = window.papyr;
-            if (!finalPapyr) {
-                console.error('Papyr core failed to load.');
-                return;
-            }
-            const sources = [window.papyrCore, window.papyrAnimate, window.papyrCharts,
-            window.papyrDb, window.papyrRouter, window.papyrAi
-            ];
-            sources.forEach(src => {
-                if (!src || src === finalPapyr) return;
-                for (let key in src) {
-                    if (src.hasOwnProperty(key)) {
-                        if (src[key] && typeof src[key] === 'object' && finalPapyr[key] && typeof finalPapyr[
-                            key] === 'object') {
-                            Object.assign(finalPapyr[key], src[key]);
-                        } else if (finalPapyr[key] === undefined) {
-                            finalPapyr[key] = src[key];
-                        }
-                    }
-                }
-            });
-            // Clean up temporary globals
-            delete window.papyrCore;
-            delete window.papyrAnimate;
-            delete window.papyrCharts;
-            delete window.papyrDb;
-            delete window.papyrRouter;
-            delete window.papyrAi;
-        })();
-    </script>
+    <!-- Load Three.js from CDN for WebGL cinematic graphics -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- Import local Compiled Complete Showcase Bundle -->
+    <script src="./papyr-complete.js"></script>
 
     <!-- Fonts & third-party libs -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -80,7 +38,7 @@
             transition: background-color 0.3s ease, color 0.3s ease;
         }
 
-        /* ── Color Tokens ───────────────────────────────── */
+        /* ── Papyrus Native HSL Color Tokens ───────────────── */
         :root.light-mode {
             --app-bg: #f8fafc;
             --app-secondary: #ffffff;
@@ -96,17 +54,17 @@
         }
 
         :root.dark-mode {
-            --app-bg: #090d16;
-            --app-secondary: #0f1524;
-            --app-border: #1e293b;
-            --app-text: #f8fafc;
-            --app-text-muted: #94a3b8;
-            --app-accent: #818cf8;
-            --app-accent-hover: #6366f1;
-            --app-card-bg: #131b2e;
-            --glass-bg: rgba(15, 21, 36, 0.7);
+            --app-bg: #030712;
+            --app-secondary: rgba(255, 255, 255, 0.015);
+            --app-border: rgba(255, 255, 255, 0.06);
+            --app-text: #f9fafb;
+            --app-text-muted: #9ca3af;
+            --app-accent: #6366f1;
+            --app-accent-hover: #4f46e5;
+            --app-card-bg: rgba(255, 255, 255, 0.015);
+            --glass-bg: rgba(10, 15, 30, 0.4);
             --glass-border: rgba(255, 255, 255, 0.05);
-            --sidebar-active-bg: rgba(99, 102, 241, 0.1);
+            --sidebar-active-bg: rgba(99, 102, 241, 0.08);
         }
 
         /* ── Scrollbar ──────────────────────────────────── */
@@ -136,8 +94,8 @@
 
         .papyr-shell-header {
             background: var(--glass-bg) !important;
-            backdrop-filter: blur(12px);
-            -webkit-backdrop-filter: blur(12px);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
             border-bottom: 1px solid var(--glass-border) !important;
             color: var(--app-text) !important;
         }
@@ -151,8 +109,8 @@
 
         .papyr-shell-sidebar {
             background: var(--glass-bg) !important;
-            backdrop-filter: blur(12px);
-            -webkit-backdrop-filter: blur(12px);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
             border-right: 1px solid var(--glass-border) !important;
             color: var(--app-text) !important;
         }
@@ -168,11 +126,10 @@
             color: var(--app-text) !important;
             position: static !important;
             flex-shrink: 0 !important;
-            /* never float/cover the content — let the dashboard layout place it */
             z-index: auto !important;
         }
 
-        /* ── Markdown Content ───────────────────────────── */
+        /* ── Markdown Content Typography ────────────────── */
         .markdown-content h1 {
             font-size: 32px;
             margin: 20px 0;
@@ -300,43 +257,46 @@
             margin: 24px 0;
         }
 
-        /* ── Playground ─────────────────────────────────── */
+        /* ── Playground Layout ───────────────────────────── */
         .playground-container {
             display: grid;
             grid-template-columns: 1fr 1fr;
             gap: 20px;
             height: calc(100vh - 150px);
-            min-height: 400px;
+            min-height: 450px;
         }
 
-        /* ── Responsive ≤ 900 px ────────────────────────── */
-        @media (max-width: 900px) {
+        /* ── Responsive Styling (< 768px Tablet & Mobile) ─ */
+        @media (max-width: 768px) {
+            .papyr-app-shell {
+                grid-template-columns: 1fr !important;
+            }
 
-            /* Collapse sidebar — the shell hides it via the menu-toggle on mobile */
             .papyr-shell-sidebar {
                 position: fixed !important;
+                top: 60px !important;
                 left: 0 !important;
-                top: 0 !important;
-                height: 100% !important;
-                z-index: 200 !important;
-                transform: translateX(-100%) !important;
-                transition: transform 0.25s ease !important;
+                bottom: 0 !important;
+                height: calc(100vh - 60px) !important;
+                z-index: 1000 !important;
+                box-shadow: 10px 0 30px rgba(0, 0, 0, 0.45) !important;
+                border-right: 1px solid var(--app-border) !important;
             }
 
-            .papyr-shell-sidebar.open {
-                transform: translateX(0) !important;
-            }
-
-            /* Main content fills the full width */
             .papyr-main-content {
-                margin-left: 0 !important;
+                grid-column: 1 / -1 !important;
                 width: 100% !important;
+                margin-left: 0 !important;
                 padding: 16px !important;
             }
 
-            /* Footer is never sticky/floating — stays in normal flow */
             .papyr-shell-footer {
+                grid-column: 1 / -1 !important;
                 position: static !important;
+                flex-direction: column !important;
+                gap: 8px !important;
+                padding: 12px 16px !important;
+                text-align: center !important;
             }
 
             .playground-container {
@@ -345,106 +305,36 @@
                 gap: 16px !important;
             }
 
-            .playground-container>div {
-                height: 340px !important;
+            .playground-container > div {
+                height: 380px !important;
             }
 
-            .markdown-content h1 {
-                font-size: 22px !important;
-            }
-
-            .markdown-content h2 {
-                font-size: 18px !important;
-            }
-
-            .markdown-content h3 {
-                font-size: 15px !important;
-            }
-
-            .markdown-content pre {
-                font-size: 12px !important;
-                padding: 10px !important;
-            }
-
-            .markdown-content code {
-                font-size: 0.82em !important;
-            }
-
-            /* Header adjustments */
-            .papyr-shell-header {
-                padding: 0 16px !important;
-            }
+            .markdown-content h1 { font-size: 24px !important; }
+            .markdown-content h2 { font-size: 20px !important; }
+            .markdown-content h3 { font-size: 16px !important; }
+            .markdown-content pre { font-size: 12px !important; padding: 12px !important; }
+            .markdown-content code { font-size: 0.82em !important; }
+            .papyr-shell-header { padding: 0 16px !important; }
         }
 
-        /* ── Responsive ≤ 600 px ────────────────────────── */
-        @media (max-width: 600px) {
-            .papyr-shell-header {
-                padding: 0 12px !important;
-            }
-
-            /* Hide GitHub wordmark, keep icon */
-            .papyr-shell-header a span {
-                display: none !important;
-            }
-
-            .playground-container>div {
-                height: 300px !important;
-            }
-
-            .markdown-content h1 {
-                font-size: 20px !important;
-            }
-
-            .markdown-content h2 {
-                font-size: 17px !important;
-            }
-
-            /* Footer wraps gracefully on small screens */
-            .papyr-shell-footer {
-                flex-direction: column !important;
-                gap: 6px !important;
-                padding: 10px 16px !important;
-                text-align: center !important;
-            }
-        }
-
-        /* ── Responsive ≤ 480 px ────────────────────────── */
+        /* ── Responsive Tiny Displays (< 480px Mobile) ───── */
         @media (max-width: 480px) {
-            .papyr-shell-header {
-                padding: 0 10px !important;
+            .playground-container > div {
+                height: 320px !important;
             }
 
-            .playground-container>div {
-                height: 260px !important;
-            }
-
-            .markdown-content h1 {
-                font-size: 19px !important;
-            }
-
-            .markdown-content h2 {
-                font-size: 16px !important;
-            }
-
-            .markdown-content ul,
-            .markdown-content ol {
-                margin-left: 14px !important;
-            }
-
-            .markdown-content table {
-                font-size: 12px !important;
-            }
-
-            .markdown-content th,
-            .markdown-content td {
-                padding: 6px 8px !important;
-            }
+            .markdown-content h1 { font-size: 20px !important; }
+            .markdown-content h2 { font-size: 18px !important; }
+            .markdown-content ul, .markdown-content ol { margin-left: 14px !important; }
+            .markdown-content table { font-size: 12px !important; }
+            .markdown-content th, .markdown-content td { padding: 8px 10px !important; }
         }
     </style>
 </head>
 
 <body>
     <div id="app"></div>
+    <div id="sidebar-backdrop" style="position: fixed; top: 60px; left: 0; right: 0; bottom: 0; background: rgba(3, 7, 18, 0.6); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); z-index: 999; opacity: 0; pointer-events: none; transition: opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1);"></div>
 
     <script>
         // ── Markdown renderer ──────────────────────────────────
@@ -621,32 +511,262 @@
             })
         );
 
+        // ── Playground Presets Catalog ──────────────────────────
+        const PLAYGROUND_PRESETS = {
+            counter: {
+                name: "🔢 Interactive Counter",
+                code: `// 1. Initial State
+let count = papyr.state(0);
+
+// 2. Render Component
+let app = papyr.div({ style: { padding: '40px', textAlign: 'center' } },
+  papyr.h1('Reactive Counter'),
+  papyr.p(() => \`Count is: \${count.value}\`),
+  papyr.button('Increment', {
+    onclick: () => count.value++,
+    style: {
+      padding: '10px 20px', borderRadius: '8px', cursor: 'pointer',
+      border: 'none', background: '#6366f1', color: '#fff',
+      fontWeight: 'bold', fontSize: '15px'
+    }
+  })
+);
+
+papyr.mount('#preview', app);`
+            },
+            persistence: {
+                name: "💾 State Continuity (localStorage)",
+                code: `// 1. State persists across browser page reloads automatically
+let clicks = papyr.state(0, { persist: true, key: "demo_clicks" });
+
+// 2. Render Layout
+let app = papyr.div({ style: { padding: '40px', textAlign: 'center' } },
+  papyr.h2('Isomorphic State Continuity'),
+  papyr.p('Refresh this preview or parent page to test persistence!'),
+  papyr.h3(() => \`Clicks count: \${clicks.value}\`),
+  papyr.button('Click Me', {
+    onclick: () => clicks.value++,
+    style: {
+      padding: '10px 20px', borderRadius: '8px', cursor: 'pointer',
+      border: 'none', background: '#10b981', color: '#fff',
+      fontWeight: 'bold'
+    }
+  })
+);
+
+papyr.mount('#preview', app);`
+            },
+            science: {
+                name: "📊 Science Plotter",
+                code: `// 1. Initial State for equation & math inputs
+let formula = papyr.state("Math.sin(x)");
+let canvasRef = papyr.canvas({ id: "graph-canvas", width: 340, height: 140 });
+
+const updateGraph = () => {
+  if (!canvasRef) return;
+  try {
+    papyr.science.graph(canvasRef, formula.value, { color: '#f59e0b', scale: 20 });
+  } catch(e) {
+    console.error(e);
+  }
+};
+
+// Watch equation modifications
+papyr.watch(formula, updateGraph);
+
+let app = papyr.div({ style: { padding: '20px', textAlign: 'center' } },
+  papyr.h3('Science & Math Plotter'),
+  papyr.select({
+    style: { padding: '8px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', borderRadius: '6px', marginBottom: '15px' },
+    onchange: (e) => { formula.value = e.target.value; }
+  },
+    papyr.option("Sine Wave: Math.sin(x)", { value: "Math.sin(x)" }),
+    papyr.option("Cosine Wave: Math.cos(x)", { value: "Math.cos(x)" }),
+    papyr.option("Quadratic Curve: x * x / 10", { value: "x * x / 10" })
+  ),
+  papyr.div({
+    style: { background: '#020617', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', padding: '10px', display: 'flex', justifyContent: 'center' },
+    onMounted: () => setTimeout(updateGraph, 50)
+  }, canvasRef)
+);
+
+papyr.mount('#preview', app);`
+            },
+            database: {
+                name: "🗄️ Unified DB Client",
+                code: `// 1. Initialize DB client with local memory engine
+const db = papyr.db("demo_users", "local");
+let searchQuery = papyr.state("");
+
+const addRandomUser = async () => {
+  const names = ["Alice B.", "Bob K.", "Charlie P.", "Diana M."];
+  const roles = ["Architect", "Developer", "Designer", "Scrum Master"];
+  const name = names[Math.floor(Math.random() * names.length)];
+  const role = roles[Math.floor(Math.random() * roles.length)];
+  await db.insertAsync({ name, role });
+};
+
+// 2. Computed filter pipeline
+let filteredItems = papyr.computed(() => {
+  let all = db.state.value || [];
+  return all.filter(item => 
+    item.name.toLowerCase().includes(searchQuery.value.toLowerCase()) ||
+    item.role.toLowerCase().includes(searchQuery.value.toLowerCase())
+  );
+});
+
+let app = papyr.div({ style: { padding: '16px' } },
+  papyr.h3({ style: { textAlign: 'center', margin: '0 0 12px 0' } }, 'Unified Database CRUD'),
+  papyr.div({ style: { display: 'flex', gap: '8px', marginBottom: '12px' } },
+    papyr.input("text", {
+      placeholder: "Search users...",
+      style: { flexGrow: 1, padding: '8px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.2)', color: '#fff' },
+      ...papyr.model(searchQuery)
+    }),
+    papyr.button("Add User", {
+      onclick: addRandomUser,
+      style: { padding: '8px 12px', background: '#10b981', border: 'none', color: '#fff', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }
+    })
+  ),
+  papyr.table({ style: { width: '100%', borderCollapse: 'collapse', fontSize: '13px' } },
+    papyr.thead(
+      papyr.tr(
+        papyr.th({ style: { borderBottom: '1px solid rgba(255,255,255,0.1)', textAlign: 'left', padding: '6px' } }, "Name"),
+        papyr.th({ style: { borderBottom: '1px solid rgba(255,255,255,0.1)', textAlign: 'left', padding: '6px' } }, "Role"),
+        papyr.th({ style: { borderBottom: '1px solid rgba(255,255,255,0.1)', textAlign: 'left', padding: '6px' } }, "Action")
+      )
+    ),
+    papyr.tbody(
+      papyr.for(filteredItems, (item) => 
+        papyr.tr(
+          papyr.td({ style: { padding: '6px', borderBottom: '1px solid rgba(255,255,255,0.05)' } }, item.name),
+          papyr.td({ style: { padding: '6px', borderBottom: '1px solid rgba(255,255,255,0.05)' } }, item.role),
+          papyr.td({ style: { padding: '6px', borderBottom: '1px solid rgba(255,255,255,0.05)' } },
+            papyr.button("Delete", {
+              onclick: () => db.deleteAsync(item.id),
+              style: { background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '12px' }
+            })
+          )
+        )
+      )
+    )
+  )
+);
+
+papyr.mount('#preview', app);`
+            },
+            shapes: {
+                name: "🔴 Vector Geometry & Animations",
+                code: `// 1. Draw dynamic vector geometries from Papyrus Shapes Engine
+let circle = papyr.circle({
+  radius: 60,
+  style: {
+    fill: "url(#grad1)",
+    filter: "drop-shadow(0 8px 16px rgba(244,63,94,0.3))",
+    cursor: "pointer",
+    transition: "transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275)"
+  },
+  onclick: (e) => {
+    e.target.style.transform = "scale(1.25) rotate(10deg)";
+    setTimeout(() => e.target.style.transform = "scale(1) rotate(0)", 200);
+  }
+});
+
+// Create linear gradients for shapes
+let svgDefs = papyr.svg({ style: { width: 0, height: 0 } }, 
+  \`<defs>
+     <linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="100%">
+       <stop offset="0%" style="stop-color:#f43f5e;stop-opacity:1" />
+       <stop offset="100%" style="stop-color:#a855f7;stop-opacity:1" />
+     </linearGradient>
+   </defs>\`
+);
+
+let app = papyr.div({ style: { padding: '30px', textAlign: 'center' } },
+  svgDefs,
+  papyr.h2('Papyrus Vector Shapes'),
+  papyr.p('Click the circle to fire custom transform animations:'),
+  papyr.div({ style: { margin: '20px auto', width: '120px' } }, circle)
+);
+
+papyr.mount('#preview', app);`
+            },
+            physics: {
+                name: "🥎 Physics Simulation World",
+                code: `// 1. Enable verlet physics environment loop
+papyr.physics.enable({ gravity: 0.5, friction: 0.02 });
+
+// 2. Create bouncing ball element
+let ball = papyr.div({
+  style: {
+    width: '60px',
+    height: '60px',
+    background: 'radial-gradient(circle at 30% 30%, #38bdf8, #0369a1)',
+    borderRadius: '50%',
+    cursor: 'pointer',
+    position: 'absolute',
+    boxShadow: '0 8px 24px rgba(3,105,161,0.4)'
+  }
+});
+
+let app = papyr.div({ style: { width: '100%', height: '300px', position: 'relative', overflow: 'hidden' } },
+  papyr.h3({ style: { textAlign: 'center' } }, 'Verlet Bounds Gravity Physics'),
+  papyr.p({ style: { textAlign: 'center', color: '#94a3b8', fontSize: '13px' } }, 'Ball drops, bounces, and collides with walls automatically.'),
+  ball
+);
+
+papyr.mount('#preview', app);
+
+// 3. Register the ball into physics loop with bounce
+papyr.physics.add(ball, {
+  bounce: 0.82,
+  bounds: 'viewport',
+  velocity: { x: 4, y: 0 }
+});`
+            },
+            threejs: {
+                name: "📦 WebGL 3D Cylinder",
+                code: `// 1. Render interactive 3D WebGL Cylinder
+// Requires Three.js (pre-loaded in preview sandbox)
+let app = papyr.div({ style: { padding: '20px', textAlign: 'center' } },
+  papyr.h3('WebGL Cinematic Cylinder'),
+  papyr.p({ style: { fontSize: '13px', color: '#94a3b8' } }, 'Automatically scales and rotates based on mouse move!'),
+  
+  // 3D Canvas element
+  papyr.div({
+    style: { width: '100%', height: '220px', borderRadius: '12px', overflow: 'hidden', background: '#05070f' },
+    onMounted: (el) => {
+      if (typeof THREE !== 'undefined') {
+        const scene = papyr['3d'].scene({
+          environment: 'cyberpunk',
+          particles: true,
+          objects: [
+            papyr['3d'].cylinder({
+              radius: 0.8,
+              height: 1.8,
+              color: '#38bdf8',
+              position: [0, 0, 0],
+              spin: [0.01, 0.015, 0.005]
+            })
+          ]
+        });
+        el.appendChild(scene);
+      } else {
+        el.innerHTML = '<div style="padding:50px;color:#ef4444">Three.js library not loaded.</div>';
+      }
+    }
+  })
+);
+
+papyr.mount('#preview', app);`
+            }
+        };
+
         // ── Reactive state ─────────────────────────────────────
         let currentPage = papyr.state('README');
         let markdownContent = papyr.state('');
         let isLoading = papyr.state(false);
-        let editorCode = papyr.state(
-            `let count = papyr.state(0);
-
-        let app = papyr.div(
-          { style: { padding: '40px', fontFamily: 'sans-serif', textAlign: 'center' } },
-          papyr.h1('Hello Papyr.js! 🚀'),
-          papyr.p(() => \`Count: \${count.value}\`),
-          papyr.button(
-            'Click Me',
-            {
-              onclick: () => count.value++,
-              style: {
-                padding: '10px 20px', borderRadius: '6px',
-                cursor: 'pointer', border: 'none',
-                background: '#818cf8', color: '#fff', fontWeight: '600'
-              }
-            }
-          )
-        );
-
-        papyr.mount('#preview', app);`
-        );
+        let editorCode = papyr.state(PLAYGROUND_PRESETS.counter.code);
 
         // ── Load a document ────────────────────────────────────
         async function loadDocument(pageName) {
@@ -654,6 +774,15 @@
             if (!page) return;
 
             currentPage.value = pageName;
+
+            // Close sidebar on mobile after clicking a link
+            if (typeof window !== 'undefined' && window.innerWidth < 768) {
+                const sidebarEl = document.querySelector('.papyr-shell-sidebar');
+                const toggleBtn = document.querySelector('.menu-toggle');
+                if (sidebarEl && toggleBtn && sidebarEl.clientWidth > 50) {
+                    toggleBtn.click();
+                }
+            }
 
             if (page.type === 'external-demo') {
                 return; // Loaded dynamically inside createContent()
@@ -704,6 +833,17 @@
             }
         }
 
+        // Dynamic SEO Title/Description Updater
+        papyr.watch(currentPage, (pageName) => {
+            if (typeof document !== 'undefined') {
+                document.title = `${pageName} — Papyrus.js Documentation`;
+                const metaDesc = document.querySelector('meta[name="description"]');
+                if (metaDesc) {
+                    metaDesc.setAttribute('content', `Explore details about ${pageName} on the official Papyrus.js documentation, guides, and API specifications website.`);
+                }
+            }
+        });
+
         // ── Run playground code ────────────────────────────────
         function runPlaygroundCode() {
             const preview = document.getElementById('preview-frame');
@@ -717,40 +857,8 @@
                 doc.open();
                 doc.write('<!DOCTYPE html><html><head>');
                 doc.write('<meta charset="UTF-8">');
-                doc.write('<script src="https://unpkg.com/@eldrex/papyr@3.0.4/dist/papyr.js"><\/script>');
-                doc.write(
-                    '<script>window.papyrCore=window.papyr;<\/script>');
-                doc.write(
-                    '<script src="https://unpkg.com/@eldrex/papyr-animate@3.0.4/dist/papyr-animate.js"><\/script>');
-                doc.write(
-                    '<script>window.papyrAnimate=window.papyr;<\/script>');
-                doc.write(
-                    '<script src="https://unpkg.com/@eldrex/papyr-charts@3.0.4/dist/papyr-charts.js"><\/script>');
-                doc.write(
-                    '<script>window.papyrCharts=window.papyr;<\/script>');
-                doc.write(
-                    '<script src="https://unpkg.com/@eldrex/papyr-db@3.0.4/dist/papyr-db.js"><\/script>');
-                doc.write(
-                    '<script>window.papyrDb=window.papyr;<\/script>');
-                doc.write(
-                    '<script src="https://unpkg.com/@eldrex/papyr-router@3.0.4/dist/papyr-router.js"><\/script>');
-                doc.write(
-                    '<script>window.papyrRouter=window.papyr;<\/script>');
-                doc.write(
-                    '<script src="https://unpkg.com/@eldrex/papyr-ai@3.1.1/dist/papyr-ai.js"><\/script>');
-                doc.write(
-                    '<script>window.papyrAi=window.papyr;<\/script>');
-                doc.write(
-                    '<script src="https://unpkg.com/@eldrex/papyr-3d@3.1.1/dist/papyr-3d.js"><\/script>');
-                doc.write('<script>');
-                doc.write(`(function(){
-                const f=window.papyr; if(!f) return;
-                [window.papyrCore,window.papyrAnimate,window.papyrCharts,window.papyrDb,window.papyrRouter,window.papyrAi]
-                .forEach(s=>{if(!s||s===f)return;for(let k in s){if(s.hasOwnProperty(k)){if(s[k]&&typeof s[k]==='object'&&f[k]&&typeof f[k]==='object'){Object.assign(f[k],s[k]);}else if(f[k]===undefined){f[k]=s[k];}}}});
-                delete window.papyrCore;delete window.papyrAnimate;delete window.papyrCharts;
-                delete window.papyrDb;delete window.papyrRouter;delete window.papyrAi;
-            })();`);
-                doc.write('<\/script>');
+                doc.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"><\/script>');
+                doc.write('<script src="./papyr-complete.js"><\/script>');
                 doc.write(
                     `<style>*{box-sizing:border-box}body{font-family:'Outfit',sans-serif;margin:0;padding:20px;background:${bgColor};color:${txtColor};}<\/style>`
                 );
@@ -1024,39 +1132,65 @@
 
         // ── Playground ─────────────────────────────────────────
         function createPlayground() {
-            const panel = (titleIcon, titleText, ...body) => papyr.div({
-                style: {
-                    display: 'flex',
-                    flexDirection: 'column',
-                    background: 'var(--app-secondary)',
-                    border: '1px solid var(--app-border)',
-                    borderRadius: '12px',
-                    overflow: 'hidden'
-                }
-            },
-                papyr.div({
-                    style: {
-                        padding: '12px 20px',
-                        borderBottom: '1px solid var(--app-border)',
-                        background: 'var(--app-bg)',
-                        fontWeight: '600',
-                        fontSize: '13px',
-                        color: 'var(--app-text)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '8px',
-                        flexShrink: '0'
-                    }
-                }, papyr.i({ className: titleIcon }), titleText),
-                ...body
-            );
-
             return papyr.div({
                 className: 'playground-container'
             },
-                // Editor
-                panel(
-                    'fas fa-edit', ' Playground Editor',
+                // Editor panel
+                papyr.div({
+                    style: {
+                        display: 'flex',
+                        flexDirection: 'column',
+                        background: 'var(--app-secondary)',
+                        border: '1px solid var(--app-border)',
+                        borderRadius: '12px',
+                        overflow: 'hidden'
+                    }
+                },
+                    // Header
+                    papyr.div({
+                        style: {
+                            padding: '12px 20px',
+                            borderBottom: '1px solid var(--app-border)',
+                            background: 'var(--app-bg)',
+                            fontWeight: '600',
+                            fontSize: '13px',
+                            color: 'var(--app-text)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            flexShrink: '0'
+                        }
+                    },
+                        papyr.i({ className: 'fas fa-edit' }),
+                        papyr.span(' Playground Editor'),
+                        // Presets drop down selector
+                        papyr.select({
+                            style: {
+                                background: 'var(--app-secondary)',
+                                border: '1px solid var(--app-border)',
+                                color: 'var(--app-text)',
+                                borderRadius: '6px',
+                                padding: '4px 10px',
+                                fontSize: '11px',
+                                fontWeight: '600',
+                                outline: 'none',
+                                cursor: 'pointer',
+                                marginLeft: 'auto'
+                            },
+                            onchange: (e) => {
+                                const selected = e.target.value;
+                                if (PLAYGROUND_PRESETS[selected]) {
+                                    editorCode.value = PLAYGROUND_PRESETS[selected].code;
+                                    setTimeout(runPlaygroundCode, 50);
+                                }
+                            }
+                        },
+                            Object.entries(PLAYGROUND_PRESETS).map(([key, data]) => 
+                                papyr.option({ value: key }, data.name)
+                            )
+                        )
+                    ),
+                    // Editor content
                     papyr.div({
                         style: { flex: '1', overflow: 'hidden' }
                     },
@@ -1078,6 +1212,7 @@
                             ...papyr.model(editorCode)
                         })
                     ),
+                    // Editor footer actions
                     papyr.div({
                         style: {
                             display: 'flex',
@@ -1112,14 +1247,42 @@
                         )
                     )
                 ),
-                // Preview
-                panel(
-                    'fas fa-eye', ' Live Preview',
+
+                // Preview panel
+                papyr.div({
+                    style: {
+                        display: 'flex',
+                        flexDirection: 'column',
+                        background: 'var(--app-secondary)',
+                        border: '1px solid var(--app-border)',
+                        borderRadius: '12px',
+                        overflow: 'hidden'
+                    }
+                },
+                    // Header
+                    papyr.div({
+                        style: {
+                            padding: '12px 20px',
+                            borderBottom: '1px solid var(--app-border)',
+                            background: 'var(--app-bg)',
+                            fontWeight: '600',
+                            fontSize: '13px',
+                            color: 'var(--app-text)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            flexShrink: '0'
+                        }
+                    },
+                        papyr.i({ className: 'fas fa-eye' }),
+                        papyr.span(' Live Preview')
+                    ),
+                    // Preview content
                     papyr.div({
                         style: {
                             flex: '1',
                             overflow: 'hidden',
-                            background: '#fff',
+                            background: '#040711',
                             position: 'relative'
                         }
                     },
@@ -1337,6 +1500,47 @@
                     type: data.type
                 }))
             );
+        }
+
+        // ── Backdrop synchronization and Mobile Sidebar Dismissal ─
+        function updateBackdrop() {
+            setTimeout(() => {
+                const sidebarEl = document.querySelector('.papyr-shell-sidebar');
+                const backdrop = document.getElementById('sidebar-backdrop');
+                if (sidebarEl && backdrop) {
+                    const isOpen = sidebarEl.clientWidth > 50;
+                    backdrop.style.opacity = isOpen && window.innerWidth < 768 ? '1' : '0';
+                    backdrop.style.pointerEvents = isOpen && window.innerWidth < 768 ? 'auto' : 'none';
+                }
+            }, 50);
+        }
+
+        if (typeof window !== 'undefined') {
+            window.addEventListener('resize', updateBackdrop);
+            document.addEventListener('click', (e) => {
+                if (window.innerWidth < 768) {
+                    const sidebarEl = document.querySelector('.papyr-shell-sidebar');
+                    const toggleBtn = document.querySelector('.menu-toggle');
+                    
+                    if (sidebarEl && toggleBtn && sidebarEl.clientWidth > 50) {
+                        if (!sidebarEl.contains(e.target) && !toggleBtn.contains(e.target)) {
+                            toggleBtn.click();
+                        }
+                    }
+                }
+                updateBackdrop();
+            });
+            
+            // Also close when backdrop itself is clicked
+            document.addEventListener('DOMContentLoaded', () => {
+                const backdrop = document.getElementById('sidebar-backdrop');
+                if (backdrop) {
+                    backdrop.addEventListener('click', () => {
+                        const toggleBtn = document.querySelector('.menu-toggle');
+                        if (toggleBtn) toggleBtn.click();
+                    });
+                }
+            });
         }
 
         // ── Start the app ──────────────────────────────────────
