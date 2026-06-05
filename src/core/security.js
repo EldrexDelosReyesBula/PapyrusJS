@@ -20,11 +20,30 @@
     }
 
     coreInitializers.push((papyr) => {
-        papyr.security = {
+        const policies = {
+            camera: 'prompt',
+            microphone: 'prompt',
+            location: 'prompt',
+            storage: 'allow'
+        };
+
+        function securityConfig(config) {
+            if (typeof config === 'object' && config !== null) {
+                Object.assign(policies, config);
+                console.log("🔒 Papyr Security Policy Engine updated:", policies);
+            }
+            return policies;
+        }
+
+        Object.assign(securityConfig, {
             _isActive: true, // Enabled by default for safety
             currentTier: 'default',
             hasConsent: false,
             _scriptsBlocked: false,
+
+            get policies() {
+                return policies;
+            },
 
             setTier(tier) {
                 this.currentTier = tier;
@@ -46,7 +65,7 @@
                         tempStorage = Object.create(null);
                     } catch (e) { }
                 } else {
-                    // Clear tracking keys from real localStorage in a single transactional pass to avoid index shift bugs
+                    // Clear tracking keys from real localStorage
                     try {
                         if (originalRemoveItem) {
                             const keysToDelete = [];
@@ -112,6 +131,13 @@
 
             shouldSandboxStorage(key) {
                 if (this.currentTier === 'none') return false;
+                
+                const policy = policies.storage;
+                if (policy === 'deny') return true;
+                if (policy === 'prompt') {
+                    return !this.hasConsent;
+                }
+
                 if (this.currentTier === 'high') return true;
                 if (!this.hasConsent) {
                     return trackingKeys.some(tk => key.toLowerCase().includes(tk));
@@ -119,9 +145,6 @@
                 return false;
             },
 
-            /**
-             * Strip dangerous tags and attributes from raw HTML strings.
-             */
             sanitize(html) {
                 if (!this._isActive || typeof html !== 'string') return html;
 
@@ -156,9 +179,7 @@
 
                         Array.from(doc.body.childNodes).forEach(cleanNode);
                         clean = doc.body.innerHTML;
-                    } catch (e) {
-                        // fallback to regex below
-                    }
+                    } catch (e) { }
                 }
 
                 if (clean === html || typeof DOMParser === 'undefined') {
@@ -176,9 +197,6 @@
                 return clean;
             },
 
-            /**
-             * Allow enterprise users to register custom security hooks
-             */
             use(provider) {
                 if (provider === 'disable') {
                     this._isActive = false;
@@ -186,10 +204,6 @@
                 }
             },
 
-            /**
-             * Client-Side Storage Encryption (Obfuscated Dynamic Feedback Cipher)
-             * Prevents generic localStorage scraping by malicious extensions.
-             */
             encrypt(text, password) {
                 if (!text) return text;
                 const utf8Text = typeof window !== 'undefined' ? unescape(encodeURIComponent(text)) : Buffer.from(text, 'utf8').toString('binary');
@@ -225,9 +239,6 @@
                 }
             },
 
-            /**
-             * Advanced Client-Side Storage Encryption (Browser-native AES-GCM 256-bit with PBKDF2)
-             */
             async encryptAsync(text, password) {
                 if (typeof window === 'undefined' || !window.crypto || !window.crypto.subtle) {
                     return this.encrypt(text, password);
@@ -328,15 +339,168 @@
                     console.error("Papyr Security: Async Decryption failed, falling back to sync.", e);
                     return this.decrypt(encodedText, password);
                 }
+            },
+
+            aiConsent(details) {
+                return new Promise((resolve) => {
+                    if (papyr.isServer()) {
+                        resolve(true);
+                        return;
+                    }
+                    
+                    if (papyr.watt && typeof papyr.watt.triggerWattPrompt === 'function') {
+                        const description = [
+                            `Destination: ${details.destination}`,
+                            `Payload size: ${details.prompt.length} chars`
+                        ];
+                        if (details.attachments && details.attachments.length > 0) {
+                            description.push(`Attachments: ${details.attachments.length} files`);
+                        }
+                        
+                        papyr.watt.triggerWattPrompt("AI Data Transparency Request", () => {
+                            resolve(true);
+                        }, () => {
+                            resolve(false);
+                        }, description);
+                    } else {
+                        // In case WATT UI is not loaded yet, check basic alert/confirm or allow
+                        const ok = confirm(`AI Data Transparency Alert:\nSending prompt of length ${details.prompt.length} to ${details.destination}.\n\nAllow?`);
+                        resolve(ok);
+                    }
+                });
+            },
+
+            detectLeakage(data) {
+                if (!data) return false;
+                const dataStr = typeof data === 'string' ? data : JSON.stringify(data);
+                
+                const patterns = {
+                    openai_key: /sk-[a-zA-Z0-9]{48}/g,
+                    google_key: /AIzaSy[a-zA-Z0-9-_]{35}/g,
+                    anthropic_key: /sk-ant-sid01-[a-zA-Z0-9-_]{93}/g,
+                    generic_secret: /(password|secret|passwd|private_key|privatekey)\s*[:=]\s*["'][a-zA-Z0-9-_]{8,}["']/gi
+                };
+
+                let leaks = [];
+                for (const [name, regex] of Object.entries(patterns)) {
+                    if (regex.test(dataStr)) {
+                        leaks.push(name);
+                    }
+                }
+
+                if (leaks.length > 0) {
+                    const msg = `⚠️ [WATT Data Leakage Warning] Potential secrets exposed in data: ${leaks.join(', ')}`;
+                    console.warn(msg);
+                    if (papyr.diagnostics && typeof papyr.diagnostics.reportError === 'function') {
+                        papyr.diagnostics.reportError(new Error(msg));
+                    }
+                    return true;
+                }
+                return false;
             }
-        };
+        });
+
+        // 1. Geolocation Access Interception
+        if (typeof navigator !== 'undefined' && navigator.geolocation) {
+            const geo = navigator.geolocation;
+            const originalGetCurrentPosition = geo.getCurrentPosition;
+            const originalWatchPosition = geo.watchPosition;
+
+            geo.getCurrentPosition = function (successCb, errorCb, options) {
+                const policy = policies.location;
+                if (policy === 'deny') {
+                    if (errorCb) errorCb({ code: 1, message: "Location permission denied by Papyr security policy." });
+                    return;
+                }
+                if (policy === 'allow') {
+                    originalGetCurrentPosition.call(geo, successCb, errorCb, options);
+                    return;
+                }
+                // 'prompt'
+                if (papyr.watt && typeof papyr.watt.triggerWattPrompt === 'function') {
+                    papyr.watt.triggerWattPrompt("Location Access", () => {
+                        originalGetCurrentPosition.call(geo, successCb, errorCb, options);
+                    }, () => {
+                        if (errorCb) errorCb({ code: 1, message: "User denied location access through WATT." });
+                    });
+                } else {
+                    originalGetCurrentPosition.call(geo, successCb, errorCb, options);
+                }
+            };
+
+            geo.watchPosition = function (successCb, errorCb, options) {
+                const policy = policies.location;
+                if (policy === 'deny') {
+                    if (errorCb) errorCb({ code: 1, message: "Location tracking denied by Papyr security policy." });
+                    return -1;
+                }
+                if (policy === 'allow') {
+                    return originalWatchPosition.call(geo, successCb, errorCb, options);
+                }
+                // 'prompt'
+                let watchId = -1;
+                if (papyr.watt && typeof papyr.watt.triggerWattPrompt === 'function') {
+                    papyr.watt.triggerWattPrompt("Location Tracking", () => {
+                        watchId = originalWatchPosition.call(geo, successCb, errorCb, options);
+                    }, () => {
+                        if (errorCb) errorCb({ code: 1, message: "User denied location access through WATT." });
+                    });
+                } else {
+                    watchId = originalWatchPosition.call(geo, successCb, errorCb, options);
+                }
+                return watchId;
+            };
+        }
+
+        // 2. Camera & Microphone getUserMedia Interception
+        if (typeof navigator !== 'undefined' && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+            const originalGetUserMedia = navigator.mediaDevices.getUserMedia;
+            navigator.mediaDevices.getUserMedia = function (constraints) {
+                const hasCamera = !!(constraints && constraints.video);
+                const hasMic = !!(constraints && constraints.audio);
+                
+                const cameraPolicy = policies.camera;
+                const micPolicy = policies.microphone;
+
+                if ((hasCamera && cameraPolicy === 'deny') || (hasMic && micPolicy === 'deny')) {
+                    return Promise.reject(new DOMException("Permission denied by Papyr security policy.", "NotAllowedError"));
+                }
+
+                if ((!hasCamera || cameraPolicy === 'allow') && (!hasMic || micPolicy === 'allow')) {
+                    return originalGetUserMedia.call(navigator.mediaDevices, constraints);
+                }
+
+                // 'prompt'
+                return new Promise((resolve, reject) => {
+                    let capName = "Hardware API Access";
+                    if (hasCamera && hasMic) capName = "Camera & Microphone Access";
+                    else if (hasCamera) capName = "Camera Access";
+                    else if (hasMic) capName = "Microphone Access";
+
+                    if (papyr.watt && typeof papyr.watt.triggerWattPrompt === 'function') {
+                        papyr.watt.triggerWattPrompt(capName, () => {
+                            originalGetUserMedia.call(navigator.mediaDevices, constraints)
+                                .then(resolve)
+                                .catch(reject);
+                        }, () => {
+                            reject(new DOMException("Permission denied by user through WATT.", "NotAllowedError"));
+                        });
+                    } else {
+                        originalGetUserMedia.call(navigator.mediaDevices, constraints)
+                            .then(resolve)
+                            .catch(reject);
+                    }
+                });
+            };
+        }
+
+        papyr.security = securityConfig;
 
         papyr.safeGet = (obj, key) => {
             if (!obj || typeof obj !== 'object') return undefined;
             if (key === '__proto__' || key === 'constructor' || key === 'prototype') {
                 throw new Error("Security Violation: Unsafe property access");
             }
-            // eslint-disable-next-line security/detect-object-injection
             return obj[key];
         };
     });

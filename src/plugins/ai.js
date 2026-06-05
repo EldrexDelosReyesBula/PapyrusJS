@@ -176,7 +176,9 @@
                  * Enforces strict real-world connections, API key validations, and secure data privacy protocols.
                  */
                 chat(options = {}) {
-                    const provider = (options.provider || (this._config && this._config.provider) || 'openai').toLowerCase();
+                    let provider = (options.provider || (this._config && this._config.provider) || 'openai').toLowerCase();
+                    if (provider === 'google') provider = 'gemini';
+                    
                     const apiKey = options.apiKey || '';
                     const messages = options.messages || [];
                     const model = options.model;
@@ -192,81 +194,105 @@
                         return Promise.reject(new Error("Environment Error: global fetch() API is required to communicate with AI endpoints."));
                     }
 
-                    // Real integration logic
-                    let url = options.endpoint || '';
-                    let headers = {
-                        'Content-Type': 'application/json'
-                    };
-                    let body = {};
+                    const promptText = messages.map(m => m.content).join('\n');
 
-                    if (provider === 'openai') {
-                        url = url || 'https://api.openai.com/v1/chat/completions';
-                        headers['Authorization'] = `Bearer ${apiKey}`;
-                        body = {
-                            model: model || 'gpt-4o-mini',
-                            messages: messages
-                        };
-                    } else if (provider === 'anthropic') {
-                        url = url || 'https://api.anthropic.com/v1/messages';
-                        headers['x-api-key'] = apiKey;
-                        headers['anthropic-version'] = '2023-06-01';
-                        body = {
-                            model: model || 'claude-3-5-sonnet-20241022',
-                            messages: messages.filter(m => m.role !== 'system'),
-                            max_tokens: 1024
-                        };
-                        const systemMsg = messages.find(m => m.role === 'system');
-                        if (systemMsg) {
-                            body.system = systemMsg.content;
-                        }
-                    } else if (provider === 'gemini') {
-                        const gemModel = model || 'gemini-2.5-flash';
-                        url = url || `https://generativelanguage.googleapis.com/v1beta/models/${gemModel}:generateContent?key=${apiKey}`;
-                        
-                        const contents = messages.filter(m => m.role !== 'system').map(m => {
-                            return {
-                                role: m.role === 'assistant' ? 'model' : 'user',
-                                parts: [{ text: m.content }]
-                            };
-                        });
-                        
-                        body = { contents: contents };
-                        
-                        const systemMsg = messages.find(m => m.role === 'system');
-                        if (systemMsg) {
-                            body.systemInstruction = {
-                                parts: [{ text: systemMsg.content }]
-                            };
-                        }
-                    } else if (provider === 'ollama') {
-                        url = url || 'http://localhost:11434/api/chat';
-                        body = {
-                            model: model || 'llama3',
-                            messages: messages,
-                            stream: false
-                        };
+                    // Data Leakage Scan
+                    if (papyr.security && typeof papyr.security.detectLeakage === 'function') {
+                        papyr.security.detectLeakage(promptText);
+                        if (options.context) papyr.security.detectLeakage(options.context);
                     }
 
-                    return fetch(url, {
-                        method: 'POST',
-                        headers: headers,
-                        body: JSON.stringify(body)
-                    })
-                    .then(res => {
-                        if (!res.ok) {
-                            throw new Error(`API error: ${res.status} ${res.statusText}`);
+                    // WATT AI Consent Transparency
+                    let consentPromise = Promise.resolve(true);
+                    if (papyr.security && typeof papyr.security.aiConsent === 'function') {
+                        consentPromise = papyr.security.aiConsent({
+                            destination: provider,
+                            prompt: promptText,
+                            context: options.context,
+                            attachments: options.attachments
+                        });
+                    }
+
+                    return consentPromise.then(allowed => {
+                        if (!allowed) {
+                            throw new Error("AI Request denied by user through WATT Transparency Layer.");
                         }
-                        return res.json();
-                    })
-                    .then(data => {
-                        const norm = this.normalizeResponse(provider, data);
-                        return {
-                            ...norm,
-                            text: norm.content || '',
-                            provider: provider,
-                            simulated: false,
-                            raw: data
+
+                        let url = options.endpoint || '';
+                        let headers = {
+                            'Content-Type': 'application/json'
                         };
+                        let body = {};
+
+                        if (provider === 'openai') {
+                            url = url || 'https://api.openai.com/v1/chat/completions';
+                            headers['Authorization'] = `Bearer ${apiKey}`;
+                            body = {
+                                model: model || 'gpt-4o-mini',
+                                messages: messages
+                            };
+                        } else if (provider === 'anthropic') {
+                            url = url || 'https://api.anthropic.com/v1/messages';
+                            headers['x-api-key'] = apiKey;
+                            headers['anthropic-version'] = '2023-06-01';
+                            body = {
+                                model: model || 'claude-3-5-sonnet-20241022',
+                                messages: messages.filter(m => m.role !== 'system'),
+                                max_tokens: 1024
+                            };
+                            const systemMsg = messages.find(m => m.role === 'system');
+                            if (systemMsg) {
+                                body.system = systemMsg.content;
+                            }
+                        } else if (provider === 'gemini') {
+                            const gemModel = model || 'gemini-2.5-flash';
+                            url = url || `https://generativelanguage.googleapis.com/v1beta/models/${gemModel}:generateContent?key=${apiKey}`;
+                            
+                            const contents = messages.filter(m => m.role !== 'system').map(m => {
+                                return {
+                                    role: m.role === 'assistant' ? 'model' : 'user',
+                                    parts: [{ text: m.content }]
+                                };
+                            });
+                            
+                            body = { contents: contents };
+                            
+                            const systemMsg = messages.find(m => m.role === 'system');
+                            if (systemMsg) {
+                                body.systemInstruction = {
+                                    parts: [{ text: systemMsg.content }]
+                                };
+                            }
+                        } else if (provider === 'ollama') {
+                            url = url || 'http://localhost:11434/api/chat';
+                            body = {
+                                model: model || 'llama3',
+                                messages: messages,
+                                stream: false
+                            };
+                        }
+
+                        return fetch(url, {
+                            method: 'POST',
+                            headers: headers,
+                            body: JSON.stringify(body)
+                        })
+                        .then(res => {
+                            if (!res.ok) {
+                                throw new Error(`API error: ${res.status} ${res.statusText}`);
+                            }
+                            return res.json();
+                        })
+                        .then(data => {
+                            const norm = this.normalizeResponse(provider, data);
+                            return {
+                                ...norm,
+                                text: norm.content || '',
+                                provider: provider,
+                                simulated: false,
+                                raw: data
+                            };
+                        });
                     });
                 }
             });

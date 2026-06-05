@@ -525,6 +525,21 @@ function createPapyr() {
         } else {
             el = doc.createElement(tag);
         }
+
+        // Intercept addEventListener to keep track of element listeners
+        el._listeners = [];
+        const originalAddEventListener = el.addEventListener;
+        if (typeof originalAddEventListener === 'function') {
+            el.addEventListener = function(event, handler, options) {
+                el._listeners.push({ event, handler, options });
+                return originalAddEventListener.apply(this, arguments);
+            };
+        } else {
+            el.addEventListener = function(event, handler, options) {
+                el._listeners.push({ event, handler, options });
+            };
+        }
+
         // Register in ComponentRegistry
         papyrInstance.components.register(el);
 
@@ -663,8 +678,36 @@ function createPapyr() {
 
         args.forEach(arg => {
             if (arg !== null && typeof arg === 'object' && !isElement(arg) && !Array.isArray(arg) && typeof arg.subscribe !== 'function') {
+                
+                // Extract natural language style properties
+                if (papyrInstance.style && typeof papyrInstance.style.translate === 'function') {
+                    const extractedStyles = {};
+                    const styleKeys = ['bg', 'radius', 'shadow', 'bold', 'italic', 'underline', 'strike', 'small', 'large', 'thin', 'normal', 'thick', 'black', 'white', 'gray', 'red', 'green', 'blue', 'yellow', 'left', 'center', 'right', 'justify', 'flex', 'grid', 'column', 'row', 'wrap'];
+                    Object.keys(arg).forEach(k => {
+                        if (styleKeys.includes(k)) {
+                            extractedStyles[k] = arg[k];
+                            delete arg[k];
+                        }
+                    });
+                    if (Object.keys(extractedStyles).length > 0) {
+                        arg.style = Object.assign(arg.style || {}, extractedStyles);
+                    }
+                }
+
+                // Handle layout responsive flag
+                if (arg.responsive !== undefined) {
+                    if (papyrInstance.layout && typeof papyrInstance.layout.observeResponsive === 'function') {
+                        papyrInstance.layout.observeResponsive(el, arg.responsive);
+                    }
+                    delete arg.responsive;
+                }
+
                 if (arg.style) {
-                    Object.entries(arg.style).forEach(([key, val]) => {
+                    const translatedStyle = (papyrInstance.style && typeof papyrInstance.style.translate === 'function')
+                        ? papyrInstance.style.translate(arg.style)
+                        : arg.style;
+                    
+                    Object.entries(translatedStyle).forEach(([key, val]) => {
                         const updateStyle = (v) => {
                             if (key.startsWith('--')) {
                                 el.style.setProperty(key, String(v));
@@ -796,6 +839,11 @@ function createPapyr() {
             }
         });
 
+        // Trigger autoAria accessibility generator
+        if (papyrInstance.accessibility && typeof papyrInstance.accessibility.autoAria === 'function') {
+            papyrInstance.accessibility.autoAria(el, tag);
+        }
+
         // Trigger onRender hook
         papyrInstance.plugins.triggerHook('onRender', el);
 
@@ -918,6 +966,16 @@ function createPapyr() {
         }
     }
     papyrInstance.component = PapyrComponent;
+    papyrInstance.defineComponent = (renderFn) => {
+        return (props) => {
+            const el = renderFn(props);
+            if (el && typeof el === 'object') {
+                el._renderFn = renderFn;
+                el._props = props;
+            }
+            return el;
+        };
+    };
 
     // Python-like syntax wrapper (papyr.py namespace)
     papyrInstance.py = {
@@ -1047,10 +1105,19 @@ function createPapyr() {
     };
 
     papyrInstance.mount = (selector, component) => {
-        let target = doc.querySelector(selector);
+        let target = typeof selector === 'string' ? doc.querySelector(selector) : selector;
         if (target) {
+            // Clean up existing children event listeners and reactive subscriptions
+            Array.from(target.children || []).forEach(child => {
+                if (typeof papyrInstance._cleanupElement === 'function') {
+                    papyrInstance._cleanupElement(child);
+                }
+            });
             target.innerHTML = '';
-            target.appendChild(component);
+            let rendered = typeof component === 'function' ? component() : component;
+            if (rendered) {
+                target.appendChild(rendered);
+            }
         }
         return target;
     };
@@ -1113,10 +1180,20 @@ function createPapyr() {
     };
 
     papyrInstance.animate = (el, properties, duration = 400) => {
+        const nonGpuProps = ['top', 'left', 'right', 'bottom', 'width', 'height', 'margin', 'padding'];
+        const badProps = Object.keys(properties || {}).filter(p => nonGpuProps.includes(p));
+        if (badProps.length > 0) {
+            console.warn(`💡 [Papyr Animation Tip]: Non-GPU property animation detected for [${badProps.join(', ')}]. Prefer CSS transitions with 'transform' and 'opacity' to achieve high frame-rate rendering.`);
+        }
+        
         el.style.transition = `all ${duration}ms cubic-bezier(0.4, 0, 0.2, 1)`;
-        requestAnimationFrame(() => {
+        if (typeof requestAnimationFrame === 'function') {
+            requestAnimationFrame(() => {
+                Object.assign(el.style, properties);
+            });
+        } else {
             Object.assign(el.style, properties);
-        });
+        }
     };
 
     papyrInstance.loadFramework = (framework) => {
@@ -1173,14 +1250,7 @@ function createPapyr() {
 
     papyrInstance.el = papyrInstance;
 
-    papyrInstance.ssr = (component) => {
-        if (!component) return '';
-        if (typeof component === 'function') {
-            component = component();
-        }
-        return component.innerHTML || String(component);
-    };
-    papyrInstance.ssr.render = (component) => papyrInstance.ssr(component);
+
 
     // Run registered core initializers!
     coreInitializers.forEach(init => {

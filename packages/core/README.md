@@ -45,8 +45,12 @@ Create an HTML file and run this minimal working code:
 
 ## 💡 What is Papyr?
 * **Direct DOM Rendering:** Updates only the targeted DOM nodes when state changes—bypassing Virtual DOM diff overhead.
-* **Reactive State Engine:** Precise, dependency-tracking subscription-based reactivity (inspired by SolidJS and Vue).
-* **Built-in Security Guards:** Employs safe Reflect API property proxies and whitelists to prevent Prototype Pollution, and strictly sanitizes routes/NLP schema fields to mitigate Regular Expression Denial of Service (ReDoS).
+* **Reactive State Engine:** Precise, dependency-tracking subscription-based reactivity (inspired by SolidJS and Vue) with **isomorphic storage persistence** (`persist: true`).
+* **Framework Interoperability & Bridges:** Coexists alongside React, Next.js (SSR & Hydration), Vue, Svelte (Action mounts), Angular, and legacy jQuery without app-wide lock-in.
+* **Legacy App Renovation (`papyr.renovate`):** Live audits (accessibility, performance, responsiveness) and progressive component replacements preserving existing styles.
+* **Unified DB Adapter APIs:** Decoupled drivers for SQLite, Local/SessionStorage, and IndexedDB, plus external registers (`papyr.db.use`) for Supabase, Firebase, Postgres, MySQL, and MongoDB.
+* **Papyrus Shapes Engine (PSE):** Built-in math geometry vectors (`rect`, `circle`, `ellipse`), curves (`bezier`, `spline`), morphing blobs, SVG pattern generators, and CSS 3D projections (`cube`, `sphere`, `card` tilt).
+* **Built-in Physics Adapter:** Gravity, friction, bounds collision, and bounce forces simulated on elements natively.
 * **Lag-Proof Predictive States:** Extrapolates user pointer interactions 16ms (2-frames) ahead using an integrated Kalman filter state estimator.
 * **WebGL2 GPU Layouts (`papyr.layout.gpu`):** Renders box hierarchies directly on WebGL2 fragment shaders to completely bypass CPU layout reflow computations.
 * **Biometric & Behavioral UI Adaptation:** Detects user interaction speeds (scroll rate, click tempo) to adapt hit targets and kerning states dynamically.

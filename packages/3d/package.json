@@ -1,6 +1,6 @@
 {
   "name": "@eldrex/papyr-3d",
-  "version": "3.0.4",
+  "version": "3.1.2",
   "description": "3D and immersive scene graphics system for Papyr.js",
   "main": "dist/papyr-3d.js",
   "module": "dist/papyr-3d.esm.js",

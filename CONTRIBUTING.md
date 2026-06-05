@@ -23,19 +23,23 @@ graph TD
     core --> router_js["router.js (Hash SPA Routing)"]
     core --> math_js["math.js (Reactive Math Logic)"]
     core --> crud_js["crud.js (LocalStorage Persistent CRUD)"]
+    core --> renovate_js["renovate.js (Legacy Modernization Layer)"]
     
     plugins --> off_js["official.js (Navbar, Tabs, Charts, Modals, SVGs)"]
+    plugins --> shapes_js["shapes.js (2D/3D Math Geometry Shapes Engine)"]
     styles --> comp_css["complete.css (Themeable Styling Tokens)"]
 ```
 
 ### 1. File Responsibilities
 * **`src/core/papyr-core.js`**: Core compiler, selector parser (ID & class tokenization), tag spellcheck debugger, DOM mounting utilities, framework CDN loaders, and legacy namespace `papyr.noConflict()` implementation.
 * **`src/core/security.js`**: Papyrus Security Kernel with enterprise-grade XSS sanitizers, pseudo-protocol interception, and standard client-side XOR+Base64 state vault encryption APIs (`papyr.storage.secureSet` / `papyr.storage.secureGet`).
-* **`src/core/reactivity.js`**: Vue/SolidJS-style dependency tracking framework containing `state`, `computed`, reactive DOM trackers, and dependency collector effects.
+* **`src/core/reactivity.js`**: Vue/SolidJS-style dependency tracking framework containing `state` (with localStorage persistence continuity option), `computed`, reactive DOM trackers, and dependency collector effects.
 * **`src/core/router.js`**: Single-page application (SPA) routing based on url `location.hash` with wildcards and programmatic hooks.
 * **`src/core/math.js`**: `papyr.math` computed operations. Automatically tracks and updates formulas (`sum`, `sub`, `mul`, `div`, `avg`, `percent`, `round`) reactively.
 * **`src/core/crud.js`**: `papyr.crud` engine. Creates zero-config local database caches that synchronize CRUD operations (`create`, `read`, `update`, `delete`, `clear`) natively with `localStorage`.
+* **`src/core/renovate.js`**: Progressive modernization layer that scans legacy DOM roots, audits elements for accessibility, performance, and responsiveness, and substitutions widgets dynamically.
 * **`src/plugins/official.js`**: UI components, visual charts (canvas-based bar & ring charts), modals, tabs, autocomplete lists, toast managers, and high-performance SVG vector icons.
+* **`src/plugins/shapes.js`**: Expanded Shapes Engine (PSE) providing vector geometry, line systems, bezier/spline curves, morphing blobs, pattern utilities, CSS 3D objects, WebGL Three.js bindings, and custom physics simulation.
 * **`src/styles/complete.css`**: Design tokens, dark mode gradients, glassmorphism layouts, variables, keyframe animations, mobile media-query breakpoints, and custom layout systems (`.crud-grid`, `.responsive-split-grid`).
 
 ---

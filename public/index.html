@@ -1,534 +1,1348 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Papyrus.js - Official Documentation</title>
-    <script src="https://papyrus-js.vercel.app/papyr-complete.js"></script>
+    <title>Papyrus.js — Official Documentation</title>
+    <meta name="description"
+        content="The official documentation and interactive playground for Papyrus.js — the isomorphic fine-grained reactive UI framework for the modern web.">
+    <meta name="keywords" content="Papyrus.js, Papyr, JavaScript framework, reactive, documentation">
+    <meta property="og:title" content="Papyrus.js — Official Documentation">
+    <meta property="og:description"
+        content="Explore guides, API references, recipes, and an interactive playground for Papyrus.js.">
+    <meta name="robots" content="index, follow">
+    <link rel="canonical" href="https://eldrex.landecs.org/papyrusjs/docs/">
+
+    <!-- Papyr package scripts from unpkg CDN -->
+    <script src="https://unpkg.com/@eldrex/papyr@3.0.4/dist/papyr.js"></script>
+    <script>window.papyrCore = window.papyr;</script>
+    <script src="https://unpkg.com/@eldrex/papyr-animate@3.0.4/dist/papyr-animate.js"></script>
+    <script>window.papyrAnimate = window.papyr;</script>
+    <script src="https://unpkg.com/@eldrex/papyr-charts@3.0.4/dist/papyr-charts.js"></script>
+    <script>window.papyrCharts = window.papyr;</script>
+    <script src="https://unpkg.com/@eldrex/papyr-db@3.0.4/dist/papyr-db.js"></script>
+    <script>window.papyrDb = window.papyr;</script>
+    <script src="https://unpkg.com/@eldrex/papyr-router@3.0.4/dist/papyr-router.js"></script>
+    <script>window.papyrRouter = window.papyr;</script>
+    <script src="https://unpkg.com/@eldrex/papyr-ai@3.1.1/dist/papyr-ai.js"></script>
+    <script>window.papyrAi = window.papyr;</script>
+    <script src="https://unpkg.com/@eldrex/papyr-3d@3.1.1/dist/papyr-3d.js"></script>
+
+    <!-- Merge independent global instances to resolve clobbering conflicts -->
+    <script>
+        (function () {
+            const finalPapyr = window.papyr;
+            if (!finalPapyr) {
+                console.error('Papyr core failed to load.');
+                return;
+            }
+            const sources = [window.papyrCore, window.papyrAnimate, window.papyrCharts,
+            window.papyrDb, window.papyrRouter, window.papyrAi
+            ];
+            sources.forEach(src => {
+                if (!src || src === finalPapyr) return;
+                for (let key in src) {
+                    if (src.hasOwnProperty(key)) {
+                        if (src[key] && typeof src[key] === 'object' && finalPapyr[key] && typeof finalPapyr[
+                            key] === 'object') {
+                            Object.assign(finalPapyr[key], src[key]);
+                        } else if (finalPapyr[key] === undefined) {
+                            finalPapyr[key] = src[key];
+                        }
+                    }
+                }
+            });
+            // Clean up temporary globals
+            delete window.papyrCore;
+            delete window.papyrAnimate;
+            delete window.papyrCharts;
+            delete window.papyrDb;
+            delete window.papyrRouter;
+            delete window.papyrAi;
+        })();
+    </script>
+
+    <!-- Fonts & third-party libs -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/atom-one-dark.min.css">
+    <link rel="stylesheet"
+        href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/atom-one-dark.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+    <script src="./docs-data.js"></script>
+
     <style>
         :root {
-            --bg-primary: #ffffff;
-            --bg-secondary: #f5f5f5;
-            --bg-tertiary: #eeeeee;
-            --text-primary: #000000;
-            --text-secondary: #333333;
-            --text-tertiary: #666666;
-            --border-color: #e0e0e0;
-            --sidebar-bg: #f8f8f8;
-            --sidebar-hover: #e8e8e8;
-            --accent-color: #000000;
-            --accent-light: #333333;
-            --link-color: #0066cc;
-        }
-
-        html.dark-mode {
-            --bg-primary: #1a1a1a;
-            --bg-secondary: #242424;
-            --bg-tertiary: #333333;
-            --text-primary: #ffffff;
-            --text-secondary: #e0e0e0;
-            --text-tertiary: #b0b0b0;
-            --border-color: #404040;
-            --sidebar-bg: #0f0f0f;
-            --sidebar-hover: #2a2a2a;
-            --accent-color: #ffffff;
-            --accent-light: #e0e0e0;
-            --link-color: #4da6ff;
-        }
-
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: var(--bg-primary);
-            color: var(--text-primary);
-            line-height: 1.6;
+            font-family: 'Outfit', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             transition: background-color 0.3s ease, color 0.3s ease;
         }
 
-        .docs-container {
-            display: flex;
-            height: 100vh;
+        /* ── Color Tokens ───────────────────────────────── */
+        :root.light-mode {
+            --app-bg: #f8fafc;
+            --app-secondary: #ffffff;
+            --app-border: #e2e8f0;
+            --app-text: #0f172a;
+            --app-text-muted: #64748b;
+            --app-accent: #6366f1;
+            --app-accent-hover: #4f46e5;
+            --app-card-bg: #ffffff;
+            --glass-bg: rgba(255, 255, 255, 0.75);
+            --glass-border: rgba(0, 0, 0, 0.06);
+            --sidebar-active-bg: rgba(99, 102, 241, 0.06);
         }
 
-        .sidebar {
-            width: 280px;
-            background: var(--sidebar-bg);
-            border-right: 1px solid var(--border-color);
-            overflow-y: auto;
-            padding: 0;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        :root.dark-mode {
+            --app-bg: #090d16;
+            --app-secondary: #0f1524;
+            --app-border: #1e293b;
+            --app-text: #f8fafc;
+            --app-text-muted: #94a3b8;
+            --app-accent: #818cf8;
+            --app-accent-hover: #6366f1;
+            --app-card-bg: #131b2e;
+            --glass-bg: rgba(15, 21, 36, 0.7);
+            --glass-border: rgba(255, 255, 255, 0.05);
+            --sidebar-active-bg: rgba(99, 102, 241, 0.1);
         }
 
-        .sidebar-header {
-            padding: 20px;
-            border-bottom: 1px solid var(--border-color);
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            background: var(--bg-secondary);
+        /* ── Scrollbar ──────────────────────────────────── */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
         }
 
-        .sidebar-logo {
-            width: 40px;
-            height: 40px;
-            border-radius: 6px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            flex-shrink: 0;
+        ::-webkit-scrollbar-track {
+            background: var(--app-bg);
         }
 
-        .sidebar-logo img {
-            width: 100%;
-            height: 100%;
-            object-fit: contain;
+        ::-webkit-scrollbar-thumb {
+            background: var(--app-border);
             border-radius: 4px;
         }
 
-        .sidebar-header-text h1 {
-            font-size: 16px;
-            font-weight: 700;
-            margin-bottom: 2px;
-            color: var(--text-primary);
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--app-accent);
         }
 
-        .sidebar-header-text p {
-            font-size: 11px;
-            color: var(--text-tertiary);
-            letter-spacing: 0.5px;
+        /* ── Papyr Shell Theme Sync ─────────────────────── */
+        .papyr-app-shell {
+            background: var(--app-bg) !important;
+            color: var(--app-text) !important;
         }
 
-        .theme-toggle {
-            position: absolute;
-            top: 20px;
-            right: 20px;
-            background: var(--bg-secondary);
-            border: 1px solid var(--border-color);
-            border-radius: 6px;
-            padding: 8px 12px;
-            cursor: pointer;
-            color: var(--text-primary);
-            font-size: 14px;
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            transition: all 0.2s ease;
+        .papyr-shell-header {
+            background: var(--glass-bg) !important;
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border-bottom: 1px solid var(--glass-border) !important;
+            color: var(--app-text) !important;
         }
 
-        .theme-toggle:hover {
-            background: var(--bg-tertiary);
-            border-color: var(--accent-color);
+        .papyr-shell-header .menu-toggle {
+            color: var(--app-text) !important;
+            background: transparent !important;
+            border: 1px solid var(--app-border) !important;
+            border-radius: 8px !important;
         }
 
-        .doc-section {
-            margin-bottom: 0;
+        .papyr-shell-sidebar {
+            background: var(--glass-bg) !important;
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border-right: 1px solid var(--glass-border) !important;
+            color: var(--app-text) !important;
         }
 
-        .doc-section-title {
-            padding: 12px 20px 8px;
-            font-size: 11px;
-            text-transform: uppercase;
-            font-weight: 700;
-            color: var(--text-tertiary);
-            letter-spacing: 0.7px;
+        .papyr-main-content {
+            background: var(--app-bg) !important;
+            color: var(--app-text) !important;
         }
 
-        .nav-link {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            padding: 10px 20px;
-            cursor: pointer;
-            text-decoration: none;
-            color: var(--text-secondary);
-            transition: all 0.2s ease;
-            font-size: 13px;
-            border-left: 3px solid transparent;
+        .papyr-shell-footer {
+            background: var(--app-secondary) !important;
+            border-top: 1px solid var(--app-border) !important;
+            color: var(--app-text) !important;
+            position: static !important;
+            flex-shrink: 0 !important;
+            /* never float/cover the content — let the dashboard layout place it */
+            z-index: auto !important;
         }
 
-        .nav-link:hover {
-            background: var(--sidebar-hover);
-            color: var(--text-primary);
-        }
-
-        .nav-link.active {
-            background: var(--bg-tertiary);
-            color: var(--accent-color);
-            font-weight: 600;
-            border-left-color: var(--accent-color);
-        }
-
-        .nav-icon {
-            width: 16px;
-            text-align: center;
-            flex-shrink: 0;
-            color: var(--text-tertiary);
-        }
-
-        .nav-link.active .nav-icon {
-            color: var(--accent-color);
-        }
-
-        .content {
-            flex: 1;
-            overflow-y: auto;
-            padding: 40px;
-            background: var(--bg-primary);
-        }
-
-        .content-wrapper {
-            max-width: 950px;
-            margin: 0 auto;
-        }
-
+        /* ── Markdown Content ───────────────────────────── */
         .markdown-content h1 {
-            font-size: 36px;
-            margin-bottom: 20px;
-            color: var(--text-primary);
-            border-bottom: 2px solid var(--accent-color);
-            padding-bottom: 15px;
+            font-size: 32px;
+            margin: 20px 0;
+            font-weight: 700;
+            border-bottom: 2px solid var(--app-border);
+            padding-bottom: 12px;
+            color: var(--app-text);
         }
 
         .markdown-content h2 {
-            font-size: 26px;
-            margin-top: 35px;
-            margin-bottom: 15px;
-            color: var(--text-primary);
-            border-bottom: 1px solid var(--border-color);
-            padding-bottom: 10px;
+            font-size: 24px;
+            margin: 20px 0;
+            font-weight: 600;
+            border-bottom: 1px solid var(--app-border);
+            padding-bottom: 8px;
         }
 
         .markdown-content h3 {
-            font-size: 20px;
-            margin-top: 25px;
-            margin-bottom: 12px;
-            color: var(--text-secondary);
+            font-size: 18px;
+            margin: 15px 0;
+            font-weight: 600;
+        }
+
+        .markdown-content h4 {
+            font-size: 15px;
+            margin: 12px 0;
+            font-weight: 600;
         }
 
         .markdown-content p {
-            margin-bottom: 15px;
+            margin: 10px 0;
             line-height: 1.8;
-            color: var(--text-secondary);
         }
 
         .markdown-content code {
-            background: var(--bg-secondary);
-            padding: 3px 8px;
-            border-radius: 4px;
-            font-family: 'Monaco', 'Courier New', monospace;
-            font-size: 13px;
-            color: var(--link-color);
-            border: 1px solid var(--border-color);
+            background: rgba(99, 102, 241, 0.09);
+            padding: 3px 7px;
+            border-radius: 6px;
+            font-family: 'Fira Code', 'Courier New', monospace;
+            font-size: 0.88em;
+            color: var(--app-accent);
         }
 
         .markdown-content pre {
-            background: #2c3e50;
-            color: #ecf0f1;
-            border-left: 4px solid var(--accent-color);
-            padding: 15px;
-            margin: 20px 0;
+            background: var(--app-secondary);
+            border: 1px solid var(--app-border);
+            padding: 16px;
+            margin: 18px 0;
             overflow-x: auto;
-            border-radius: 6px;
-            line-height: 1.4;
+            border-radius: 10px;
+            position: relative;
         }
 
         .markdown-content pre code {
-            background: none;
+            background: transparent;
             padding: 0;
-            color: #ecf0f1;
-            border: none;
+            color: inherit;
+            font-size: 13px;
         }
 
-        .markdown-content ul, .markdown-content ol {
-            margin-left: 25px;
-            margin-bottom: 15px;
-            color: var(--text-secondary);
+        .markdown-content ul,
+        .markdown-content ol {
+            margin-left: 20px;
+            margin-bottom: 10px;
+            line-height: 1.8;
         }
 
         .markdown-content li {
-            margin-bottom: 10px;
+            margin: 4px 0;
         }
 
         .markdown-content blockquote {
-            border-left: 4px solid var(--accent-color);
-            margin: 20px 0;
-            padding: 15px;
-            color: var(--text-tertiary);
-            background: var(--bg-secondary);
-            border-radius: 4px;
+            border-left: 4px solid var(--app-accent);
+            margin: 16px 0;
+            padding: 12px 16px;
+            background: rgba(99, 102, 241, 0.04);
+            border-radius: 0 8px 8px 0;
+            font-style: italic;
         }
 
         .markdown-content a {
-            color: var(--link-color);
+            color: var(--app-accent);
             text-decoration: none;
             font-weight: 500;
         }
 
         .markdown-content a:hover {
             text-decoration: underline;
+            color: var(--app-accent-hover);
         }
 
-        .loading {
-            text-align: center;
-            padding: 60px 20px;
-            color: var(--text-tertiary);
-            font-size: 18px;
+        .markdown-content table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 18px 0;
+            font-size: 14px;
         }
 
-        .error {
-            background: var(--bg-secondary);
-            border: 1px solid var(--border-color);
-            color: #c00;
-            padding: 20px;
-            border-radius: 6px;
-            margin: 20px 0;
+        .markdown-content th,
+        .markdown-content td {
+            padding: 10px 14px;
+            border: 1px solid var(--app-border);
+            text-align: left;
         }
 
-        ::-webkit-scrollbar {
-            width: 8px;
-            height: 8px;
+        .markdown-content th {
+            background: var(--app-secondary);
+            font-weight: 600;
         }
 
-        ::-webkit-scrollbar-track {
-            background: var(--bg-secondary);
+        .markdown-content tr:nth-child(even) td {
+            background: rgba(0, 0, 0, 0.015);
         }
 
-        ::-webkit-scrollbar-thumb {
-            background: var(--text-tertiary);
-            border-radius: 4px;
+        .markdown-content img {
+            max-width: 100%;
+            border-radius: 8px;
+            margin: 12px 0;
+            display: block;
         }
 
-        ::-webkit-scrollbar-thumb:hover {
-            background: var(--text-secondary);
+        .markdown-content hr {
+            border: none;
+            border-top: 1px solid var(--app-border);
+            margin: 24px 0;
+        }
+
+        /* ── Playground ─────────────────────────────────── */
+        .playground-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            height: calc(100vh - 150px);
+            min-height: 400px;
+        }
+
+        /* ── Responsive ≤ 900 px ────────────────────────── */
+        @media (max-width: 900px) {
+
+            /* Collapse sidebar — the shell hides it via the menu-toggle on mobile */
+            .papyr-shell-sidebar {
+                position: fixed !important;
+                left: 0 !important;
+                top: 0 !important;
+                height: 100% !important;
+                z-index: 200 !important;
+                transform: translateX(-100%) !important;
+                transition: transform 0.25s ease !important;
+            }
+
+            .papyr-shell-sidebar.open {
+                transform: translateX(0) !important;
+            }
+
+            /* Main content fills the full width */
+            .papyr-main-content {
+                margin-left: 0 !important;
+                width: 100% !important;
+                padding: 16px !important;
+            }
+
+            /* Footer is never sticky/floating — stays in normal flow */
+            .papyr-shell-footer {
+                position: static !important;
+            }
+
+            .playground-container {
+                grid-template-columns: 1fr !important;
+                height: auto !important;
+                gap: 16px !important;
+            }
+
+            .playground-container>div {
+                height: 340px !important;
+            }
+
+            .markdown-content h1 {
+                font-size: 22px !important;
+            }
+
+            .markdown-content h2 {
+                font-size: 18px !important;
+            }
+
+            .markdown-content h3 {
+                font-size: 15px !important;
+            }
+
+            .markdown-content pre {
+                font-size: 12px !important;
+                padding: 10px !important;
+            }
+
+            .markdown-content code {
+                font-size: 0.82em !important;
+            }
+
+            /* Header adjustments */
+            .papyr-shell-header {
+                padding: 0 16px !important;
+            }
+        }
+
+        /* ── Responsive ≤ 600 px ────────────────────────── */
+        @media (max-width: 600px) {
+            .papyr-shell-header {
+                padding: 0 12px !important;
+            }
+
+            /* Hide GitHub wordmark, keep icon */
+            .papyr-shell-header a span {
+                display: none !important;
+            }
+
+            .playground-container>div {
+                height: 300px !important;
+            }
+
+            .markdown-content h1 {
+                font-size: 20px !important;
+            }
+
+            .markdown-content h2 {
+                font-size: 17px !important;
+            }
+
+            /* Footer wraps gracefully on small screens */
+            .papyr-shell-footer {
+                flex-direction: column !important;
+                gap: 6px !important;
+                padding: 10px 16px !important;
+                text-align: center !important;
+            }
+        }
+
+        /* ── Responsive ≤ 480 px ────────────────────────── */
+        @media (max-width: 480px) {
+            .papyr-shell-header {
+                padding: 0 10px !important;
+            }
+
+            .playground-container>div {
+                height: 260px !important;
+            }
+
+            .markdown-content h1 {
+                font-size: 19px !important;
+            }
+
+            .markdown-content h2 {
+                font-size: 16px !important;
+            }
+
+            .markdown-content ul,
+            .markdown-content ol {
+                margin-left: 14px !important;
+            }
+
+            .markdown-content table {
+                font-size: 12px !important;
+            }
+
+            .markdown-content th,
+            .markdown-content td {
+                padding: 6px 8px !important;
+            }
         }
     </style>
 </head>
+
 <body>
     <div id="app"></div>
 
     <script>
-        // Configure marked
-        marked.setOptions({
-            highlight: (code, lang) => {
-                if (lang) {
-                    try {
-                        return hljs.highlight(code, { language: lang }).value;
-                    } catch (e) {
-                        return code;
+        // ── Markdown renderer ──────────────────────────────────
+        if (typeof marked !== 'undefined') {
+            marked.setOptions({
+                highlight: (code, lang) => {
+                    if (lang && hljs.getLanguage(lang)) {
+                        try {
+                            return hljs.highlight(code, {
+                                language: lang
+                            }).value;
+                        } catch (e) {
+                            console.warn('Highlight error:', e);
+                        }
                     }
+                    return hljs.highlightAuto(code).value;
                 }
-                return hljs.highlightAuto(code).value;
-            }
-        });
+            });
+        }
 
-        // Documentation structure with icons
+        // ── Theme ──────────────────────────────────────────────
+        let isDarkMode;
+        try {
+            const savedTheme = localStorage.getItem('papyr-theme');
+            isDarkMode = papyr.state(savedTheme === null ? true : savedTheme !== 'light');
+        } catch (e) {
+            isDarkMode = papyr.state(true);
+        }
+
+        function applyTheme() {
+            document.documentElement.classList.toggle('dark-mode', isDarkMode.value);
+            document.documentElement.classList.toggle('light-mode', !isDarkMode.value);
+        }
+        applyTheme();
+
+        function toggleTheme() {
+            isDarkMode.value = !isDarkMode.value;
+            try {
+                localStorage.setItem('papyr-theme', isDarkMode.value ? 'dark' : 'light');
+            } catch (e) {
+                console.warn('Cannot save theme preference');
+            }
+            applyTheme();
+        }
+
+        // ── Docs Catalog ───────────────────────────────────────
+        const GH_RAW = 'https://raw.githubusercontent.com/EldrexDelosReyesBula/PapyrusJS/main/';
+
         const DOCS_STRUCTURE = {
-            'Root Documentation': {
-                'README': { url: 'https://raw.githubusercontent.com/EldrexDelosReyesBula/PapyrusJS/main/README.md', icon: 'fas fa-file' },
-                'DOCS (Specification)': { url: 'https://raw.githubusercontent.com/EldrexDelosReyesBula/PapyrusJS/main/DOCS.md', icon: 'fas fa-book' },
-                'Design Guidelines': { url: 'https://raw.githubusercontent.com/EldrexDelosReyesBula/PapyrusJS/main/PAPY-DESIGN.md', icon: 'fas fa-palette' },
-                'Translation Guide': { url: 'https://raw.githubusercontent.com/EldrexDelosReyesBula/PapyrusJS/main/TRANSLATION_GUIDE.md', icon: 'fas fa-language' },
-                'Changelog': { url: 'https://raw.githubusercontent.com/EldrexDelosReyesBula/PapyrusJS/main/CHANGELOG.md', icon: 'fas fa-history' },
-                'Contributing': { url: 'https://raw.githubusercontent.com/EldrexDelosReyesBula/PapyrusJS/main/CONTRIBUTING.md', icon: 'fas fa-code-branch' }
+            '📄 Root Documentation': {
+                'README': { url: GH_RAW + 'README.md', icon: 'fas fa-file-alt', type: 'doc' },
+                'Master Specification': { url: GH_RAW + 'DOCS.md', icon: 'fas fa-book', type: 'doc' },
+                'Design Guidelines': { url: GH_RAW + 'PAPY-DESIGN.md', icon: 'fas fa-palette', type: 'doc' },
+                'Translation Guide': { url: GH_RAW + 'TRANSLATION_GUIDE.md', icon: 'fas fa-globe', type: 'doc' },
+                'Changelog': { url: GH_RAW + 'CHANGELOG.md', icon: 'fas fa-history', type: 'doc' },
+                'Contributing': { url: GH_RAW + 'CONTRIBUTING.md', icon: 'fas fa-code-branch', type: 'doc' },
+                'License': { url: GH_RAW + 'LICENSE', icon: 'fas fa-scroll', type: 'doc' }
             },
-            'Getting Started': {
-                'Getting Started Guide': { url: 'https://raw.githubusercontent.com/EldrexDelosReyesBula/PapyrusJS/main/docs/getting-started.md', icon: 'fas fa-rocket' },
-                'The Papyr Way': { url: 'https://raw.githubusercontent.com/EldrexDelosReyesBula/PapyrusJS/main/docs/papyr-way.md', icon: 'fas fa-lightbulb' },
-                'Core Concepts': { url: 'https://raw.githubusercontent.com/EldrexDelosReyesBula/PapyrusJS/main/docs/core-concepts.md', icon: 'fas fa-cube' },
-                'Limitations': { url: 'https://raw.githubusercontent.com/EldrexDelosReyesBula/PapyrusJS/main/docs/limitations.md', icon: 'fas fa-exclamation' },
-                'FAQ': { url: 'https://raw.githubusercontent.com/EldrexDelosReyesBula/PapyrusJS/main/docs/faq.md', icon: 'fas fa-question' }
+            '🚀 Getting Started': {
+                'Getting Started Guide': { url: GH_RAW + 'docs/getting-started.md', icon: 'fas fa-rocket', type: 'doc' },
+                'The Papyr Way': { url: GH_RAW + 'docs/papyr-way.md', icon: 'fas fa-lightbulb', type: 'doc' },
+                'Core Concepts': { url: GH_RAW + 'docs/core-concepts.md', icon: 'fas fa-cube', type: 'doc' },
+                'Limitations': { url: GH_RAW + 'docs/limitations.md', icon: 'fas fa-exclamation-triangle', type: 'doc' },
+                'FAQ': { url: GH_RAW + 'docs/faq.md', icon: 'fas fa-question-circle', type: 'doc' }
             },
-            'Beginner Track': {
-                'What is Papyr': { url: 'https://raw.githubusercontent.com/EldrexDelosReyesBula/PapyrusJS/main/docs/beginner/what-is-papyr.md', icon: 'fas fa-info-circle' },
-                'Installation': { url: 'https://raw.githubusercontent.com/EldrexDelosReyesBula/PapyrusJS/main/docs/beginner/installation.md', icon: 'fas fa-download' },
-                'First App': { url: 'https://raw.githubusercontent.com/EldrexDelosReyesBula/PapyrusJS/main/docs/beginner/first-app.md', icon: 'fas fa-star' }
+            '👶 Beginner Track': {
+                'What is Papyr': { url: GH_RAW + 'docs/beginner/what-is-papyr.md', icon: 'fas fa-star', type: 'doc' },
+                'Installation Guide': {
+                    url: GH_RAW + 'docs/beginner/installation.md', icon: 'fas fa-download',
+                    type: 'doc'
+                },
+                'Building Your First Papyr App': { url: GH_RAW + 'docs/beginner/first-app.md', icon: 'fas fa-laptop', type: 'doc' }
             },
-            'Intermediate': {
-                'State Management': { url: 'https://raw.githubusercontent.com/EldrexDelosReyesBula/PapyrusJS/main/docs/intermediate/state.md', icon: 'fas fa-database' },
-                'Routing & Pages': { url: 'https://raw.githubusercontent.com/EldrexDelosReyesBula/PapyrusJS/main/docs/intermediate/routing.md', icon: 'fas fa-map' },
-                'Components & Lifecycle': { url: 'https://raw.githubusercontent.com/EldrexDelosReyesBula/PapyrusJS/main/docs/intermediate/components.md', icon: 'fas fa-layer-group' }
+            '🧑‍💻 Intermediate Track': {
+                'State & Reactivity': {
+                    url: GH_RAW + 'docs/intermediate/state.md', icon: 'fas fa-wave-square',
+                    type: 'doc'
+                },
+                'SPA Routing & Pages': { url: GH_RAW + 'docs/intermediate/routing.md', icon: 'fas fa-map', type: 'doc' },
+                'Components & Lifecycle': {
+                    url: GH_RAW + 'docs/intermediate/components.md', icon: 'fas fa-boxes',
+                    type: 'doc'
+                }
             },
-            'Advanced': {
-                'Architecture': { url: 'https://raw.githubusercontent.com/EldrexDelosReyesBula/PapyrusJS/main/docs/advanced/architecture.md', icon: 'fas fa-building' },
-                'Plugins': { url: 'https://raw.githubusercontent.com/EldrexDelosReyesBula/PapyrusJS/main/docs/advanced/plugins.md', icon: 'fas fa-puzzle-piece' },
-                'Registry': { url: 'https://raw.githubusercontent.com/EldrexDelosReyesBula/PapyrusJS/main/docs/advanced/registry.md', icon: 'fas fa-list' }
+            '🧠 Advanced Track': {
+                'Architecture, Monorepo & Isomorphic Builds': {
+                    url: GH_RAW + 'docs/advanced/architecture.md', icon: 'fas fa-layer-group',
+                    type: 'doc'
+                },
+                'Official Plugin Modules & Lifecycle Cleanups': {
+                    url: GH_RAW + 'docs/advanced/plugins.md', icon: 'fas fa-puzzle-piece',
+                    type: 'doc'
+                },
+                'Plugin Registry & Adapters': { url: GH_RAW + 'docs/advanced/registry.md', icon: 'fas fa-database', type: 'doc' }
             },
-            'API Reference': {
-                'State & Reactivity': { url: 'https://raw.githubusercontent.com/EldrexDelosReyesBula/PapyrusJS/main/docs/api/state.md', icon: 'fas fa-waveform-lines' },
-                'Computed States': { url: 'https://raw.githubusercontent.com/EldrexDelosReyesBula/PapyrusJS/main/docs/api/computed.md', icon: 'fas fa-calculator' },
-                'DOM Builder': { url: 'https://raw.githubusercontent.com/EldrexDelosReyesBula/PapyrusJS/main/docs/api/dom.md', icon: 'fas fa-code' },
-                'Routing': { url: 'https://raw.githubusercontent.com/EldrexDelosReyesBula/PapyrusJS/main/docs/api/routing.md', icon: 'fas fa-road' },
-                'Math Functions': { url: 'https://raw.githubusercontent.com/EldrexDelosReyesBula/PapyrusJS/main/docs/api/math.md', icon: 'fas fa-plus' },
-                'Database': { url: 'https://raw.githubusercontent.com/EldrexDelosReyesBula/PapyrusJS/main/docs/api/db.md', icon: 'fas fa-database' },
-                'Storage': { url: 'https://raw.githubusercontent.com/EldrexDelosReyesBula/PapyrusJS/main/docs/api/storage.md', icon: 'fas fa-floppy-disk' },
-                'UI Components': { url: 'https://raw.githubusercontent.com/EldrexDelosReyesBula/PapyrusJS/main/docs/api/ui.md', icon: 'fas fa-window-restore' },
-                'Security': { url: 'https://raw.githubusercontent.com/EldrexDelosReyesBula/PapyrusJS/main/docs/api/advanced.md', icon: 'fas fa-shield' },
-                'Animations': { url: 'https://raw.githubusercontent.com/EldrexDelosReyesBula/PapyrusJS/main/docs/api/animation.md', icon: 'fas fa-film' },
-                'Utils': { url: 'https://raw.githubusercontent.com/EldrexDelosReyesBula/PapyrusJS/main/docs/api/utils.md', icon: 'fas fa-toolbox' }
+            '⚙️ Deep-Dive Guides': {
+                'Performance Optimization & Memory Management': {
+                    url: GH_RAW + 'docs/guides/performance.md', icon: 'fas fa-tachometer-alt',
+                    type: 'doc'
+                },
+                'Security & Web Access Transparency Toolkit (WATT)': {
+                    url: GH_RAW + 'docs/guides/security.md', icon: 'fas fa-shield-alt',
+                    type: 'doc'
+                },
+                'Debugging & Diagnostics': { url: GH_RAW + 'docs/guides/debugging.md', icon: 'fas fa-bug', type: 'doc' },
+                'Architecture & Kernel Lifecycles': {
+                    url: GH_RAW + 'docs/guides/architecture.md', icon: 'fas fa-server',
+                    type: 'doc'
+                }
             },
-            'Guides': {
-                'Performance': { url: 'https://raw.githubusercontent.com/EldrexDelosReyesBula/PapyrusJS/main/docs/guides/performance.md', icon: 'fas fa-gauge' },
-                'Security & WATT': { url: 'https://raw.githubusercontent.com/EldrexDelosReyesBula/PapyrusJS/main/docs/guides/security.md', icon: 'fas fa-lock' },
-                'Debugging': { url: 'https://raw.githubusercontent.com/EldrexDelosReyesBula/PapyrusJS/main/docs/guides/debugging.md', icon: 'fas fa-bug' }
+            '📖 API Reference': {
+                'State API': { url: GH_RAW + 'docs/api/state.md', icon: 'fas fa-stream', type: 'doc' },
+                'Computed States API': { url: GH_RAW + 'docs/api/computed.md', icon: 'fas fa-calculator', type: 'doc' },
+                'DOM API': { url: GH_RAW + 'docs/api/dom.md', icon: 'fas fa-code', type: 'doc' },
+                'Routing API': { url: GH_RAW + 'docs/api/routing.md', icon: 'fas fa-route', type: 'doc' },
+                'Math API': { url: GH_RAW + 'docs/api/math.md', icon: 'fas fa-plus', type: 'doc' },
+                'Unified DB API': { url: GH_RAW + 'docs/api/db.md', icon: 'fas fa-database', type: 'doc' },
+                'Storage API': { url: GH_RAW + 'docs/api/storage.md', icon: 'fas fa-hdd', type: 'doc' },
+                'UI & Components API': {
+                    url: GH_RAW + 'docs/api/ui.md', icon: 'fas fa-window-maximize',
+                    type: 'doc'
+                },
+                'Advanced & Plugins API': { url: GH_RAW + 'docs/api/advanced.md', icon: 'fas fa-lock', type: 'doc' },
+                'Animation API': { url: GH_RAW + 'docs/api/animation.md', icon: 'fas fa-film', type: 'doc' },
+                'Utilities API': { url: GH_RAW + 'docs/api/utils.md', icon: 'fas fa-tools', type: 'doc' },
+                'Shapes & Physics API': { url: GH_RAW + 'docs/api/shapes.md', icon: 'fas fa-shapes', type: 'doc' },
+                'Legacy Renovation API': { url: GH_RAW + 'docs/api/renovate.md', icon: 'fas fa-tools', type: 'doc' },
+                'Priority Scheduler & Recovery API': { url: GH_RAW + 'docs/api/scheduler.md', icon: 'fas fa-clock', type: 'doc' },
+                'Framework Bridges API': { url: GH_RAW + 'docs/api/bridges.md', icon: 'fas fa-puzzle-piece', type: 'doc' }
             },
-            'Recipes': {
-                'Todo App': { url: 'https://raw.githubusercontent.com/EldrexDelosReyesBula/PapyrusJS/main/docs/recipes/todo.md', icon: 'fas fa-check-square' },
-                'Forms & Validation': { url: 'https://raw.githubusercontent.com/EldrexDelosReyesBula/PapyrusJS/main/docs/recipes/form.md', icon: 'fas fa-pencil' },
-                'Modals': { url: 'https://raw.githubusercontent.com/EldrexDelosReyesBula/PapyrusJS/main/docs/recipes/modal.md', icon: 'fas fa-window-maximize' },
-                'CRUD': { url: 'https://raw.githubusercontent.com/EldrexDelosReyesBula/PapyrusJS/main/docs/recipes/crud.md', icon: 'fas fa-table' },
-                'SPA': { url: 'https://raw.githubusercontent.com/EldrexDelosReyesBula/PapyrusJS/main/docs/recipes/spa.md', icon: 'fas fa-globe' },
-                'Dashboard': { url: 'https://raw.githubusercontent.com/EldrexDelosReyesBula/PapyrusJS/main/docs/recipes/dashboard.md', icon: 'fas fa-chart-bar' }
+            '🍔 Practical Recipes': {
+                'Todo App': {
+                    url: GH_RAW + 'docs/recipes/todo.md', icon: 'fas fa-check-square',
+                    type: 'doc'
+                },
+                'Forms & Validation': {
+                    url: GH_RAW + 'docs/recipes/form.md', icon: 'fas fa-clipboard-list',
+                    type: 'doc'
+                },
+                'Modals & Overlays': {
+                    url: GH_RAW + 'docs/recipes/modal.md', icon: 'fas fa-window-restore',
+                    type: 'doc'
+                },
+                'Database CRUD': { url: GH_RAW + 'docs/recipes/crud.md', icon: 'fas fa-table', type: 'doc' },
+                'Single Page Application': { url: GH_RAW + 'docs/recipes/spa.md', icon: 'fas fa-sitemap', type: 'doc' },
+                'Dashboard Layouts': { url: GH_RAW + 'docs/recipes/dashboard.md', icon: 'fas fa-columns', type: 'doc' }
             },
-            'Contributors': {
-                'Standards': { url: 'https://raw.githubusercontent.com/EldrexDelosReyesBula/PapyrusJS/main/docs/contributors/standards.md', icon: 'fas fa-ruler' },
-                'Testing': { url: 'https://raw.githubusercontent.com/EldrexDelosReyesBula/PapyrusJS/main/docs/contributors/testing.md', icon: 'fas fa-flask' },
-                'Pull Requests': { url: 'https://raw.githubusercontent.com/EldrexDelosReyesBula/PapyrusJS/main/docs/contributors/pull-requests.md', icon: 'fas fa-code-pull-request' }
+            '🤝 Contributor Standards': {
+                'Coding & Security Standards': {
+                    url: GH_RAW + 'docs/contributors/standards.md', icon: 'fas fa-shield-alt',
+                    type: 'doc'
+                },
+                'Testing Guidelines': { url: GH_RAW + 'docs/contributors/testing.md', icon: 'fas fa-vial', type: 'doc' },
+                'Pull Request Guidelines': {
+                    url: GH_RAW + 'docs/contributors/pull-requests.md',
+                    icon: 'fas fa-code-branch', type: 'doc'
+                }
+            },
+            '🎮 Interactive': {
+                'Try It Out': { icon: 'fas fa-play', type: 'playground' },
+                '100% Declarative Developer Studio': { url: '/tests/developer-studio.html', icon: 'fas fa-laptop-code', type: 'external-demo' },
+                'Animations Sandbox': { url: '/tests/animation.html', icon: 'fas fa-magic', type: 'external-demo' },
+                'Science & Charts Sandbox': { url: '/tests/charts.html', icon: 'fas fa-chart-line', type: 'external-demo' },
+                'Unified DB Sandbox': { url: '/tests/crud.html', icon: 'fas fa-database', type: 'external-demo' },
+                'Todo App Sandbox': { url: '/tests/todo.html', icon: 'fas fa-check-double', type: 'external-demo' }
             }
         };
 
-        // Flatten docs for easy lookup
+        // Flat lookup map
         const DOCS = {};
-        Object.values(DOCS_STRUCTURE).forEach(section => {
+        Object.values(DOCS_STRUCTURE).forEach(section =>
             Object.entries(section).forEach(([name, data]) => {
-                DOCS[name] = data.url;
-            });
-        });
+                DOCS[name] = data;
+            })
+        );
 
-        // Create reactive state
-        let currentDoc = papyr.state('README');
+        // ── Reactive state ─────────────────────────────────────
+        let currentPage = papyr.state('README');
         let markdownContent = papyr.state('');
         let isLoading = papyr.state(false);
-        let isDarkMode = papyr.state(localStorage.getItem('papyr-theme') === 'dark');
+        let editorCode = papyr.state(
+            `let count = papyr.state(0);
 
-        // Theme management
-        function toggleTheme() {
-            isDarkMode.value = !isDarkMode.value;
-            if (isDarkMode.value) {
-                document.documentElement.classList.add('dark-mode');
-                localStorage.setItem('papyr-theme', 'dark');
-            } else {
-                document.documentElement.classList.remove('dark-mode');
-                localStorage.setItem('papyr-theme', 'light');
+        let app = papyr.div(
+          { style: { padding: '40px', fontFamily: 'sans-serif', textAlign: 'center' } },
+          papyr.h1('Hello Papyr.js! 🚀'),
+          papyr.p(() => \`Count: \${count.value}\`),
+          papyr.button(
+            'Click Me',
+            {
+              onclick: () => count.value++,
+              style: {
+                padding: '10px 20px', borderRadius: '6px',
+                cursor: 'pointer', border: 'none',
+                background: '#818cf8', color: '#fff', fontWeight: '600'
+              }
+            }
+          )
+        );
+
+        papyr.mount('#preview', app);`
+        );
+
+        // ── Load a document ────────────────────────────────────
+        async function loadDocument(pageName) {
+            const page = DOCS[pageName];
+            if (!page) return;
+
+            currentPage.value = pageName;
+
+            if (page.type === 'external-demo') {
+                return; // Loaded dynamically inside createContent()
+            }
+
+            if (page.type === 'doc') {
+                // Check if we have pre-rendered SSR HTML content locally
+                if (window.PRE_RENDERED_DOCS && window.PRE_RENDERED_DOCS[pageName] !== undefined) {
+                    markdownContent.value = window.PRE_RENDERED_DOCS[pageName];
+                    isLoading.value = false;
+                    setTimeout(() => {
+                        document.querySelectorAll('.markdown-content pre code').forEach(el => hljs.highlightElement(el));
+                    }, 0);
+                    return;
+                }
+
+                isLoading.value = true;
+                markdownContent.value = '';
+
+                try {
+                    const res = await fetch(page.url, {
+                        headers: {
+                            'Accept': 'text/markdown, text/plain, */*'
+                        }
+                    });
+
+                    if (!res.ok) throw new Error(`HTTP ${res.status} — ${res.statusText}`);
+
+                    const text = await res.text();
+                    if (typeof marked !== 'undefined') {
+                        markdownContent.value = marked.parse(text);
+                    } else {
+                        markdownContent.value = `<pre>${text}</pre>`;
+                    }
+                    setTimeout(() => {
+                        document.querySelectorAll('.markdown-content pre code').forEach(el => hljs.highlightElement(el));
+                    }, 0);
+                } catch (err) {
+                    markdownContent.value =
+                        `<div style="background:var(--app-secondary);border:1px solid var(--app-border);
+                         border-left:4px solid #ef4444;border-radius:8px;padding:16px;color:var(--app-text)">
+                         <strong style="color:#ef4444"><i class="fas fa-exclamation-circle"></i> Error loading document</strong>
+                         <p style="margin:8px 0 0;color:var(--app-text-muted)">${err.message}</p>
+                         <p style="margin:4px 0 0;font-size:12px;color:var(--app-text-muted)">URL: ${page.url}</p></div>`;
+                } finally {
+                    isLoading.value = false;
+                }
             }
         }
 
-        // Initialize theme
-        if (isDarkMode.value) {
-            document.documentElement.classList.add('dark-mode');
-        }
-
-        // Fetch and render markdown
-        async function loadDocument(docName) {
-            const url = DOCS[docName];
-            if (!url) return;
-
-            currentDoc.value = docName;
-            isLoading.value = true;
+        // ── Run playground code ────────────────────────────────
+        function runPlaygroundCode() {
+            const preview = document.getElementById('preview-frame');
+            if (!preview) return;
 
             try {
-                const response = await fetch(url);
-                if (!response.ok) throw new Error(`HTTP ${response.status}`);
-                const markdown = await response.text();
-                const html = marked.parse(markdown);
-                markdownContent.value = html;
-            } catch (error) {
-                markdownContent.value = `<div class="error"><strong>Error loading document:</strong> ${error.message}</div>`;
-            } finally {
-                isLoading.value = false;
+                const doc = preview.contentDocument || preview.contentWindow.document;
+                const bgColor = isDarkMode.value ? '#090d16' : '#ffffff';
+                const txtColor = isDarkMode.value ? '#f8fafc' : '#0f172a';
+
+                doc.open();
+                doc.write('<!DOCTYPE html><html><head>');
+                doc.write('<meta charset="UTF-8">');
+                doc.write('<script src="https://unpkg.com/@eldrex/papyr@3.0.4/dist/papyr.js"><\/script>');
+                doc.write(
+                    '<script>window.papyrCore=window.papyr;<\/script>');
+                doc.write(
+                    '<script src="https://unpkg.com/@eldrex/papyr-animate@3.0.4/dist/papyr-animate.js"><\/script>');
+                doc.write(
+                    '<script>window.papyrAnimate=window.papyr;<\/script>');
+                doc.write(
+                    '<script src="https://unpkg.com/@eldrex/papyr-charts@3.0.4/dist/papyr-charts.js"><\/script>');
+                doc.write(
+                    '<script>window.papyrCharts=window.papyr;<\/script>');
+                doc.write(
+                    '<script src="https://unpkg.com/@eldrex/papyr-db@3.0.4/dist/papyr-db.js"><\/script>');
+                doc.write(
+                    '<script>window.papyrDb=window.papyr;<\/script>');
+                doc.write(
+                    '<script src="https://unpkg.com/@eldrex/papyr-router@3.0.4/dist/papyr-router.js"><\/script>');
+                doc.write(
+                    '<script>window.papyrRouter=window.papyr;<\/script>');
+                doc.write(
+                    '<script src="https://unpkg.com/@eldrex/papyr-ai@3.1.1/dist/papyr-ai.js"><\/script>');
+                doc.write(
+                    '<script>window.papyrAi=window.papyr;<\/script>');
+                doc.write(
+                    '<script src="https://unpkg.com/@eldrex/papyr-3d@3.1.1/dist/papyr-3d.js"><\/script>');
+                doc.write('<script>');
+                doc.write(`(function(){
+                const f=window.papyr; if(!f) return;
+                [window.papyrCore,window.papyrAnimate,window.papyrCharts,window.papyrDb,window.papyrRouter,window.papyrAi]
+                .forEach(s=>{if(!s||s===f)return;for(let k in s){if(s.hasOwnProperty(k)){if(s[k]&&typeof s[k]==='object'&&f[k]&&typeof f[k]==='object'){Object.assign(f[k],s[k]);}else if(f[k]===undefined){f[k]=s[k];}}}});
+                delete window.papyrCore;delete window.papyrAnimate;delete window.papyrCharts;
+                delete window.papyrDb;delete window.papyrRouter;delete window.papyrAi;
+            })();`);
+                doc.write('<\/script>');
+                doc.write(
+                    `<style>*{box-sizing:border-box}body{font-family:'Outfit',sans-serif;margin:0;padding:20px;background:${bgColor};color:${txtColor};}<\/style>`
+                );
+                doc.write(
+                    '<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700&display=swap" rel="stylesheet">');
+                doc.write('<\/head><body><div id="preview"><\/div>');
+                doc.write('<script>');
+                doc.write('try {');
+                doc.write(editorCode.value);
+                doc.write('} catch(e) { document.getElementById("preview").innerHTML = "<div style=\\"color:red;padding:20px;\\"><strong>Error:</strong> " + e.message + "</div>"; }');
+                doc.write('<\/script><\/body><\/html>');
+                doc.close();
+            } catch (err) {
+                console.error('Playground execution error:', err);
             }
         }
 
-        // Create sidebar using Papyr native code
+        // ── Header ─────────────────────────────────────────────
+        function createHeader() {
+            const iconBtn = (props, ...children) => papyr.button({
+                style: {
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    background: 'var(--app-secondary)',
+                    border: '1px solid var(--app-border)',
+                    borderRadius: '8px',
+                    width: '36px',
+                    height: '36px',
+                    cursor: 'pointer',
+                    color: 'var(--app-text)',
+                    fontSize: '14px',
+                    transition: 'all 0.2s ease',
+                    flexShrink: '0'
+                },
+                ...props
+            }, ...children);
+
+            return papyr.div({
+                style: {
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    width: '100%',
+                    paddingRight: '16px',
+                    gap: '12px'
+                }
+            },
+
+                /* ── Left: logo + wordmark ── */
+                papyr.div({
+                    style: {
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '10px',
+                        minWidth: '0'
+                    }
+                },
+                    papyr.img({
+                        src: 'https://eldrex.landecs.org/logo/papyrus-js-logo.png',
+                        alt: 'Papyrus.js Logo',
+                        style: {
+                            width: '26px',
+                            height: '26px',
+                            objectFit: 'contain',
+                            flexShrink: '0'
+                        }
+                    }),
+                    papyr.span({
+                        style: {
+                            fontSize: '16px',
+                            fontWeight: '700',
+                            color: 'var(--app-text)',
+                            whiteSpace: 'nowrap'
+                        }
+                    }, 'Papyrus.js'),
+                    papyr.span({
+                        style: {
+                            fontSize: '11px',
+                            fontWeight: '700',
+                            color: 'var(--app-accent)',
+                            background: 'rgba(99,102,241,0.12)',
+                            padding: '2px 8px',
+                            borderRadius: '99px',
+                            letterSpacing: '0.5px',
+                            flexShrink: '0'
+                        }
+                    }, 'DOCS')
+                ),
+
+                /* ── Right: GitHub + theme toggle ── */
+                papyr.div({
+                    style: {
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        flexShrink: '0'
+                    }
+                },
+
+                    // GitHub link
+                    papyr.a({
+                        href: 'https://github.com/EldrexDelosReyesBula/PapyrusJS',
+                        target: '_blank',
+                        rel: 'noopener noreferrer',
+                        style: {
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            background: 'var(--app-secondary)',
+                            border: '1px solid var(--app-border)',
+                            borderRadius: '8px',
+                            padding: '7px 12px',
+                            textDecoration: 'none',
+                            color: 'var(--app-text)',
+                            fontSize: '13px',
+                            fontWeight: '600',
+                            transition: 'all 0.2s ease',
+                            whiteSpace: 'nowrap'
+                        }
+                    },
+                        papyr.i({ className: 'fab fa-github' }),
+                        papyr.span({ style: { display: 'inline' } }, ' GitHub')
+                    ),
+
+                    // Theme toggle
+                    iconBtn({
+                        id: 'theme-toggle-btn',
+                        onclick: toggleTheme,
+                        title: () => isDarkMode.value ? 'Switch to Light Mode' : 'Switch to Dark Mode',
+                        'aria-label': () => isDarkMode.value ? 'Switch to Light Mode' :
+                            'Switch to Dark Mode'
+                    },
+                        papyr.i({ className: () => isDarkMode.value ? 'fas fa-sun' : 'fas fa-moon' })
+                    )
+                )
+            );
+        }
+
+        // ── Sidebar ────────────────────────────────────────────
         function createSidebar() {
-            return papyr.div(
-                { className: 'sidebar' },
-                papyr.div(
-                    { className: 'sidebar-header' },
-                    papyr.div(
-                        { className: 'sidebar-logo' },
+            return papyr.div({
+                style: {
+                    display: 'flex',
+                    flexDirection: 'column',
+                    height: '100%'
+                }
+            },
+
+                /* Brand block */
+                papyr.div({
+                    style: {
+                        padding: '16px 20px',
+                        borderBottom: '1px solid var(--app-border)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '12px',
+                        flexShrink: '0'
+                    }
+                },
+                    papyr.div({
+                        style: {
+                            width: '36px',
+                            height: '36px',
+                            borderRadius: '8px',
+                            flexShrink: '0',
+                            background: 'rgba(99,102,241,0.08)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center'
+                        }
+                    },
                         papyr.img({
                             src: 'https://eldrex.landecs.org/logo/papyrus-js-logo.png',
-                            alt: 'Papyrus.js Logo'
+                            alt: 'Logo',
+                            style: {
+                                width: '24px',
+                                height: '24px',
+                                objectFit: 'contain'
+                            }
                         })
                     ),
                     papyr.div(
-                        { className: 'sidebar-header-text' },
-                        papyr.h1('Papyrus.js'),
-                        papyr.p('Documentation')
+                        papyr.p({
+                            style: {
+                                fontSize: '14px',
+                                fontWeight: '700',
+                                margin: '0',
+                                color: 'var(--app-text)'
+                            }
+                        }, 'Papyrus.js'),
+                        papyr.p({
+                            style: {
+                                fontSize: '11px',
+                                color: 'var(--app-text-muted)',
+                                margin: '2px 0 0'
+                            }
+                        }, 'Official Documentation')
                     )
                 ),
-                ...Object.entries(DOCS_STRUCTURE).map(([section, docs]) =>
-                    papyr.div(
-                        { className: 'doc-section' },
-                        papyr.div({ className: 'doc-section-title' }, section),
-                        ...Object.entries(docs).map(([docName, docData]) =>
-                            papyr.div(
-                                {
-                                    className: () => currentDoc.value === docName ? 'nav-link active' : 'nav-link',
+
+                /* Nav items */
+                papyr.div({
+                    style: {
+                        overflowY: 'auto',
+                        flex: '1',
+                        padding: '10px 0 20px'
+                    }
+                },
+                    ...Object.entries(DOCS_STRUCTURE).map(([section, docs]) =>
+                        papyr.div({
+                            style: { marginBottom: '4px' }
+                        },
+                            // Section header
+                            papyr.div({
+                                style: {
+                                    padding: '10px 20px 4px',
+                                    fontSize: '10px',
+                                    textTransform: 'uppercase',
+                                    fontWeight: '700',
+                                    color: 'var(--app-text-muted)',
+                                    letterSpacing: '1px'
+                                }
+                            }, section),
+                            // Items
+                            ...Object.entries(docs).map(([docName, docData]) => {
+                                const isSelected = () => currentPage.value === docName;
+                                return papyr.div({
+                                    style: {
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '10px',
+                                        padding: '9px 20px',
+                                        cursor: 'pointer',
+                                        color: () => isSelected() ? 'var(--app-accent)' :
+                                            'var(--app-text-muted)',
+                                        transition: 'all 0.15s ease',
+                                        fontSize: '13px',
+                                        borderLeft: () => isSelected() ?
+                                            '3px solid var(--app-accent)' :
+                                            '3px solid transparent',
+                                        background: () => isSelected() ?
+                                            'var(--sidebar-active-bg)' : 'transparent',
+                                        fontWeight: () => isSelected() ? '600' : '400'
+                                    },
                                     onclick: () => loadDocument(docName)
                                 },
-                                papyr.i({ className: () => `nav-icon ${docData.icon}` }),
-                                papyr.span(docName)
-                            )
+                                    papyr.i({
+                                        className: docData.icon,
+                                        style: {
+                                            width: '16px',
+                                            textAlign: 'center',
+                                            flexShrink: '0',
+                                            opacity: '0.85'
+                                        }
+                                    }),
+                                    papyr.span({
+                                        style: {
+                                            overflow: 'hidden',
+                                            textOverflow: 'ellipsis',
+                                            whiteSpace: 'nowrap'
+                                        }
+                                    }, docName)
+                                );
+                            })
                         )
                     )
                 )
             );
         }
 
-        // Create content area using Papyr native code
-        function createContent() {
-            return papyr.div(
-                { className: 'content' },
-                papyr.div(
-                    { className: 'theme-toggle', onclick: toggleTheme },
-                    papyr.i({ 
-                        className: () => isDarkMode.value ? 'fas fa-sun' : 'fas fa-moon'
-                    }),
-                    papyr.span(() => isDarkMode.value ? 'Light' : 'Dark')
-                ),
-                papyr.div(
-                    { className: 'content-wrapper' },
-                    () => {
-                        if (isLoading.value) {
-                            return papyr.div(
-                                { className: 'loading' },
-                                papyr.i({ className: 'fas fa-spinner fa-spin', style: { marginRight: '10px' } }),
-                                papyr.span('Loading...')
-                            );
-                        }
-                        return papyr.div(
-                            { 
-                                className: 'markdown-content', 
-                                innerHTML: markdownContent.value || '<div class="loading">Select a document to view</div>' 
-                            }
-                        );
+        // ── Playground ─────────────────────────────────────────
+        function createPlayground() {
+            const panel = (titleIcon, titleText, ...body) => papyr.div({
+                style: {
+                    display: 'flex',
+                    flexDirection: 'column',
+                    background: 'var(--app-secondary)',
+                    border: '1px solid var(--app-border)',
+                    borderRadius: '12px',
+                    overflow: 'hidden'
+                }
+            },
+                papyr.div({
+                    style: {
+                        padding: '12px 20px',
+                        borderBottom: '1px solid var(--app-border)',
+                        background: 'var(--app-bg)',
+                        fontWeight: '600',
+                        fontSize: '13px',
+                        color: 'var(--app-text)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        flexShrink: '0'
                     }
+                }, papyr.i({ className: titleIcon }), titleText),
+                ...body
+            );
+
+            return papyr.div({
+                className: 'playground-container'
+            },
+                // Editor
+                panel(
+                    'fas fa-edit', ' Playground Editor',
+                    papyr.div({
+                        style: { flex: '1', overflow: 'hidden' }
+                    },
+                        papyr.textarea({
+                            style: {
+                                width: '100%',
+                                height: '100%',
+                                border: 'none',
+                                padding: '16px',
+                                fontFamily: '"Fira Code", "Courier New", monospace',
+                                fontSize: '13px',
+                                resize: 'none',
+                                background: 'transparent',
+                                color: 'var(--app-text)',
+                                lineHeight: '1.7',
+                                boxSizing: 'border-box',
+                                outline: 'none'
+                            },
+                            ...papyr.model(editorCode)
+                        })
+                    ),
+                    papyr.div({
+                        style: {
+                            display: 'flex',
+                            gap: '10px',
+                            padding: '12px 20px',
+                            borderTop: '1px solid var(--app-border)',
+                            background: 'var(--app-bg)',
+                            flexShrink: '0'
+                        }
+                    },
+                        papyr.button({
+                            id: 'run-code-btn',
+                            style: {
+                                padding: '8px 18px',
+                                background: 'var(--app-accent)',
+                                border: 'none',
+                                color: '#fff',
+                                borderRadius: '8px',
+                                cursor: 'pointer',
+                                fontSize: '13px',
+                                fontWeight: '600',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '7px',
+                                transition: 'all 0.2s ease',
+                                boxShadow: '0 4px 14px rgba(99,102,241,0.3)'
+                            },
+                            onclick: runPlaygroundCode
+                        },
+                            papyr.i({ className: 'fas fa-play' }),
+                            'Run Live Code'
+                        )
+                    )
+                ),
+                // Preview
+                panel(
+                    'fas fa-eye', ' Live Preview',
+                    papyr.div({
+                        style: {
+                            flex: '1',
+                            overflow: 'hidden',
+                            background: '#fff',
+                            position: 'relative'
+                        }
+                    },
+                        papyr.iframe({
+                            id: 'preview-frame',
+                            style: {
+                                width: '100%',
+                                height: '100%',
+                                border: 'none'
+                            },
+                            src: 'about:blank',
+                            onMounted: () => setTimeout(runPlaygroundCode, 100)
+                        })
+                    )
                 )
             );
         }
 
-        // Main app using Papyr native code
-        const app = papyr.div(
-            { className: 'docs-container' },
-            createSidebar(),
-            createContent()
-        );
+        // ── Content area ───────────────────────────────────────
+        function createContent() {
+            return papyr.div({
+                style: {
+                    background: 'var(--app-bg)',
+                    color: 'var(--app-text)',
+                    height: '100%',
+                    overflow: 'auto'
+                }
+            },
+                () => {
+                    const pageData = DOCS[currentPage.value];
+                    if (!pageData) {
+                        return papyr.div({
+                            style: {
+                                textAlign: 'center',
+                                padding: '80px 20px',
+                                color: 'var(--app-text-muted)'
+                            }
+                        },
+                            papyr.i({
+                                className: 'fas fa-ghost',
+                                style: {
+                                    fontSize: '40px',
+                                    marginBottom: '12px',
+                                    display: 'block'
+                                }
+                            }),
+                            papyr.p('Page not found — please select a topic from the sidebar.')
+                        );
+                    }
 
-        // Mount using Papyr native mount
-        papyr.mount('#app', app);
+                    if (pageData.type === 'playground') {
+                        return createPlayground();
+                    }
 
-        // Load initial document
+                    if (pageData.type === 'external-demo') {
+                        return papyr.div({
+                            style: {
+                                width: '100%',
+                                height: 'calc(100vh - 120px)',
+                                minHeight: '500px',
+                                overflow: 'hidden',
+                                borderRadius: '12px',
+                                border: '1px solid var(--app-border)',
+                                background: 'var(--app-bg)'
+                            }
+                        },
+                            papyr.iframe({
+                                src: pageData.url,
+                                style: {
+                                    width: '100%',
+                                    height: '100%',
+                                    border: 'none',
+                                    borderRadius: '12px'
+                                }
+                            })
+                        );
+                    }
+
+                    if (isLoading.value) {
+                        return papyr.div({
+                            style: {
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                padding: '100px 20px',
+                                color: 'var(--app-text-muted)',
+                                gap: '10px',
+                                fontSize: '15px'
+                            }
+                        },
+                            papyr.i({
+                                className: 'fas fa-spinner fa-spin',
+                                style: {
+                                    color: 'var(--app-accent)',
+                                    fontSize: '18px'
+                                }
+                            }),
+                            'Loading documentation…'
+                        );
+                    }
+
+                    const content = markdownContent.value ||
+                        '<p style="color:var(--app-text-muted);padding:40px 0;text-align:center">Select a topic from the sidebar to get started.</p>';
+
+                    return papyr.div({
+                        style: {
+                            maxWidth: '860px',
+                            margin: '0 auto',
+                            padding: '16px 20px 60px'
+                        }
+                    },
+                        papyr.div({
+                            style: {
+                                color: 'var(--app-text)',
+                                lineHeight: '1.8'
+                            },
+                            className: 'markdown-content',
+                            innerHTML: content
+                        })
+                    );
+                }
+            );
+        }
+
+        // ── Footer ─────────────────────────────────────────────
+        function createFooter() {
+            return papyr.div({
+                style: {
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '16px',
+                    flexWrap: 'wrap',
+                    padding: '0 20px'
+                }
+            },
+                papyr.span({
+                    style: {
+                        fontSize: '12px',
+                        color: 'var(--app-text-muted)'
+                    }
+                }, '© 2026 Papyrus.js — Isomorphic Fine-Grained Reactivity'),
+                papyr.span({ style: { color: 'var(--app-border)' } }, '·'),
+                papyr.a({
+                    href: 'https://github.com/EldrexDelosReyesBula/PapyrusJS',
+                    target: '_blank',
+                    rel: 'noopener noreferrer',
+                    style: {
+                        fontSize: '12px',
+                        color: 'var(--app-accent)',
+                        textDecoration: 'none',
+                        fontWeight: '600'
+                    }
+                }, 'GitHub ↗'),
+                papyr.span({ style: { color: 'var(--app-border)' } }, '·'),
+                papyr.span({
+                    style: {
+                        fontSize: '12px',
+                        color: 'var(--app-text-muted)'
+                    }
+                }, 'v3.x')
+            );
+        }
+
+        // ── Bootstrap ──────────────────────────────────────────
+        function initApp() {
+            // Check if layout.dashboard exists
+            if (!papyr.layout || !papyr.layout.dashboard) {
+                console.error(
+                    'Papyr layout module not loaded. Falling back to basic rendering.');
+                papyr.mount('#app', papyr.div({
+                    style: {
+                        padding: '40px',
+                        textAlign: 'center',
+                        color: 'var(--app-text)'
+                    }
+                }, papyr.h1('Papyrus.js Documentation'),
+                    papyr.p(
+                        'The layout module failed to load. Please check your CDN links and try again.'
+                    )));
+                return;
+            }
+
+            try {
+                const shell = papyr.layout.dashboard({
+                    sidebarWidth: '290px',
+                    headerHeight: '60px',
+                    footerHeight: '48px',
+                    header: createHeader(),
+                    sidebar: createSidebar(),
+                    main: createContent(),
+                    footer: createFooter()
+                });
+
+                papyr.mount('#app', shell);
+            } catch (err) {
+                console.error('Failed to initialize app:', err);
+                document.getElementById('app').innerHTML = `
+                    <div style="padding:40px;text-align:center;">
+                        <h1>Failed to Initialize</h1>
+                        <p>Error: ${err.message}</p>
+                    </div>
+                `;
+            }
+        }
+
+        // ── SEO Optimization ────────────────────────────────────
+        // Generate sitemap-like structure for search engines
+        if (typeof window !== 'undefined') {
+            window.DOCS_STRUCTURE = DOCS_STRUCTURE;
+            window.DOCS_URLS = Object.values(DOCS_STRUCTURE).flatMap(section =>
+                Object.entries(section).filter(([_, data]) => data.url).map(([name, data]) => ({
+                    name,
+                    url: data.url,
+                    type: data.type
+                }))
+            );
+        }
+
+        // ── Start the app ──────────────────────────────────────
+        initApp();
         loadDocument('README');
     </script>
 </body>
+
 </html>

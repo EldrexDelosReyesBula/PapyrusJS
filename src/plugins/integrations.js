@@ -15,91 +15,7 @@
     // 1. NODE.JS & EXPRESS SERVER-SIDE RENDERING
     // ==========================================
     
-    /**
-     * Renders standard Papyr DOM elements and nested structures to a pure static HTML string.
-     * Supports browser nodes, DocumentFragments, array loops, text nodes, and virtual testing objects.
-     */
-    papyr.ssr = function ssr(element) {
-        if (element === null || element === undefined) return '';
-        
-        // 1. Primitive values (strings, numbers)
-        if (typeof element === 'string' || typeof element === 'number') {
-            return String(element);
-        }
-        
-        // 2. Arrays of elements
-        if (Array.isArray(element)) {
-            return element.map(ssr).join('');
-        }
-        
-        // 3. Text Nodes (native nodeType 3 or virtual structure objects)
-        if (element.nodeType === 3 || (element.textContent !== undefined && !element.tagName)) {
-            return String(element.textContent || '');
-        }
 
-        // 4. DocumentFragments / template contents
-        if (element instanceof DocumentFragment || element.tagName === 'TEMPLATE-CONTENT' || (element.children && !element.tagName)) {
-            if (element.children && Array.isArray(element.children)) {
-                return element.children.map(ssr).join('');
-            }
-            return '';
-        }
-
-        // 5. Native and virtual HTML elements
-        let tag = (element.tagName || 'DIV').toLowerCase();
-        
-        let attrsStr = '';
-        if (element.id) {
-            attrsStr += ` id="${element.id}"`;
-        }
-        
-        if (element.className) {
-            attrsStr += ` class="${element.className}"`;
-        }
-        
-        if (element.style) {
-            let styleKeys = Object.keys(element.style);
-            if (styleKeys.length > 0) {
-                let styleStr = styleKeys.map(k => {
-                    let cssKey = k.replace(/([A-Z])/g, '-$1').toLowerCase();
-                    return `${cssKey}:${element.style[k]}`;
-                }).join(';');
-                attrsStr += ` style="${styleStr}"`;
-            }
-        }
-
-        if (element.dataset) {
-            Object.entries(element.dataset).forEach(([k, v]) => {
-                attrsStr += ` data-${k.replace(/([A-Z])/g, '-$1').toLowerCase()}="${v}"`;
-            });
-        }
-
-        // Render other direct primitive properties as HTML attributes (excluding internal variables)
-        const ignoredKeys = ['tagName', 'style', 'dataset', 'classList', 'children', 'parentNode', 'listeners', 'className', 'id', 'textContent', 'nodeType', 'innerHTML'];
-        Object.entries(element).forEach(([k, v]) => {
-            if (!ignoredKeys.includes(k) && typeof v !== 'function' && typeof v !== 'object') {
-                attrsStr += ` ${k}="${v}"`;
-            }
-        });
-
-        // HTML5 self-closing elements
-        const selfClosing = ['area','base','br','col','embed','hr','img','input','link','meta','param','source','track','wbr'];
-        if (selfClosing.includes(tag)) {
-            return `<${tag}${attrsStr} />`;
-        }
-
-        // Child components serialization
-        let childrenStr = '';
-        if (element.children && element.children.length > 0) {
-            childrenStr = element.children.map(ssr).join('');
-        } else if (element.textContent) {
-            childrenStr = String(element.textContent);
-        } else if (element.innerHTML) {
-            childrenStr = String(element.innerHTML);
-        }
-
-        return `<${tag}${attrsStr}>${childrenStr}</${tag}>`;
-    };
 
     /**
      * Express.js custom template rendering engine callback.
@@ -430,23 +346,7 @@
         }
     };
 
-    const registeredGateways = new Map();
-    papyr.gateway = {
-        register(name, adapter) {
-            if (!name || !adapter) return;
-            registeredGateways.set(name, adapter);
-            console.log(`🔌 Papyr Gateway: Registered adapter "${name}" successfully.`);
-            if (typeof adapter.initialize === 'function') {
-                adapter.initialize(papyr);
-            }
-        },
-        resolve(name) {
-            return registeredGateways.get(name);
-        },
-        list() {
-            return Array.from(registeredGateways.keys());
-        }
-    };
+
 
     // Override use to support dynamic runtime loads
     const originalUse = papyr.use;
@@ -479,6 +379,322 @@
             }
         }
         return originalUse(plugin);
+    };
+
+    // ==========================================
+    // 7. VUE, SVELTE & NEXT.JS BRIDGES
+    // ==========================================
+    
+    // Vue Bridge
+    papyr.vue = {
+        /**
+         * Vue Bridge Component
+         * Usage in Vue templates: <papyr-vue-bridge :el="MyComponent" />
+         */
+        Bridge: {
+            props: {
+                el: { required: true }
+            },
+            mounted() {
+                this.renderPapyr();
+            },
+            updated() {
+                this.renderPapyr();
+            },
+            methods: {
+                renderPapyr() {
+                    const container = this.$refs.container;
+                    if (container) {
+                        container.innerHTML = '';
+                        const node = typeof this.el === 'function' ? this.el() : this.el;
+                        if (node) container.appendChild(node);
+                    }
+                }
+            },
+            render() {
+                const Vue = window.Vue;
+                if (Vue && typeof Vue.h === 'function') {
+                    return Vue.h('div', { ref: 'container' });
+                }
+                return typeof this.$createElement === 'function' 
+                    ? this.$createElement('div', { ref: 'container' })
+                    : { tag: 'div', data: { ref: 'container' }, context: this };
+            }
+        }
+    };
+
+    // Svelte Bridge
+    papyr.svelte = {
+        /**
+         * Svelte Action Mount Bridge
+         * Usage in Svelte: <div use:papyr.svelte.mount={MyComponent} />
+         */
+        mount(node, component) {
+            node.innerHTML = '';
+            let rendered = typeof component === 'function' ? component() : component;
+            if (rendered) {
+                node.appendChild(rendered);
+            }
+            return {
+                update(newComponent) {
+                    node.innerHTML = '';
+                    let newRendered = typeof newComponent === 'function' ? newComponent() : newComponent;
+                    if (newRendered) {
+                        node.appendChild(newRendered);
+                    }
+                },
+                destroy() {
+                    if (typeof papyr._cleanupElement === 'function') {
+                        papyr._cleanupElement(node);
+                    }
+                    node.innerHTML = '';
+                }
+            };
+        }
+    };
+
+    // Next.js Bridge
+    papyr.next = {
+        /**
+         * Next.js SSR and Hydration Element Wrapper
+         */
+        Bridge({ el, island = false, ...props }) {
+            const React = window.React || (typeof require === 'function' ? require('react') : null);
+            if (!React) return null;
+
+            const ref = React.useRef(null);
+            const [isClient, setIsClient] = React.useState(false);
+
+            React.useEffect(() => {
+                setIsClient(true);
+            }, []);
+
+            if (isClient) {
+                React.useEffect(() => {
+                    if (ref.current) {
+                        if (island && papyr.ssr && typeof papyr.ssr.hydrate === 'function') {
+                            papyr.ssr.hydrate(ref.current, el);
+                        } else {
+                            ref.current.innerHTML = '';
+                            let element = typeof el === 'function' ? el() : el;
+                            if (element) {
+                                ref.current.appendChild(element);
+                            }
+                        }
+                    }
+                }, [el, island]);
+
+                return React.createElement('div', Object.assign({ ref }, props));
+            } else {
+                let htmlString = '';
+                if (papyr.ssr && typeof papyr.ssr === 'function') {
+                    try {
+                        let element = typeof el === 'function' ? el() : el;
+                        htmlString = papyr.ssr(element);
+                    } catch (e) {
+                        console.error("Next.js SSR Bridge Error:", e);
+                    }
+                }
+                return React.createElement('div', Object.assign({
+                    dangerouslySetInnerHTML: { __html: htmlString }
+                }, props));
+            }
+        }
+    };
+
+    // ==========================================
+    // 8. MODULAR DATABASE ADAPTERS
+    // ==========================================
+
+    // Supabase Adapter
+    papyr.db.registerSupabase = (config) => {
+        if (!config || !config.url || !config.key) {
+            console.error("PapyrDB [supabase]: Missing url or apikey in config.");
+            return;
+        }
+        papyr.db.registerDriver('supabase', (collectionName) => {
+            const baseUrl = `${config.url}/rest/v1/${collectionName}`;
+            const headers = {
+                'apikey': config.key,
+                'Authorization': `Bearer ${config.key}`,
+                'Content-Type': 'application/json'
+            };
+            return {
+                async getAsync() {
+                    const res = await fetch(`${baseUrl}?select=*`, { headers });
+                    return res.ok ? await res.json() : [];
+                },
+                async insertAsync(item) {
+                    await fetch(baseUrl, {
+                        method: 'POST',
+                        headers: Object.assign({}, headers, { 'Prefer': 'return=representation' }),
+                        body: JSON.stringify(item)
+                    });
+                },
+                async updateAsync(id, updates) {
+                    await fetch(`${baseUrl}?id=eq.${id}`, {
+                        method: 'PATCH',
+                        headers,
+                        body: JSON.stringify(updates)
+                    });
+                },
+                async deleteAsync(id) {
+                    await fetch(`${baseUrl}?id=eq.${id}`, {
+                        method: 'DELETE',
+                        headers
+                    });
+                },
+                async clearAsync() {
+                    await fetch(baseUrl, {
+                        method: 'DELETE',
+                        headers
+                    });
+                }
+            };
+        });
+    };
+
+    // Firebase Adapter
+    papyr.db.registerFirebase = (config) => {
+        if (!config || !config.databaseURL) {
+            console.error("PapyrDB [firebase]: Missing databaseURL in config.");
+            return;
+        }
+        papyr.db.registerDriver('firebase', (collectionName) => {
+            const url = `${config.databaseURL}/${collectionName}`;
+            return {
+                async getAsync() {
+                    const res = await fetch(`${url}.json`);
+                    if (!res.ok) return [];
+                    const data = await res.json();
+                    if (!data) return [];
+                    return Object.entries(data).map(([id, val]) => (Object.assign({ id }, val)));
+                },
+                async insertAsync(item) {
+                    await fetch(`${url}/${item.id}.json`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(item)
+                    });
+                },
+                async updateAsync(id, updates) {
+                    await fetch(`${url}/${id}.json`, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(updates)
+                    });
+                },
+                async deleteAsync(id) {
+                    await fetch(`${url}/${id}.json`, {
+                        method: 'DELETE'
+                    });
+                },
+                async clearAsync() {
+                    await fetch(`${url}.json`, {
+                        method: 'DELETE'
+                    });
+                }
+            };
+        });
+    };
+
+    // Postgres Adapter
+    papyr.db.registerPostgres = (config = {}) => {
+        papyr.db.registerDriver('postgres', (collectionName) => {
+            const gatewayUrl = config.gatewayUrl || `/api/db/${collectionName}`;
+            return {
+                async getAsync() {
+                    const res = await fetch(gatewayUrl);
+                    return res.ok ? await res.json() : [];
+                },
+                async insertAsync(item) {
+                    await fetch(gatewayUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(item)
+                    });
+                },
+                async updateAsync(id, updates) {
+                    await fetch(`${gatewayUrl}/${id}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(updates)
+                    });
+                },
+                async deleteAsync(id) {
+                    await fetch(`${gatewayUrl}/${id}`, { method: 'DELETE' });
+                },
+                async clearAsync() {
+                    await fetch(gatewayUrl, { method: 'DELETE' });
+                }
+            };
+        });
+    };
+
+    // MySQL Adapter
+    papyr.db.registerMysql = (config = {}) => {
+        papyr.db.registerDriver('mysql', (collectionName) => {
+            const gatewayUrl = config.gatewayUrl || `/api/db/${collectionName}`;
+            return {
+                async getAsync() {
+                    const res = await fetch(gatewayUrl);
+                    return res.ok ? await res.json() : [];
+                },
+                async insertAsync(item) {
+                    await fetch(gatewayUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(item)
+                    });
+                },
+                async updateAsync(id, updates) {
+                    await fetch(`${gatewayUrl}/${id}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(updates)
+                    });
+                },
+                async deleteAsync(id) {
+                    await fetch(`${gatewayUrl}/${id}`, { method: 'DELETE' });
+                },
+                async clearAsync() {
+                    await fetch(gatewayUrl, { method: 'DELETE' });
+                }
+            };
+        });
+    };
+
+    // MongoDB Adapter
+    papyr.db.registerMongodb = (config = {}) => {
+        papyr.db.registerDriver('mongodb', (collectionName) => {
+            const gatewayUrl = config.gatewayUrl || `/api/db/${collectionName}`;
+            return {
+                async getAsync() {
+                    const res = await fetch(gatewayUrl);
+                    return res.ok ? await res.json() : [];
+                },
+                async insertAsync(item) {
+                    await fetch(gatewayUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(item)
+                    });
+                },
+                async updateAsync(id, updates) {
+                    await fetch(`${gatewayUrl}/${id}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(updates)
+                    });
+                },
+                async deleteAsync(id) {
+                    await fetch(`${gatewayUrl}/${id}`, { method: 'DELETE' });
+                },
+                async clearAsync() {
+                    await fetch(gatewayUrl, { method: 'DELETE' });
+                }
+            };
+        });
     };
 
 })(typeof window !== 'undefined' ? window : this);

@@ -20,7 +20,16 @@ const coreFiles = [
     'core/auth.js',
     'core/payments.js',
     'core/api.js',
-    'core/debug.js'
+    'core/debug.js',
+    'core/ssr.js',
+    'core/scheduler.js',
+    'core/style.js',
+    'core/layout.js',
+    'core/accessibility.js',
+    'core/renovate.js',
+    'core/gateway.js',
+    'core/sdk.js',
+    'core/virtualization.js'
 ];
 const pluginFiles = [
     'plugins/official.js',
@@ -65,7 +74,7 @@ try {
     // 2. Build papyr.js (Core Browser IIFE Bundle)
     const paperCode = `/**
  * PAPYR STATIC SITE LIBRARY - Core Bundle
- * v3.0.1 - Agile Modular Architecture (Reactivity, Hash SPA Router, Math Logic, Persistent CRUD Store)
+ * v3.1.2 - Agile Modular Architecture (Reactivity, Hash SPA Router, Math Logic, Persistent CRUD Store)
  * Released under MIT License.
  */
 
@@ -113,7 +122,7 @@ ${coreContents}
     // 5. Build papyr-complete.js (Complete Showcase Browser IIFE Bundle)
     const paperCompleteCode = `/**
  * PAPYR STATIC SITE LIBRARY - Complete Showcase Bundle
- * v3.0.1 - Core Reactivity, SPA Routing, Reactive Math Logic, Persistent Local CRUD Database, Responsive Widgets
+ * v3.1.2 - Core Reactivity, SPA Routing, Reactive Math Logic, Persistent Local CRUD Database, Responsive Widgets
  * Released under MIT License.
  */
 
@@ -160,7 +169,7 @@ ${stylesContent.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$/g, '\\$'
     // 6. Build papyr.esm.js (Core ES Module Bundle)
     const paperEsmCode = `/**
  * PAPYR STATIC SITE LIBRARY - Core Bundle (ESM)
- * v3.0.1 - Agile Modular Architecture (Reactivity, Hash SPA Router, Math Logic, Persistent CRUD Store)
+ * v3.1.2 - Agile Modular Architecture (Reactivity, Hash SPA Router, Math Logic, Persistent CRUD Store)
  * Released under MIT License.
  */
 
@@ -188,7 +197,7 @@ export default papyr;
     // 7. Build papyr-complete.esm.js (Complete Showcase ES Module Bundle)
     const paperCompleteEsmCode = `/**
  * PAPYR STATIC SITE LIBRARY - Complete Showcase Bundle (ESM)
- * v3.0.1 - Core Reactivity, SPA Routing, Reactive Math Logic, Persistent Local CRUD Database, Responsive Widgets
+ * v3.1.2 - Core Reactivity, SPA Routing, Reactive Math Logic, Persistent Local CRUD Database, Responsive Widgets
  * Released under MIT License.
  */
 
@@ -233,7 +242,7 @@ export default papyr;
     // 7b. Build papyr-plugins.js (Decoupled Plugins IIFE Bundle)
     const paperPluginsCode = `/**
  * PAPYR STATIC SITE LIBRARY - Decoupled Plugins Bundle
- * v3.0.4 - Official Capability Modules
+ * v3.1.2 - Official Capability Modules
  * Released under MIT License.
  */
 
@@ -273,7 +282,7 @@ ${pluginsContent}
 
     const paperUiCode = `/**
  * PAPYR STATIC SITE LIBRARY - UI & Layout Modular Bundle
- * v3.0.4 - Core Reactivity, SPA Routing, Layouts, Design Engine, and Premium UI Components
+ * v3.1.2 - Core Reactivity, SPA Routing, Layouts, Design Engine, and Premium UI Components
  * Released under MIT License.
  */
 
@@ -334,7 +343,7 @@ ${stylesContent.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$/g, '\\$'
 
     const paperAdvancedCode = `/**
  * PAPYR STATIC SITE LIBRARY - Advanced Engineering Modular Bundle
- * v3.0.4 - Core Reactivity, AI/ML Toolkits, 3D Immersive Graphics, 2D Verlet Physics, and PDF Exporter
+ * v3.1.2 - Core Reactivity, AI/ML Toolkits, 3D Immersive Graphics, 2D Verlet Physics, and PDF Exporter
  * Released under MIT License.
  */
 
@@ -377,7 +386,7 @@ ${advancedPluginsContent}
 
     const paperSsrCode = `/**
  * PAPYR STATIC SITE LIBRARY - Server-Side Rendering (SSR) Bundle
- * v3.0.1 - Zero-dependency Server-Side Renderer (SSR) & Express connector
+ * v3.1.2 - Zero-dependency Server-Side Renderer (SSR) & Express connector
  * Released under MIT License.
  */
 
@@ -411,7 +420,7 @@ ${ssrPluginsContent}
 
     const paperSsrEsmCode = `/**
  * PAPYR STATIC SITE LIBRARY - Server-Side Rendering (SSR) Bundle (ESM)
- * v3.0.1 - Zero-dependency Server-Side Renderer (SSR) & Express connector
+ * v3.1.2 - Zero-dependency Server-Side Renderer (SSR) & Express connector
  * Released under MIT License.
  */
 
@@ -482,6 +491,13 @@ export default papyr;
         console.log("✨ Minified bundles and source maps generated successfully!");
     } catch (e) {
         console.log("💡 Tip: Run 'npm install' to enable minification and source maps compilation.");
+    }
+
+    // 8b. Precompile markdown docs
+    try {
+        require('./precompile-docs.js');
+    } catch (e) {
+        console.error("⚠️ Failed to precompile docs:", e);
     }
 
     const hrend = process.hrtime(hrstart);

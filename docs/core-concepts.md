@@ -103,3 +103,23 @@ let listCard = papyr.div({
 ```
 
 * **Automated Cleanup:** When an element is unmounted, Papyr automatically traverses its child tree and runs cleanup operations. This unsubscribes state listeners and removes event listeners, preventing memory leaks.
+
+---
+
+## 5. Modern Core Subsystems
+
+Papyr 3.1.2 expands the kernel with performance, modernization, and coexistence layers:
+
+* **Priority Scheduler (`scheduler.js`)**: Coordinates user-blocking, normal, and idle execution frames. Uses a 16ms frame-budget queue to prevent rendering lag.
+* **Legacy Renovation (`renovate.js`)**: An automated audit and replacement manager. Scans legacy DOM structures, corrects accessibility issues on the fly, and swaps jQuery controls with reactive Papyr modules.
+* **Isomorphic Safety Layer**: Prevents runtime errors during Server-Side Rendering (SSR) or Next.js build compilation by dynamically checking for global window and storage objects (e.g. `typeof localStorage !== 'undefined'`).
+
+---
+
+## 6. Framework Bridges & Coexistence
+
+Instead of owning the entire app DOM, Papyr can coexist seamlessly with other tools:
+* **React Hooks**: Hook reactive state directly into React renders.
+* **Svelte Actions**: Mount components utilizing `use:papyr.svelte.mount`.
+* **Vue Bridges**: Interoperate state maps between Vue and Papyr models.
+

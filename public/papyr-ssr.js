@@ -1,6 +1,6 @@
 /**
  * PAPYR STATIC SITE LIBRARY - Server-Side Rendering (SSR) Bundle
- * v3.0.1 - Zero-dependency Server-Side Renderer (SSR) & Express connector
+ * v3.1.2 - Zero-dependency Server-Side Renderer (SSR) & Express connector
  * Released under MIT License.
  */
 
@@ -536,6 +536,21 @@ function createPapyr() {
         } else {
             el = doc.createElement(tag);
         }
+
+        // Intercept addEventListener to keep track of element listeners
+        el._listeners = [];
+        const originalAddEventListener = el.addEventListener;
+        if (typeof originalAddEventListener === 'function') {
+            el.addEventListener = function(event, handler, options) {
+                el._listeners.push({ event, handler, options });
+                return originalAddEventListener.apply(this, arguments);
+            };
+        } else {
+            el.addEventListener = function(event, handler, options) {
+                el._listeners.push({ event, handler, options });
+            };
+        }
+
         // Register in ComponentRegistry
         papyrInstance.components.register(el);
 
@@ -674,8 +689,36 @@ function createPapyr() {
 
         args.forEach(arg => {
             if (arg !== null && typeof arg === 'object' && !isElement(arg) && !Array.isArray(arg) && typeof arg.subscribe !== 'function') {
+                
+                // Extract natural language style properties
+                if (papyrInstance.style && typeof papyrInstance.style.translate === 'function') {
+                    const extractedStyles = {};
+                    const styleKeys = ['bg', 'radius', 'shadow', 'bold', 'italic', 'underline', 'strike', 'small', 'large', 'thin', 'normal', 'thick', 'black', 'white', 'gray', 'red', 'green', 'blue', 'yellow', 'left', 'center', 'right', 'justify', 'flex', 'grid', 'column', 'row', 'wrap'];
+                    Object.keys(arg).forEach(k => {
+                        if (styleKeys.includes(k)) {
+                            extractedStyles[k] = arg[k];
+                            delete arg[k];
+                        }
+                    });
+                    if (Object.keys(extractedStyles).length > 0) {
+                        arg.style = Object.assign(arg.style || {}, extractedStyles);
+                    }
+                }
+
+                // Handle layout responsive flag
+                if (arg.responsive !== undefined) {
+                    if (papyrInstance.layout && typeof papyrInstance.layout.observeResponsive === 'function') {
+                        papyrInstance.layout.observeResponsive(el, arg.responsive);
+                    }
+                    delete arg.responsive;
+                }
+
                 if (arg.style) {
-                    Object.entries(arg.style).forEach(([key, val]) => {
+                    const translatedStyle = (papyrInstance.style && typeof papyrInstance.style.translate === 'function')
+                        ? papyrInstance.style.translate(arg.style)
+                        : arg.style;
+                    
+                    Object.entries(translatedStyle).forEach(([key, val]) => {
                         const updateStyle = (v) => {
                             if (key.startsWith('--')) {
                                 el.style.setProperty(key, String(v));
@@ -807,6 +850,11 @@ function createPapyr() {
             }
         });
 
+        // Trigger autoAria accessibility generator
+        if (papyrInstance.accessibility && typeof papyrInstance.accessibility.autoAria === 'function') {
+            papyrInstance.accessibility.autoAria(el, tag);
+        }
+
         // Trigger onRender hook
         papyrInstance.plugins.triggerHook('onRender', el);
 
@@ -929,6 +977,16 @@ function createPapyr() {
         }
     }
     papyrInstance.component = PapyrComponent;
+    papyrInstance.defineComponent = (renderFn) => {
+        return (props) => {
+            const el = renderFn(props);
+            if (el && typeof el === 'object') {
+                el._renderFn = renderFn;
+                el._props = props;
+            }
+            return el;
+        };
+    };
 
     // Python-like syntax wrapper (papyr.py namespace)
     papyrInstance.py = {
@@ -1058,10 +1116,19 @@ function createPapyr() {
     };
 
     papyrInstance.mount = (selector, component) => {
-        let target = doc.querySelector(selector);
+        let target = typeof selector === 'string' ? doc.querySelector(selector) : selector;
         if (target) {
+            // Clean up existing children event listeners and reactive subscriptions
+            Array.from(target.children || []).forEach(child => {
+                if (typeof papyrInstance._cleanupElement === 'function') {
+                    papyrInstance._cleanupElement(child);
+                }
+            });
             target.innerHTML = '';
-            target.appendChild(component);
+            let rendered = typeof component === 'function' ? component() : component;
+            if (rendered) {
+                target.appendChild(rendered);
+            }
         }
         return target;
     };
@@ -1124,10 +1191,20 @@ function createPapyr() {
     };
 
     papyrInstance.animate = (el, properties, duration = 400) => {
+        const nonGpuProps = ['top', 'left', 'right', 'bottom', 'width', 'height', 'margin', 'padding'];
+        const badProps = Object.keys(properties || {}).filter(p => nonGpuProps.includes(p));
+        if (badProps.length > 0) {
+            console.warn(`💡 [Papyr Animation Tip]: Non-GPU property animation detected for [${badProps.join(', ')}]. Prefer CSS transitions with 'transform' and 'opacity' to achieve high frame-rate rendering.`);
+        }
+        
         el.style.transition = `all ${duration}ms cubic-bezier(0.4, 0, 0.2, 1)`;
-        requestAnimationFrame(() => {
+        if (typeof requestAnimationFrame === 'function') {
+            requestAnimationFrame(() => {
+                Object.assign(el.style, properties);
+            });
+        } else {
             Object.assign(el.style, properties);
-        });
+        }
     };
 
     papyrInstance.loadFramework = (framework) => {
@@ -1184,14 +1261,7 @@ function createPapyr() {
 
     papyrInstance.el = papyrInstance;
 
-    papyrInstance.ssr = (component) => {
-        if (!component) return '';
-        if (typeof component === 'function') {
-            component = component();
-        }
-        return component.innerHTML || String(component);
-    };
-    papyrInstance.ssr.render = (component) => papyrInstance.ssr(component);
+
 
     // Run registered core initializers!
     coreInitializers.forEach(init => {
@@ -1286,11 +1356,30 @@ if (typeof module !== 'undefined' && module.exports) {
     }
 
     coreInitializers.push((papyr) => {
-        papyr.security = {
+        const policies = {
+            camera: 'prompt',
+            microphone: 'prompt',
+            location: 'prompt',
+            storage: 'allow'
+        };
+
+        function securityConfig(config) {
+            if (typeof config === 'object' && config !== null) {
+                Object.assign(policies, config);
+                console.log("🔒 Papyr Security Policy Engine updated:", policies);
+            }
+            return policies;
+        }
+
+        Object.assign(securityConfig, {
             _isActive: true, // Enabled by default for safety
             currentTier: 'default',
             hasConsent: false,
             _scriptsBlocked: false,
+
+            get policies() {
+                return policies;
+            },
 
             setTier(tier) {
                 this.currentTier = tier;
@@ -1312,7 +1401,7 @@ if (typeof module !== 'undefined' && module.exports) {
                         tempStorage = Object.create(null);
                     } catch (e) { }
                 } else {
-                    // Clear tracking keys from real localStorage in a single transactional pass to avoid index shift bugs
+                    // Clear tracking keys from real localStorage
                     try {
                         if (originalRemoveItem) {
                             const keysToDelete = [];
@@ -1378,6 +1467,13 @@ if (typeof module !== 'undefined' && module.exports) {
 
             shouldSandboxStorage(key) {
                 if (this.currentTier === 'none') return false;
+                
+                const policy = policies.storage;
+                if (policy === 'deny') return true;
+                if (policy === 'prompt') {
+                    return !this.hasConsent;
+                }
+
                 if (this.currentTier === 'high') return true;
                 if (!this.hasConsent) {
                     return trackingKeys.some(tk => key.toLowerCase().includes(tk));
@@ -1385,9 +1481,6 @@ if (typeof module !== 'undefined' && module.exports) {
                 return false;
             },
 
-            /**
-             * Strip dangerous tags and attributes from raw HTML strings.
-             */
             sanitize(html) {
                 if (!this._isActive || typeof html !== 'string') return html;
 
@@ -1422,9 +1515,7 @@ if (typeof module !== 'undefined' && module.exports) {
 
                         Array.from(doc.body.childNodes).forEach(cleanNode);
                         clean = doc.body.innerHTML;
-                    } catch (e) {
-                        // fallback to regex below
-                    }
+                    } catch (e) { }
                 }
 
                 if (clean === html || typeof DOMParser === 'undefined') {
@@ -1442,9 +1533,6 @@ if (typeof module !== 'undefined' && module.exports) {
                 return clean;
             },
 
-            /**
-             * Allow enterprise users to register custom security hooks
-             */
             use(provider) {
                 if (provider === 'disable') {
                     this._isActive = false;
@@ -1452,10 +1540,6 @@ if (typeof module !== 'undefined' && module.exports) {
                 }
             },
 
-            /**
-             * Client-Side Storage Encryption (Obfuscated Dynamic Feedback Cipher)
-             * Prevents generic localStorage scraping by malicious extensions.
-             */
             encrypt(text, password) {
                 if (!text) return text;
                 const utf8Text = typeof window !== 'undefined' ? unescape(encodeURIComponent(text)) : Buffer.from(text, 'utf8').toString('binary');
@@ -1491,9 +1575,6 @@ if (typeof module !== 'undefined' && module.exports) {
                 }
             },
 
-            /**
-             * Advanced Client-Side Storage Encryption (Browser-native AES-GCM 256-bit with PBKDF2)
-             */
             async encryptAsync(text, password) {
                 if (typeof window === 'undefined' || !window.crypto || !window.crypto.subtle) {
                     return this.encrypt(text, password);
@@ -1594,15 +1675,168 @@ if (typeof module !== 'undefined' && module.exports) {
                     console.error("Papyr Security: Async Decryption failed, falling back to sync.", e);
                     return this.decrypt(encodedText, password);
                 }
+            },
+
+            aiConsent(details) {
+                return new Promise((resolve) => {
+                    if (papyr.isServer()) {
+                        resolve(true);
+                        return;
+                    }
+                    
+                    if (papyr.watt && typeof papyr.watt.triggerWattPrompt === 'function') {
+                        const description = [
+                            `Destination: ${details.destination}`,
+                            `Payload size: ${details.prompt.length} chars`
+                        ];
+                        if (details.attachments && details.attachments.length > 0) {
+                            description.push(`Attachments: ${details.attachments.length} files`);
+                        }
+                        
+                        papyr.watt.triggerWattPrompt("AI Data Transparency Request", () => {
+                            resolve(true);
+                        }, () => {
+                            resolve(false);
+                        }, description);
+                    } else {
+                        // In case WATT UI is not loaded yet, check basic alert/confirm or allow
+                        const ok = confirm(`AI Data Transparency Alert:\nSending prompt of length ${details.prompt.length} to ${details.destination}.\n\nAllow?`);
+                        resolve(ok);
+                    }
+                });
+            },
+
+            detectLeakage(data) {
+                if (!data) return false;
+                const dataStr = typeof data === 'string' ? data : JSON.stringify(data);
+                
+                const patterns = {
+                    openai_key: /sk-[a-zA-Z0-9]{48}/g,
+                    google_key: /AIzaSy[a-zA-Z0-9-_]{35}/g,
+                    anthropic_key: /sk-ant-sid01-[a-zA-Z0-9-_]{93}/g,
+                    generic_secret: /(password|secret|passwd|private_key|privatekey)\s*[:=]\s*["'][a-zA-Z0-9-_]{8,}["']/gi
+                };
+
+                let leaks = [];
+                for (const [name, regex] of Object.entries(patterns)) {
+                    if (regex.test(dataStr)) {
+                        leaks.push(name);
+                    }
+                }
+
+                if (leaks.length > 0) {
+                    const msg = `⚠️ [WATT Data Leakage Warning] Potential secrets exposed in data: ${leaks.join(', ')}`;
+                    console.warn(msg);
+                    if (papyr.diagnostics && typeof papyr.diagnostics.reportError === 'function') {
+                        papyr.diagnostics.reportError(new Error(msg));
+                    }
+                    return true;
+                }
+                return false;
             }
-        };
+        });
+
+        // 1. Geolocation Access Interception
+        if (typeof navigator !== 'undefined' && navigator.geolocation) {
+            const geo = navigator.geolocation;
+            const originalGetCurrentPosition = geo.getCurrentPosition;
+            const originalWatchPosition = geo.watchPosition;
+
+            geo.getCurrentPosition = function (successCb, errorCb, options) {
+                const policy = policies.location;
+                if (policy === 'deny') {
+                    if (errorCb) errorCb({ code: 1, message: "Location permission denied by Papyr security policy." });
+                    return;
+                }
+                if (policy === 'allow') {
+                    originalGetCurrentPosition.call(geo, successCb, errorCb, options);
+                    return;
+                }
+                // 'prompt'
+                if (papyr.watt && typeof papyr.watt.triggerWattPrompt === 'function') {
+                    papyr.watt.triggerWattPrompt("Location Access", () => {
+                        originalGetCurrentPosition.call(geo, successCb, errorCb, options);
+                    }, () => {
+                        if (errorCb) errorCb({ code: 1, message: "User denied location access through WATT." });
+                    });
+                } else {
+                    originalGetCurrentPosition.call(geo, successCb, errorCb, options);
+                }
+            };
+
+            geo.watchPosition = function (successCb, errorCb, options) {
+                const policy = policies.location;
+                if (policy === 'deny') {
+                    if (errorCb) errorCb({ code: 1, message: "Location tracking denied by Papyr security policy." });
+                    return -1;
+                }
+                if (policy === 'allow') {
+                    return originalWatchPosition.call(geo, successCb, errorCb, options);
+                }
+                // 'prompt'
+                let watchId = -1;
+                if (papyr.watt && typeof papyr.watt.triggerWattPrompt === 'function') {
+                    papyr.watt.triggerWattPrompt("Location Tracking", () => {
+                        watchId = originalWatchPosition.call(geo, successCb, errorCb, options);
+                    }, () => {
+                        if (errorCb) errorCb({ code: 1, message: "User denied location access through WATT." });
+                    });
+                } else {
+                    watchId = originalWatchPosition.call(geo, successCb, errorCb, options);
+                }
+                return watchId;
+            };
+        }
+
+        // 2. Camera & Microphone getUserMedia Interception
+        if (typeof navigator !== 'undefined' && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+            const originalGetUserMedia = navigator.mediaDevices.getUserMedia;
+            navigator.mediaDevices.getUserMedia = function (constraints) {
+                const hasCamera = !!(constraints && constraints.video);
+                const hasMic = !!(constraints && constraints.audio);
+                
+                const cameraPolicy = policies.camera;
+                const micPolicy = policies.microphone;
+
+                if ((hasCamera && cameraPolicy === 'deny') || (hasMic && micPolicy === 'deny')) {
+                    return Promise.reject(new DOMException("Permission denied by Papyr security policy.", "NotAllowedError"));
+                }
+
+                if ((!hasCamera || cameraPolicy === 'allow') && (!hasMic || micPolicy === 'allow')) {
+                    return originalGetUserMedia.call(navigator.mediaDevices, constraints);
+                }
+
+                // 'prompt'
+                return new Promise((resolve, reject) => {
+                    let capName = "Hardware API Access";
+                    if (hasCamera && hasMic) capName = "Camera & Microphone Access";
+                    else if (hasCamera) capName = "Camera Access";
+                    else if (hasMic) capName = "Microphone Access";
+
+                    if (papyr.watt && typeof papyr.watt.triggerWattPrompt === 'function') {
+                        papyr.watt.triggerWattPrompt(capName, () => {
+                            originalGetUserMedia.call(navigator.mediaDevices, constraints)
+                                .then(resolve)
+                                .catch(reject);
+                        }, () => {
+                            reject(new DOMException("Permission denied by user through WATT.", "NotAllowedError"));
+                        });
+                    } else {
+                        originalGetUserMedia.call(navigator.mediaDevices, constraints)
+                            .then(resolve)
+                            .catch(reject);
+                    }
+                });
+            };
+        }
+
+        papyr.security = securityConfig;
 
         papyr.safeGet = (obj, key) => {
             if (!obj || typeof obj !== 'object') return undefined;
             if (key === '__proto__' || key === 'constructor' || key === 'prototype') {
                 throw new Error("Security Violation: Unsafe property access");
             }
-            // eslint-disable-next-line security/detect-object-injection
             return obj[key];
         };
     });
@@ -1653,15 +1887,26 @@ if (typeof module !== 'undefined' && module.exports) {
 coreInitializers.push((papyr) => {
     const pendingSubscribers = new Set();
     let isSchedulerScheduled = false;
+    let autoKeyCounter = 0;
 
     const queueSubscriber = (sub, val) => {
-        pendingSubscribers.add({ sub, val });
-        if (!isSchedulerScheduled) {
-            isSchedulerScheduled = true;
-            if (typeof requestAnimationFrame !== 'undefined') {
-                requestAnimationFrame(flushScheduler);
-            } else {
-                setTimeout(flushScheduler, 0);
+        if (papyr.scheduler && typeof papyr.scheduler.schedule === 'function') {
+            papyr.scheduler.schedule(() => {
+                try {
+                    sub(val);
+                } catch (err) {
+                    papyr.diagnostics.reportError(err);
+                }
+            }, 'normal');
+        } else {
+            pendingSubscribers.add({ sub, val });
+            if (!isSchedulerScheduled) {
+                isSchedulerScheduled = true;
+                if (typeof requestAnimationFrame !== 'undefined') {
+                    requestAnimationFrame(flushScheduler);
+                } else {
+                    setTimeout(flushScheduler, 0);
+                }
             }
         }
     };
@@ -1708,6 +1953,17 @@ coreInitializers.push((papyr) => {
                 }
             });
             n._cleanups = [];
+        }
+        if (n._listeners) {
+            const originalRemoveEventListener = n.removeEventListener;
+            n._listeners.forEach(l => {
+                try {
+                    if (typeof originalRemoveEventListener === 'function') {
+                        originalRemoveEventListener.call(n, l.event, l.handler, l.options);
+                    }
+                } catch(e) {}
+            });
+            n._listeners = [];
         }
         if (n._onUnmounted) {
             n._isMounted = false;
@@ -1870,7 +2126,36 @@ coreInitializers.push((papyr) => {
         let subscribers = new Set();
         let predictor = options.predictive ? new Predictor(val, options) : null;
         
+        const storageKey = options.key || (options.persist ? `papyr_state_auto_${++autoKeyCounter}` : null);
+        
+        // Restore value on load if persist is true
+        if (options.persist && storageKey && typeof localStorage !== 'undefined') {
+            try {
+                let storedVal = localStorage.getItem(storageKey);
+                if (storedVal !== null) {
+                    try {
+                        val = JSON.parse(storedVal);
+                    } catch (e) {
+                        val = storedVal;
+                    }
+                }
+            } catch (e) {
+                console.warn("Storage Continuity Engine: Failed to read from localStorage:", e);
+            }
+        }
+
+        const persistState = (newVal) => {
+            if (options.persist && storageKey && typeof localStorage !== 'undefined') {
+                try {
+                    localStorage.setItem(storageKey, typeof newVal === 'object' ? JSON.stringify(newVal) : String(newVal));
+                } catch (e) {
+                    console.warn("Storage Continuity Engine: Failed to write to localStorage:", e);
+                }
+            }
+        };
+
         let notify = () => {
+            persistState(val);
             if (predictor) predictor.update(val);
             papyr.diagnostics.trackUpdate(stateObj, val, val);
             Array.from(subscribers).forEach(sub => {
@@ -1894,6 +2179,7 @@ coreInitializers.push((papyr) => {
                 if (val === newVal && (typeof newVal !== 'object' || newVal === null)) return;
                 let oldVal = val;
                 val = newVal;
+                persistState(newVal);
                 if (predictor) predictor.update(newVal);
                 papyr.diagnostics.trackUpdate(stateObj, newVal, oldVal);
                 Array.from(subscribers).forEach(sub => {
@@ -2656,7 +2942,9 @@ coreInitializers.push((papyr) => {
         });
     };
 
-    papyr.db = (collectionName, engine = 'local') => {
+    let defaultEngine = 'local';
+    papyr.db = (collectionName, engine) => {
+        const selectedEngine = engine || defaultEngine;
 
         // Engine Drivers with fully granular transaction-safe CRUD methods
         const drivers = {
@@ -3022,9 +3310,9 @@ coreInitializers.push((papyr) => {
             }
         });
 
-        const isAsync = engine !== 'local' && engine !== 'session' && drivers[engine];
+        const isAsync = selectedEngine !== 'local' && selectedEngine !== 'session' && drivers[selectedEngine];
         // eslint-disable-next-line security/detect-object-injection
-        const driver = (engine && engine !== '__proto__' && engine !== 'constructor' && engine !== 'prototype' && Object.prototype.hasOwnProperty.call(drivers, engine)) ? drivers[engine] : drivers['local'];
+        const driver = (selectedEngine && selectedEngine !== '__proto__' && selectedEngine !== 'constructor' && selectedEngine !== 'prototype' && Object.prototype.hasOwnProperty.call(drivers, selectedEngine)) ? drivers[selectedEngine] : drivers['local'];
 
         let state = papyr.state([]);
         let watchers = [];
@@ -3272,9 +3560,16 @@ coreInitializers.push((papyr) => {
         if (name === '__proto__' || name === 'constructor' || name === 'prototype') return;
         papyr.db.drivers[name] = driverFactory;
     };
+    papyr.db.use = (engineName) => {
+        if (engineName) {
+            defaultEngine = engineName.toLowerCase();
+        }
+        return papyr.db;
+    };
 
     // Upgraded storage helper function with dual call signature compatibility
     const storageFunc = (key, val) => {
+        if (typeof localStorage === 'undefined') return null;
         if (typeof val === 'undefined') {
             let data = localStorage.getItem(key);
             if (data === null || data === undefined) return null;
@@ -3288,19 +3583,22 @@ coreInitializers.push((papyr) => {
     };
     storageFunc.set = (k, v) => storageFunc(k, v);
     storageFunc.get = (k) => storageFunc(k);
-    storageFunc.remove = (k) => localStorage.removeItem(k);
-    storageFunc.clear = () => localStorage.clear();
+    storageFunc.remove = (k) => typeof localStorage !== 'undefined' && localStorage.removeItem(k);
+    storageFunc.clear = () => typeof localStorage !== 'undefined' && localStorage.clear();
     storageFunc.secureSet = (k, v, password) => {
+        if (typeof localStorage === 'undefined') return;
         if (!papyr.security) return console.error("PapyrError: Security module not loaded.");
         localStorage.setItem(k, papyr.security.encrypt(JSON.stringify(v), password));
     };
     storageFunc.secureGet = (k, password) => {
+        if (typeof localStorage === 'undefined') return null;
         if (!papyr.security) return console.error("PapyrError: Security module not loaded.");
         let enc = localStorage.getItem(k);
         if (!enc) return null;
         try { return JSON.parse(papyr.security.decrypt(enc, password)); } catch (e) { return null; }
     };
     storageFunc.secureSetAsync = async (k, v, password) => {
+        if (typeof localStorage === 'undefined') return;
         if (!papyr.security || typeof papyr.security.encryptAsync !== 'function') {
             return storageFunc.secureSet(k, v, password);
         }
@@ -3308,6 +3606,7 @@ coreInitializers.push((papyr) => {
         localStorage.setItem(k, enc);
     };
     storageFunc.secureGetAsync = async (k, password) => {
+        if (typeof localStorage === 'undefined') return null;
         if (!papyr.security || typeof papyr.security.decryptAsync !== 'function') {
             return storageFunc.secureGet(k, password);
         }
@@ -3322,6 +3621,7 @@ coreInitializers.push((papyr) => {
 
     // Upgraded session helper function with dual call signature compatibility
     const sessionFunc = (key, val) => {
+        if (typeof sessionStorage === 'undefined') return null;
         if (typeof val === 'undefined') {
             let data = sessionStorage.getItem(key);
             if (data === null || data === undefined) return null;
@@ -3335,19 +3635,22 @@ coreInitializers.push((papyr) => {
     };
     sessionFunc.set = (k, v) => sessionFunc(k, v);
     sessionFunc.get = (k) => sessionFunc(k);
-    sessionFunc.remove = (k) => sessionStorage.removeItem(k);
-    sessionFunc.clear = () => sessionStorage.clear();
+    sessionFunc.remove = (k) => typeof sessionStorage !== 'undefined' && sessionStorage.removeItem(k);
+    sessionFunc.clear = () => typeof sessionStorage !== 'undefined' && sessionStorage.clear();
     sessionFunc.secureSet = (k, v, password) => {
+        if (typeof sessionStorage === 'undefined') return;
         if (!papyr.security) return console.error("PapyrError: Security module not loaded.");
         sessionStorage.setItem(k, papyr.security.encrypt(JSON.stringify(v), password));
     };
     sessionFunc.secureGet = (k, password) => {
+        if (typeof sessionStorage === 'undefined') return null;
         if (!papyr.security) return console.error("PapyrError: Security module not loaded.");
         let enc = sessionStorage.getItem(k);
         if (!enc) return null;
         try { return JSON.parse(papyr.security.decrypt(enc, password)); } catch (e) { return null; }
     };
     sessionFunc.secureSetAsync = async (k, v, password) => {
+        if (typeof sessionStorage === 'undefined') return;
         if (!papyr.security || typeof papyr.security.encryptAsync !== 'function') {
             return sessionFunc.secureSet(k, v, password);
         }
@@ -3355,6 +3658,7 @@ coreInitializers.push((papyr) => {
         sessionStorage.setItem(k, enc);
     };
     sessionFunc.secureGetAsync = async (k, password) => {
+        if (typeof sessionStorage === 'undefined') return null;
         if (!papyr.security || typeof papyr.security.decryptAsync !== 'function') {
             return sessionFunc.secureGet(k, password);
         }
@@ -4300,6 +4604,1737 @@ if (typeof window !== 'undefined' && !window.papyr) {
 }
 
 
+// --- MODULE: core/ssr.js ---
+/**
+ * PAPYR SSR & HYDRATION RUNTIME
+ * Isomorphic Server-Side Renderer, hydration engine, and Islands runtime.
+ */
+
+coreInitializers.push((papyr) => {
+    // 1. Environment Detection
+    papyr.isBrowser = () => typeof window !== 'undefined' && typeof document !== 'undefined';
+    papyr.isServer = () => typeof window === 'undefined';
+    papyr.isWorker = () => (typeof WorkerGlobalScope !== 'undefined' && self instanceof WorkerGlobalScope) || (typeof importScripts === 'function');
+
+    // 2. Islands Registration
+    const registeredIslands = new Map();
+    
+    papyr.island = (Component) => {
+        const name = Component.name || `Island_${Math.random().toString(36).substring(2, 9)}`;
+        registeredIslands.set(name, Component);
+        
+        return (props) => {
+            if (papyr.isServer()) {
+                // Render placeholder wrapping static content and props metadata
+                const el = Component(props);
+                const htmlStr = papyr.ssr(el);
+                const propsStr = JSON.stringify(props || {});
+                const safeProps = propsStr.replace(/"/g, '&quot;');
+                
+                // Wrap in marker element
+                const container = papyr.div({
+                    attrs: {
+                        'data-papyr-island': name,
+                        'data-papyr-island-props': safeProps
+                    }
+                });
+                container.innerHTML = htmlStr;
+                return container;
+            } else {
+                return Component(props);
+            }
+        };
+    };
+    
+    papyr.registerIsland = (name, Component) => {
+        registeredIslands.set(name, Component);
+    };
+
+    // 3. Hydration Engine
+    papyr.hydrate = (selector, App) => {
+        if (!papyr.isBrowser()) return;
+        
+        const realRoot = document.querySelector(selector);
+        if (!realRoot) {
+            console.error(`[Papyr Hydration Error] Target selector "${selector}" not found.`);
+            return;
+        }
+
+        // Evaluate virtual tree
+        const vRoot = typeof App === 'function' ? App() : App;
+        
+        // Hydrate recursively
+        hydrateNode(realRoot, vRoot, selector);
+        
+        // Boot registered islands
+        hydrateIslands();
+    };
+
+    function triggerHydrationWarning(path, message, detail) {
+        console.warn(message);
+        
+        if (papyr.diagnostics) {
+            papyr.diagnostics.errors.push({
+                type: 'hydration-warning',
+                message: message,
+                timestamp: new Date().toISOString(),
+                path: path
+            });
+            papyr.diagnostics.emit('performance', {
+                type: 'hydration-mismatch',
+                message: message,
+                path: path
+            });
+        }
+        
+        if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('papyr-hydration-warning', {
+                detail: { path, message, ...detail }
+            }));
+        }
+    }
+
+    function hydrateNode(realNode, vNode, path) {
+        if (!realNode || !vNode) return;
+
+        // NodeType mismatch
+        if (realNode.nodeType !== vNode.nodeType) {
+            triggerHydrationWarning(
+                path,
+                `[Papyr Hydration Mismatch] NodeType mismatch at ${path}. Expected ${vNode.nodeType} but got ${realNode.nodeType}. Re-mounting.`,
+                { expectedType: vNode.nodeType, actualType: realNode.nodeType }
+            );
+            realNode.parentNode.replaceChild(vNode, realNode);
+            return;
+        }
+
+        // Hydrate Text Nodes
+        if (realNode.nodeType === 3) {
+            if (realNode.nodeValue !== vNode.nodeValue) {
+                triggerHydrationWarning(
+                    path,
+                    `[Papyr Hydration Mismatch] Text value mismatch at ${path}. Expected "${vNode.nodeValue}" but got "${realNode.nodeValue}". Updating text.`,
+                    { expectedValue: vNode.nodeValue, actualValue: realNode.nodeValue }
+                );
+                realNode.nodeValue = vNode.nodeValue;
+            }
+            return;
+        }
+
+        // Hydrate Elements
+        if (realNode.nodeType === 1) {
+            const realTag = realNode.tagName.toLowerCase();
+            const vTag = vNode.tagName.toLowerCase();
+            if (realTag !== vTag) {
+                triggerHydrationWarning(
+                    path,
+                    `[Papyr Hydration Mismatch] TagName mismatch at ${path}. Expected <${vTag}> but got <${realTag}>. Re-creating element.`,
+                    { expectedTag: vTag, actualTag: realTag }
+                );
+                realNode.parentNode.replaceChild(vNode, realNode);
+                return;
+            }
+
+            // Copy attributes
+            if (vNode.attributes) {
+                Array.from(vNode.attributes).forEach(attr => {
+                    if (realNode.getAttribute(attr.name) !== attr.value) {
+                        realNode.setAttribute(attr.name, attr.value);
+                    }
+                });
+            }
+
+            // Transfer Event Listeners
+            if (vNode._listeners) {
+                vNode._listeners.forEach(l => {
+                    realNode.addEventListener(l.event, l.handler, l.options);
+                    realNode._listeners = realNode._listeners || [];
+                    realNode._listeners.push(l);
+                });
+            }
+
+            // Transfer Cleanups
+            if (vNode._cleanups) {
+                realNode._cleanups = (realNode._cleanups || []).concat(vNode._cleanups);
+                vNode._cleanups = [];
+            }
+
+            // Sync children recursively
+            const realChildren = Array.from(realNode.childNodes);
+            const vChildren = Array.from(vNode.childNodes);
+
+            if (realChildren.length !== vChildren.length) {
+                triggerHydrationWarning(
+                    path,
+                    `[Papyr Hydration Mismatch] Children count mismatch at ${path}. Expected ${vChildren.length} children but got ${realChildren.length}. Syncing.`,
+                    { expectedCount: vChildren.length, actualCount: realChildren.length }
+                );
+                
+                const minLen = Math.min(realChildren.length, vChildren.length);
+                for (let i = 0; i < minLen; i++) {
+                    hydrateNode(realChildren[i], vChildren[i], `${path} > ${vTag}:${i}`);
+                }
+                
+                if (vChildren.length > realChildren.length) {
+                    for (let i = minLen; i < vChildren.length; i++) {
+                        realNode.appendChild(vChildren[i]);
+                    }
+                }
+                
+                if (realChildren.length > vChildren.length) {
+                    for (let i = minLen; i < realChildren.length; i++) {
+                        if (typeof papyr._cleanupElement === 'function') {
+                            papyr._cleanupElement(realChildren[i]);
+                        }
+                        realNode.removeChild(realChildren[i]);
+                    }
+                }
+            } else {
+                for (let i = 0; i < realChildren.length; i++) {
+                    hydrateNode(realChildren[i], vChildren[i], `${path} > ${vTag}:${i}`);
+                }
+            }
+        }
+    }
+
+    function hydrateIslands() {
+        if (!papyr.isBrowser()) return;
+        const islands = document.querySelectorAll('[data-papyr-island]');
+        islands.forEach(el => {
+            const name = el.getAttribute('data-papyr-island');
+            const Component = registeredIslands.get(name);
+            if (!Component) {
+                console.warn(`[Papyr Island Warning] Island component "${name}" not registered.`);
+                return;
+            }
+            
+            let props = {};
+            try {
+                const propsStr = el.getAttribute('data-papyr-island-props');
+                if (propsStr) props = JSON.parse(propsStr);
+            } catch (err) {
+                console.error(`[Papyr Island Props Error] Failed to parse props for island "${name}":`, err);
+            }
+            
+            const vEl = Component(props);
+            hydrateNode(el, vEl, `[island=${name}]`);
+        });
+    }
+
+    // 4. Isomorphic Server-Side Renderer
+    papyr.ssr = (element) => {
+        if (element === null || element === undefined) return '';
+        if (typeof element === 'string' || typeof element === 'number') {
+            return String(element);
+        }
+        if (Array.isArray(element)) {
+            return element.map(papyr.ssr).join('');
+        }
+        if (element.nodeType === 3 || (element.textContent !== undefined && !element.tagName)) {
+            return String(element.textContent || '');
+        }
+        if (element instanceof DocumentFragment || element.tagName === 'TEMPLATE-CONTENT' || (element.children && !element.tagName)) {
+            const nodes = element.childNodes ? Array.from(element.childNodes) : (element.children ? Array.from(element.children) : []);
+            return nodes.map(papyr.ssr).join('');
+        }
+
+        let tag = (element.tagName || 'DIV').toLowerCase();
+        let attrsStr = '';
+        if (element.id) {
+            attrsStr += ` id="${element.id}"`;
+        }
+        if (element.className) {
+            attrsStr += ` class="${element.className}"`;
+        }
+        if (element.style) {
+            let styleKeys = Object.keys(element.style).filter(k => typeof element.style[k] !== 'function');
+            if (styleKeys.length > 0) {
+                let styleStr = styleKeys.map(k => {
+                    let cssKey = k.replace(/([A-Z])/g, '-$1').toLowerCase();
+                    return `${cssKey}:${element.style[k]}`;
+                }).join(';');
+                attrsStr += ` style="${styleStr}"`;
+            }
+        }
+        if (element.dataset) {
+            Object.entries(element.dataset).forEach(([k, v]) => {
+                attrsStr += ` data-${k.replace(/([A-Z])/g, '-$1').toLowerCase()}="${v}"`;
+            });
+        }
+        
+        // Render other properties
+        const ignoredKeys = ['tagName', 'style', 'dataset', 'classList', 'children', 'parentNode', 'listeners', 'className', 'id', 'textContent', 'nodeType', 'innerHTML', '_listeners', '_cleanups', '_isMounted', '_renderFn', '_props'];
+        Object.entries(element).forEach(([k, v]) => {
+            if (!ignoredKeys.includes(k) && typeof v !== 'function' && typeof v !== 'object') {
+                attrsStr += ` ${k}="${v}"`;
+            }
+        });
+
+        const selfClosing = ['area','base','br','col','embed','hr','img','input','link','meta','param','source','track','wbr'];
+        if (selfClosing.includes(tag)) {
+            return `<${tag}${attrsStr} />`;
+        }
+
+        let childrenStr = '';
+        if (element.childNodes && element.childNodes.length > 0) {
+            childrenStr = element.childNodes.map(papyr.ssr).join('');
+        } else if (element.children && element.children.length > 0) {
+            childrenStr = element.children.map(papyr.ssr).join('');
+        } else if (element.textContent) {
+            childrenStr = String(element.textContent);
+        } else if (element.innerHTML) {
+            childrenStr = String(element.innerHTML);
+        }
+
+        return `<${tag}${attrsStr}>${childrenStr}</${tag}>`;
+    };
+
+    // 5. Streaming SSR
+    papyr.ssr.stream = (component) => {
+        return new ReadableStream({
+            start(controller) {
+                try {
+                    const html = papyr.ssr(component);
+                    const chunkSize = 1024;
+                    for (let i = 0; i < html.length; i += chunkSize) {
+                        controller.enqueue(html.substring(i, i + chunkSize));
+                    }
+                    controller.close();
+                } catch (err) {
+                    controller.error(err);
+                }
+            }
+        });
+    };
+});
+
+
+// --- MODULE: core/scheduler.js ---
+/**
+ * PAPYR SCHEDULER & PERFORMANCE ENGINE
+ * Coordinates priority scheduling, energy-aware frame optimization, and UI freeze recovery.
+ */
+
+coreInitializers.push((papyr) => {
+    // 1. Device capability estimator
+    const estimateDeviceCapability = () => {
+        if (typeof navigator === 'undefined') return 'Mid Range';
+        const cores = navigator.hardwareConcurrency || 4;
+        const ram = navigator.deviceMemory || 4;
+        if (cores <= 2 || ram <= 2) return 'Low End';
+        if (cores >= 8 && ram >= 8) return 'High End';
+        return 'Mid Range';
+    };
+
+    const deviceCapability = estimateDeviceCapability();
+
+    // 2. Priority Scheduling System
+    const taskQueue = [];
+    let isScheduled = false;
+
+    papyr.scheduler = {
+        schedule(fn, priority = 'normal') {
+            taskQueue.push({ fn, priority });
+            taskQueue.sort((a, b) => {
+                const priorityMap = { 'immediate': 0, 'user-blocking': 1, 'normal': 2, 'idle': 3 };
+                return priorityMap[a.priority] - priorityMap[b.priority];
+            });
+            this.requestFlush();
+        },
+
+        requestFlush() {
+            if (isScheduled) return;
+            isScheduled = true;
+            
+            const nextTask = taskQueue[0];
+            if (nextTask && nextTask.priority === 'immediate') {
+                if (typeof queueMicrotask === 'function') {
+                    queueMicrotask(() => this.flush());
+                } else {
+                    Promise.resolve().then(() => this.flush());
+                }
+            } else if (nextTask && nextTask.priority === 'user-blocking') {
+                if (typeof requestAnimationFrame === 'function') {
+                    requestAnimationFrame(() => this.flush());
+                } else {
+                    setTimeout(() => this.flush(), 16);
+                }
+            } else if (nextTask && nextTask.priority === 'idle') {
+                if (typeof requestIdleCallback === 'function') {
+                    requestIdleCallback(() => this.flush());
+                } else {
+                    setTimeout(() => this.flush(), 50);
+                }
+            } else {
+                // normal
+                setTimeout(() => this.flush(), 0);
+            }
+        },
+
+        flush() {
+            isScheduled = false;
+            const startTime = typeof performance !== 'undefined' ? performance.now() : Date.now();
+            while (taskQueue.length > 0) {
+                const task = taskQueue[0];
+                if (task.priority !== 'immediate' && task.priority !== 'user-blocking') {
+                    const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+                    if (now - startTime > 16) { // 16ms frame budget
+                        this.requestFlush();
+                        break;
+                    }
+                }
+                taskQueue.shift();
+                try {
+                    task.fn();
+                } catch (err) {
+                    if (papyr.diagnostics) papyr.diagnostics.reportError(err);
+                }
+            }
+        }
+    };
+
+    // 3. Power Engine & Background Activity Manager
+    const powerState = papyr.state('active'); // 'active', 'idle', 'away', 'suspended'
+    const targetFps = papyr.state(deviceCapability === 'Low End' ? 30 : 60);
+    const powerFps = papyr.state(deviceCapability === 'Low End' ? 30 : 60);
+    const isBackground = papyr.state(typeof document !== 'undefined' ? document.hidden : false);
+    const adaptiveEffects = papyr.state(deviceCapability !== 'Low End');
+
+    const batteryState = {
+        level: papyr.state(1.0),
+        charging: papyr.state(true)
+    };
+
+    papyr.power = {
+        state: powerState,
+        fps: powerFps,
+        targetFps: targetFps,
+        isBackground: isBackground,
+        adaptiveEffects: adaptiveEffects,
+        deviceCapability: deviceCapability,
+        battery: batteryState,
+        activity() {
+            resetIdleTimer();
+        },
+        throttle(callback) {
+            let active = true;
+            
+            const tick = () => {
+                if (!active) return;
+                const state = powerState.value;
+                if (state === 'suspended') return;
+
+                let delay = 0;
+                if (state === 'away') delay = 200; // ~5 FPS
+                else if (state === 'idle') delay = 66; // ~15 FPS
+                else if (targetFps.value === 30) delay = 33; // ~30 FPS
+
+                if (delay > 0) {
+                    setTimeout(() => {
+                        if (active && powerState.value === state) {
+                            callback();
+                            if (typeof requestAnimationFrame === 'function') {
+                                requestAnimationFrame(tick);
+                            } else {
+                                setTimeout(tick, 16);
+                            }
+                        } else if (active) {
+                            if (typeof requestAnimationFrame === 'function') {
+                                requestAnimationFrame(tick);
+                            } else {
+                                setTimeout(tick, 16);
+                            }
+                        }
+                    }, delay);
+                } else {
+                    callback();
+                    if (typeof requestAnimationFrame === 'function') {
+                        requestAnimationFrame(tick);
+                    } else {
+                        setTimeout(tick, 16);
+                    }
+                }
+            };
+
+            const unsubscribe = powerState.subscribe((state) => {
+                if (state === 'active' && active) {
+                    if (typeof requestAnimationFrame === 'function') {
+                        requestAnimationFrame(tick);
+                    } else {
+                        setTimeout(tick, 16);
+                    }
+                }
+            });
+
+            if (typeof requestAnimationFrame === 'function') {
+                requestAnimationFrame(tick);
+            } else {
+                setTimeout(tick, 16);
+            }
+
+            return () => {
+                active = false;
+                unsubscribe();
+            };
+        }
+    };
+
+    // Idle management timers
+    let idleTimeout = null;
+    let awayTimeout = null;
+    const IDLE_DELAY_MS = 10000;
+    const AWAY_DELAY_MS = 60000;
+
+    const resetIdleTimer = () => {
+        if (powerState.value === 'suspended') return;
+        if (powerState.value !== 'active') {
+            powerState.value = 'active';
+            powerFps.value = targetFps.value;
+            adaptiveEffects.value = deviceCapability !== 'Low End' && (!batteryState.charging.value || batteryState.level.value > 0.2);
+        }
+
+        if (idleTimeout) clearTimeout(idleTimeout);
+        if (awayTimeout) clearTimeout(awayTimeout);
+
+        idleTimeout = setTimeout(() => {
+            if (powerState.value === 'active') {
+                powerState.value = 'idle';
+                powerFps.value = Math.min(targetFps.value, 15);
+                adaptiveEffects.value = false;
+            }
+        }, IDLE_DELAY_MS);
+
+        awayTimeout = setTimeout(() => {
+            if (powerState.value === 'idle' || powerState.value === 'active') {
+                powerState.value = 'away';
+                powerFps.value = Math.min(targetFps.value, 5);
+                adaptiveEffects.value = false;
+            }
+        }, AWAY_DELAY_MS);
+    };
+
+    // Battery API hookup
+    if (typeof navigator !== 'undefined' && navigator.getBattery) {
+        navigator.getBattery().then(battery => {
+            const updateBattery = () => {
+                batteryState.level.value = battery.level;
+                batteryState.charging.value = battery.charging;
+                if (!battery.charging && battery.level < 0.2) {
+                    targetFps.value = 30;
+                    powerFps.value = Math.min(powerFps.value, 30);
+                    adaptiveEffects.value = false;
+                } else {
+                    targetFps.value = deviceCapability === 'Low End' ? 30 : 60;
+                }
+            };
+            battery.addEventListener('levelchange', updateBattery);
+            battery.addEventListener('chargingchange', updateBattery);
+            updateBattery();
+        });
+    }
+
+    if (typeof window !== 'undefined' && typeof document !== 'undefined') {
+        const events = ['mousemove', 'mousedown', 'touchstart', 'keydown', 'scroll'];
+        events.forEach(evt => {
+            window.addEventListener(evt, resetIdleTimer, { passive: true });
+        });
+
+        document.addEventListener('visibilitychange', () => {
+            isBackground.value = document.hidden;
+            if (document.hidden) {
+                powerState.value = 'suspended';
+                powerFps.value = 0;
+                adaptiveEffects.value = false;
+                if (idleTimeout) clearTimeout(idleTimeout);
+                if (awayTimeout) clearTimeout(awayTimeout);
+            } else {
+                resetIdleTimer();
+            }
+        });
+
+        resetIdleTimer();
+
+        adaptiveEffects.subscribe((enabled) => {
+            if (document.documentElement && document.documentElement.classList) {
+                document.documentElement.classList.toggle('papyr-low-end', !enabled);
+            }
+        });
+    }
+
+    // 4. UI Freeze Recovery System
+    let recoveryEnabled = false;
+    papyr.recovery = {
+        enable(options = {}) {
+            if (recoveryEnabled) return;
+            recoveryEnabled = true;
+            const threshold = options.threshold || 500; // ms threshold to trigger recovery
+
+            // Heartbeat Frame Monitor
+            let lastTick = typeof performance !== 'undefined' ? performance.now() : Date.now();
+            const monitor = () => {
+                if (!recoveryEnabled) return;
+                const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+                const diff = now - lastTick;
+                if (diff > threshold) {
+                    console.warn(`[Papyr Recovery] UI Thread frozen for ${diff.toFixed(1)}ms. Recovering component views.`);
+                    this.recoverAll();
+                }
+                lastTick = now;
+                if (typeof requestAnimationFrame === 'function') {
+                    requestAnimationFrame(monitor);
+                } else {
+                    setTimeout(monitor, 16);
+                }
+            };
+            if (typeof requestAnimationFrame === 'function') {
+                requestAnimationFrame(monitor);
+            } else {
+                setTimeout(monitor, 16);
+            }
+
+            // Native Long Tasks Observer
+            if (typeof PerformanceObserver !== 'undefined') {
+                try {
+                    const observer = new PerformanceObserver((list) => {
+                        list.getEntries().forEach((entry) => {
+                            if (entry.duration > threshold) {
+                                console.warn(`[Papyr Recovery] Long Task Detected: ${entry.duration.toFixed(1)}ms. Activating recovery.`);
+                                this.recoverAll();
+                            }
+                        });
+                    });
+                    observer.observe({ entryTypes: ['longtask'] });
+                } catch (e) {}
+            }
+        },
+
+        disable() {
+            recoveryEnabled = false;
+        },
+
+        recover(el) {
+            if (el && el._renderFn && el.parentNode) {
+                const parent = el.parentNode;
+                try {
+                    const newEl = el._renderFn(el._props);
+                    newEl._renderFn = el._renderFn;
+                    newEl._props = el._props;
+                    
+                    if (typeof papyr._cleanupElement === 'function') {
+                        papyr._cleanupElement(el);
+                    }
+                    parent.replaceChild(newEl, el);
+                    console.log(`[Papyr Recovery] Recovered frozen component <${el.tagName.toLowerCase()}>.`);
+                } catch (err) {
+                    console.error("[Papyr Recovery] Recovery failed:", err);
+                }
+            }
+        },
+
+        recoverAll() {
+            if (papyr.components && papyr.components.registered) {
+                papyr.components.registered.forEach(el => {
+                    if (el._renderFn && document.body && document.body.contains(el)) {
+                        this.recover(el);
+                    }
+                });
+            }
+        }
+    };
+});
+
+
+// --- MODULE: core/style.js ---
+/**
+ * PAPYR STYLE ENGINE
+ * Translates inline JS styles, caches CSS-in-JS rules, and maps natural language aliases.
+ */
+
+coreInitializers.push((papyr) => {
+    const naturalLanguageStyles = {
+        bold: { fontWeight: 'bold' },
+        italic: { fontStyle: 'italic' },
+        underline: { textDecoration: 'underline' },
+        strike: { textDecoration: 'line-through' },
+        small: { fontSize: '0.85em' },
+        large: { fontSize: '1.25em' },
+        thin: { fontWeight: '200' },
+        normal: { fontWeight: 'normal' },
+        thick: { fontWeight: '800' },
+        black: { color: '#000000' },
+        white: { color: '#ffffff' },
+        gray: { color: '#6b7280' },
+        red: { color: '#ef4444' },
+        green: { color: '#10b981' },
+        blue: { color: '#3b82f6' },
+        yellow: { color: '#f59e0b' },
+        left: { textAlign: 'left' },
+        center: { textAlign: 'center' },
+        right: { textAlign: 'right' },
+        justify: { textAlign: 'justify' },
+        flex: { display: 'flex' },
+        grid: { display: 'grid' },
+        column: { flexDirection: 'column' },
+        row: { flexDirection: 'row' },
+        wrap: { flexWrap: 'wrap' }
+    };
+
+    papyr.style = {
+        translate(styleObj) {
+            if (!styleObj) return {};
+            const result = {};
+            const radiusMap = { sm: '4px', md: '8px', lg: '12px', xl: '16px', full: '9999px' };
+            const shadowMap = {
+                sm: '0 1px 2px rgba(0, 0, 0, 0.05)',
+                md: '0 4px 6px rgba(0, 0, 0, 0.1)',
+                lg: '0 10px 15px rgba(0, 0, 0, 0.1)',
+                xl: '0 20px 25px rgba(0, 0, 0, 0.1)'
+            };
+
+            Object.entries(styleObj).forEach(([k, v]) => {
+                if (k === 'bg') {
+                    result.background = v;
+                } else if (k === 'radius') {
+                    result.borderRadius = radiusMap[v] || v;
+                } else if (k === 'shadow') {
+                    result.boxShadow = shadowMap[v] || v;
+                } else if (k in naturalLanguageStyles) {
+                    if (v === true) {
+                        Object.assign(result, naturalLanguageStyles[k]);
+                    }
+                } else {
+                    result[k] = v;
+                }
+            });
+            return result;
+        },
+
+        parseNaturalLanguageArray(arr) {
+            if (!Array.isArray(arr)) return {};
+            const styles = {};
+            arr.forEach(item => {
+                if (typeof item === 'string' && naturalLanguageStyles[item]) {
+                    Object.assign(styles, naturalLanguageStyles[item]);
+                }
+            });
+            return styles;
+        }
+    };
+
+    const styleFunction = (cssText) => {
+        if (typeof document === 'undefined') return;
+        const style = document.createElement('style');
+        style.textContent = cssText;
+        document.head.appendChild(style);
+        return style;
+    };
+    
+    Object.assign(styleFunction, papyr.style);
+    papyr.style = styleFunction;
+
+    // CSS-in-JS style caching & deduplication engine
+    const styleCache = new Map();
+    
+    papyr.css = (styles) => {
+        if (!styles) return '';
+        const translated = papyr.style.translate(styles);
+        
+        // Sort keys to produce deterministic hash key
+        const key = Object.entries(translated)
+            .sort((a, b) => a[0].localeCompare(b[0]))
+            .map(([k, v]) => `${k}:${v}`)
+            .join(';');
+        
+        if (styleCache.has(key)) {
+            return styleCache.get(key);
+        }
+
+        const className = `papyr-css-${Math.random().toString(36).substring(2, 9)}`;
+        styleCache.set(key, className);
+
+        if (typeof document !== 'undefined') {
+            const cssRules = Object.entries(translated)
+                .map(([k, v]) => {
+                    const cssKey = k.replace(/([A-Z])/g, '-$1').toLowerCase();
+                    return `${cssKey}: ${v};`;
+                })
+                .join(' ');
+            
+            const style = document.createElement('style');
+            style.textContent = `.${className} { ${cssRules} }`;
+            document.head.appendChild(style);
+        }
+
+        return className;
+    };
+
+    // Natural Language Text helper
+    papyr.text = (content, styleConfig) => {
+        const extraProps = {};
+        if (Array.isArray(styleConfig)) {
+            extraProps.style = papyr.style.parseNaturalLanguageArray(styleConfig);
+        } else if (typeof styleConfig === 'object' && styleConfig !== null) {
+            extraProps.style = papyr.style.translate(styleConfig);
+        } else if (typeof styleConfig === 'string') {
+            if (styleConfig.startsWith('.') || styleConfig.startsWith('#')) {
+                return papyr.span(styleConfig, content);
+            } else {
+                extraProps.style = papyr.style.parseNaturalLanguageArray([styleConfig]);
+            }
+        }
+        return papyr.span(extraProps, content);
+    };
+
+    // Themeable styled button wrapper
+    const originalButton = papyr.button;
+    papyr.button = (label, styleConfig, ...children) => {
+        if (styleConfig && typeof styleConfig === 'object' && !styleConfig.tagName && !styleConfig._subscribers) {
+            const { variant, size, ...rest } = styleConfig;
+            const customStyles = papyr.style.translate(rest);
+            
+            if (variant === 'primary') {
+                Object.assign(customStyles, {
+                    background: 'var(--primary, #6366f1)',
+                    color: 'white',
+                    border: 'none',
+                    cursor: 'pointer',
+                    transition: 'opacity 0.2s'
+                });
+            } else if (variant === 'secondary') {
+                Object.assign(customStyles, {
+                    background: 'rgba(255,255,255,0.06)',
+                    color: 'white',
+                    border: '1px solid rgba(255,255,255,0.1)',
+                    cursor: 'pointer',
+                    transition: 'background 0.2s'
+                });
+            }
+
+            if (size === 'lg') {
+                Object.assign(customStyles, {
+                    padding: '12px 24px',
+                    fontSize: '1.1rem',
+                    borderRadius: '8px'
+                });
+            } else if (size === 'sm') {
+                Object.assign(customStyles, {
+                    padding: '6px 12px',
+                    fontSize: '0.85rem',
+                    borderRadius: '4px'
+                });
+            } else if (size === 'md' || !size) {
+                Object.assign(customStyles, {
+                    padding: '8px 16px',
+                    fontSize: '1rem',
+                    borderRadius: '6px'
+                });
+            }
+
+            return originalButton({ style: customStyles }, label, ...children);
+        }
+        
+        return originalButton(label, styleConfig, ...children);
+    };
+});
+
+
+// --- MODULE: core/layout.js ---
+/**
+ * PAPYR LAYOUT ENGINE
+ * Handles viewport breakpoints and responsive layout bindings.
+ */
+
+coreInitializers.push((papyr) => {
+    // 1. Breakpoint definitions
+    const breakpoints = {
+        mobile: 0,
+        tablet: 768,
+        laptop: 1024,
+        desktop: 1440,
+        ultrawide: 2560
+    };
+
+    let currentDeviceClass = 'desktop';
+    
+    const getDeviceClass = (width) => {
+        if (width < breakpoints.tablet) return 'mobile';
+        if (width < breakpoints.laptop) return 'tablet';
+        if (width < breakpoints.desktop) return 'laptop';
+        if (width < breakpoints.ultrawide) return 'desktop';
+        return 'ultrawide';
+    };
+
+    // 2. Setup Device Class state
+    if (typeof window !== 'undefined') {
+        currentDeviceClass = papyr.state(getDeviceClass(window.innerWidth));
+        
+        const updateDeviceClass = () => {
+            const width = window.innerWidth;
+            const newClass = getDeviceClass(width);
+            if (currentDeviceClass.value !== newClass) {
+                currentDeviceClass.value = newClass;
+            }
+            
+            // Sync with document element classes
+            if (document.documentElement && document.documentElement.classList) {
+                Object.keys(breakpoints).forEach(cls => {
+                    document.documentElement.classList.toggle(`papyr-layout-${cls}`, cls === newClass);
+                });
+            }
+        };
+
+        window.addEventListener('resize', updateDeviceClass);
+        updateDeviceClass();
+    } else {
+        currentDeviceClass = papyr.state('desktop');
+    }
+
+    papyr.layout = papyr.layout || {};
+    papyr.layout.deviceClass = currentDeviceClass;
+
+    // 3. Responsive element layout observer hook
+    papyr.layout.observeResponsive = (el, enable) => {
+        if (!el || typeof window === 'undefined') return;
+        
+        if (!enable) {
+            if (el._responsiveResizeObserver) {
+                el._responsiveResizeObserver.disconnect();
+                delete el._responsiveResizeObserver;
+            }
+            return;
+        }
+
+        if (el._responsiveResizeObserver) return;
+
+        const updateResponsiveLayout = (width) => {
+            const newClass = getDeviceClass(width);
+            Object.keys(breakpoints).forEach(cls => {
+                el.classList.toggle(`papyr-responsive-${cls}`, cls === newClass);
+            });
+            // Auto flex direction adjustment for grids/flex container columns on mobile
+            if (newClass === 'mobile') {
+                el.style.flexDirection = 'column';
+            } else {
+                el.style.flexDirection = '';
+            }
+        };
+
+        if (typeof ResizeObserver !== 'undefined') {
+            const observer = new ResizeObserver((entries) => {
+                for (let entry of entries) {
+                    updateResponsiveLayout(entry.contentRect.width || entry.target.clientWidth);
+                }
+            });
+            observer.observe(el);
+            el._responsiveResizeObserver = observer;
+            
+            if (!el._cleanups) el._cleanups = [];
+            el._cleanups.push(() => observer.disconnect());
+        } else {
+            const handler = () => updateResponsiveLayout(window.innerWidth);
+            window.addEventListener('resize', handler);
+            handler();
+            
+            if (!el._cleanups) el._cleanups = [];
+            el._cleanups.push(() => window.removeEventListener('resize', handler));
+        }
+    };
+});
+
+
+// --- MODULE: core/accessibility.js ---
+/**
+ * PAPYR ACCESSIBILITY & THEME ENGINE
+ * Implements themes, adaptive battery-aware layouts, True Tone warmth overlays, and accessibility presets.
+ */
+
+coreInitializers.push((papyr) => {
+    // 1. Accessibility Configuration API
+    let reducedMotion = false;
+    let largeTextEnabled = false;
+    let accessibilityContrast = 'normal';
+
+    papyr.accessibility = {
+        motion(enable) {
+            reducedMotion = !enable;
+            if (typeof document !== 'undefined' && document.documentElement) {
+                document.documentElement.classList.toggle('papyr-reduced-motion', !enable);
+                // Set CSS to disable transitions
+                if (!enable) {
+                    papyr.style(`
+                        .papyr-reduced-motion *, .papyr-reduced-motion *::before, .papyr-reduced-motion *::after {
+                            animation-delay: -1ms !important;
+                            animation-duration: 1ms !important;
+                            animation-iteration-count: 1 !important;
+                            background-attachment: initial !important;
+                            scroll-behavior: auto !important;
+                            transition-duration: 0s !important;
+                            transition-delay: 0s !important;
+                        }
+                    `);
+                }
+            }
+            console.log(`♿ Accessibility: Reduced Motion set to ${!enable}`);
+            return this;
+        },
+
+        largeText(enable) {
+            largeTextEnabled = !!enable;
+            if (typeof document !== 'undefined' && document.documentElement) {
+                document.documentElement.classList.toggle('papyr-large-text', enable);
+                if (enable) {
+                    papyr.style(`
+                        .papyr-large-text {
+                            font-size: 115% !important;
+                        }
+                    `);
+                }
+            }
+            console.log(`♿ Accessibility: Large Text set to ${enable}`);
+            return this;
+        },
+
+        contrast(level) {
+            accessibilityContrast = level;
+            if (typeof document !== 'undefined' && document.documentElement) {
+                const enable = level === 'high';
+                document.documentElement.classList.toggle('papyr-high-contrast', enable);
+                if (enable) {
+                    // Set high contrast CSS variables
+                    papyr.theme({
+                        'bg-primary': '#000000',
+                        'text-primary': '#ffffff',
+                        'primary': '#ffff00',
+                        'border-color': '#ffffff'
+                    });
+                } else {
+                    // Reset to standard
+                    papyr.theme({
+                        'bg-primary': '',
+                        'text-primary': '',
+                        'primary': '',
+                        'border-color': ''
+                    });
+                }
+            }
+            console.log(`♿ Accessibility: Contrast level set to ${level}`);
+            return this;
+        },
+
+        // Helper to auto-inject ARIA role and attributes on element creation
+        autoAria(el, tag) {
+            if (!el || typeof el.setAttribute !== 'function') return;
+
+            const t = tag.toLowerCase();
+            // Fallback Role
+            if (!el.hasAttribute('role')) {
+                if (t === 'button') el.setAttribute('role', 'button');
+                else if (t === 'a' && el.hasAttribute('href')) el.setAttribute('role', 'link');
+                else if (t === 'input' && el.getAttribute('type') === 'checkbox') el.setAttribute('role', 'checkbox');
+                else if (t === 'input' && el.getAttribute('type') === 'radio') el.setAttribute('role', 'radio');
+                else if (['nav', 'header', 'footer', 'main', 'aside'].includes(t)) el.setAttribute('role', t);
+            }
+
+            // Fallback aria-label if element is interactive but has no text label or aria-label
+            if (!el.hasAttribute('aria-label') && ['button', 'a'].includes(t)) {
+                const text = el.textContent || el.getAttribute('title') || el.getAttribute('placeholder');
+                if (text) {
+                    el.setAttribute('aria-label', text.trim());
+                }
+            }
+        }
+    };
+
+    // 2. Keyboard Focus Ring Visibility Tracker
+    if (typeof window !== 'undefined' && typeof document !== 'undefined') {
+        const handleFirstTab = (e) => {
+            if (e.key === 'Tab') {
+                document.body.classList.add('papyr-user-is-tabbing');
+                // Inject styling for visible focus outline
+                papyr.style(`
+                    .papyr-user-is-tabbing *:focus {
+                        outline: 3px solid var(--primary, #6366f1) !important;
+                        outline-offset: 2px !important;
+                    }
+                `);
+                window.removeEventListener('keydown', handleFirstTab);
+            }
+        };
+        window.addEventListener('keydown', handleFirstTab);
+    }
+
+    // 3. Theme Engine Configuration (Themes support)
+    let currentTheme = 'light';
+    let adaptiveThemeUnsubscribe = null;
+    let batteryThreshold = 0.20; // Default: 20% battery trigger
+
+    const applyThemeVariables = (name) => {
+        if (typeof document === 'undefined') return;
+        const root = document.documentElement;
+        
+        // Remove old theme classes
+        const themes = ['light', 'dark', 'dim', 'oled', 'high-contrast'];
+        themes.forEach(t => root.classList.remove(`papyr-theme-${t}`));
+        root.classList.add(`papyr-theme-${name}`);
+
+        // Set variables base
+        const palette = {
+            light: { bg: '#ffffff', text: '#0f172a', primary: '#6366f1', border: '#e2e8f0' },
+            dark: { bg: '#0f172a', text: '#f8fafc', primary: '#818cf8', border: '#334155' },
+            dim: { bg: '#1e293b', text: '#cbd5e1', primary: '#6366f1', border: '#475569' },
+            oled: { bg: '#000000', text: '#f8fafc', primary: '#818cf8', border: '#1e293b' },
+            'high-contrast': { bg: '#000000', text: '#ffffff', primary: '#ffff00', border: '#ffffff' }
+        }[name] || palette.light;
+
+        Object.entries(palette).forEach(([k, v]) => {
+            root.style.setProperty(`--papyr-${k}-color`, v);
+            root.style.setProperty(`--${k}`, v);
+        });
+    };
+
+    papyr.theme = (config, options = {}) => {
+        if (typeof document === 'undefined') return papyr;
+
+        // Clean up active adaptive watchers
+        if (adaptiveThemeUnsubscribe) {
+            adaptiveThemeUnsubscribe();
+            adaptiveThemeUnsubscribe = null;
+        }
+
+        // True Tone warmth overlay cleanup
+        const overlay = document.getElementById('papyr-true-tone-overlay');
+        if (overlay) overlay.remove();
+
+        if (typeof config === 'string') {
+            const nameLower = config.toLowerCase();
+            
+            // True Tone Warmth Theme (sepia & brightness warm filter)
+            if (nameLower === 'true-tone') {
+                const warmthOverlay = document.createElement('div');
+                warmthOverlay.id = 'papyr-true-tone-overlay';
+                warmthOverlay.style.cssText = `
+                    position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+                    pointer-events: none; z-index: 999999;
+                    background: rgba(253, 186, 116, 0.05); /* warm light orange tint */
+                    backdrop-filter: sepia(0.06) brightness(0.97);
+                    -webkit-backdrop-filter: sepia(0.06) brightness(0.97);
+                `;
+                document.body.appendChild(warmthOverlay);
+                console.log("🌞 Theme: True Tone Warmth Filter applied.");
+                return papyr;
+            }
+
+            // Adaptive Theme: System scheme, ambient light, and battery options
+            if (nameLower === 'adaptive') {
+                if (options.batteryThreshold !== undefined) {
+                    batteryThreshold = options.batteryThreshold;
+                }
+                
+                const syncAdaptiveTheme = () => {
+                    let target = 'light';
+                    
+                    // a. System color preferences (media query prefers-color-scheme)
+                    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+                    if (prefersDark) target = 'dark';
+                    
+                    // b. Battery Awareness (OLED mode if battery level drops below threshold and not charging)
+                    if (papyr.power && papyr.power.battery) {
+                        const isCharging = papyr.power.battery.charging.value;
+                        const batteryLevel = papyr.power.battery.level.value;
+                        
+                        if (!isCharging && batteryLevel < batteryThreshold) {
+                            console.log(`🔋 Low Battery Alert (${Math.round(batteryLevel * 100)}%): Switching adaptive theme to OLED.`);
+                            target = 'oled';
+                        }
+                    }
+                    
+                    applyThemeVariables(target);
+                };
+
+                // Subscribe to battery changes
+                let unsubBatteryCharging = () => {};
+                let unsubBatteryLevel = () => {};
+                if (papyr.power && papyr.power.battery) {
+                    unsubBatteryCharging = papyr.power.battery.charging.subscribe(syncAdaptiveTheme);
+                    unsubBatteryLevel = papyr.power.battery.level.subscribe(syncAdaptiveTheme);
+                }
+
+                // Listen to media query changes
+                const systemMatcher = window.matchMedia('(prefers-color-scheme: dark)');
+                systemMatcher.addEventListener('change', syncAdaptiveTheme);
+
+                syncAdaptiveTheme();
+
+                adaptiveThemeUnsubscribe = () => {
+                    unsubBatteryCharging();
+                    unsubBatteryLevel();
+                    systemMatcher.removeEventListener('change', syncAdaptiveTheme);
+                };
+                
+                console.log(`🤖 Theme: Adaptive Theme Engine enabled (Battery Threshold: ${Math.round(batteryThreshold * 100)}%).`);
+                return papyr;
+            }
+
+            // Standard Themes
+            applyThemeVariables(nameLower);
+            currentTheme = nameLower;
+
+        } else if (typeof config === 'object') {
+            // Apply custom CSS custom variables overrides
+            Object.entries(config).forEach(([key, val]) => {
+                document.documentElement.style.setProperty(`--papyr-${key}`, val);
+                document.documentElement.style.setProperty(`--${key}`, val);
+            });
+        }
+        return papyr;
+    };
+});
+
+
+// --- MODULE: core/renovate.js ---
+/**
+ * PAPYR LEGACY RENOVATION MODE
+ * Progressive modernization layer for jQuery/Legacy CRM pages.
+ * Supports non-destructive auditing and live component substitution.
+ */
+
+coreInitializers.push((papyr) => {
+    papyr.renovate = (options = {}) => {
+        const rootSelector = options.root || '#legacy-app';
+        const doc = typeof document !== 'undefined' ? document : null;
+        if (!doc) {
+            console.warn("[Papyr Renovate] Document is not defined. Skipping renovation.");
+            return { auditResults: null, root: null };
+        }
+
+        const rootEl = typeof rootSelector === 'string' ? doc.querySelector(rootSelector) : rootSelector;
+        if (!rootEl) {
+            console.warn(`[Papyr Renovate] Root element not found for selector: ${rootSelector}`);
+            return { auditResults: null, root: null };
+        }
+
+        const preserveStyles = options.preserveStyles !== false;
+        const preserveLayout = options.preserveLayout !== false;
+        const replacements = options.replacements || {};
+
+        const auditResults = {
+            accessibility: [],
+            performance: [],
+            responsive: [],
+            legacyElements: []
+        };
+
+        // 1. Recursive DOM Tree Audit
+        const walk = (el) => {
+            if (!el || el.nodeType !== 1) return;
+
+            const tagName = el.tagName.toLowerCase();
+
+            // A. Accessibility Auditing
+            if (tagName === 'img' && !el.hasAttribute('alt')) {
+                auditResults.accessibility.push({
+                    element: el,
+                    issue: "Missing 'alt' attribute on <img> element.",
+                    severity: "high"
+                });
+                // Auto-inject default alt tag to improve accessibility
+                el.setAttribute('alt', 'Renovated image asset');
+            }
+
+            if (['button', 'a', 'input', 'select', 'textarea'].includes(tagName)) {
+                if (!el.hasAttribute('aria-label') && !el.textContent.trim()) {
+                    auditResults.accessibility.push({
+                        element: el,
+                        issue: `Missing 'aria-label' or text content on interactive <${tagName}> element.`,
+                        severity: "medium"
+                    });
+                    el.setAttribute('aria-label', `Renovated ${tagName} control`);
+                }
+            }
+
+            // B. Performance Auditing
+            if (el.hasAttribute('style')) {
+                const styleText = el.getAttribute('style');
+                if (styleText && styleText.split(';').filter(Boolean).length > 2) {
+                    auditResults.performance.push({
+                        element: el,
+                        issue: "Inline style attribute contains multiple definitions. Consider caching via CSS-in-JS.",
+                        severity: "low"
+                    });
+                    
+                    // If styles preservation is off, modernize inline styles using Papyr CSS cache engine
+                    if (!preserveStyles && papyr.css) {
+                        const styleObj = {};
+                        styleText.split(';').forEach(pair => {
+                            const [k, v] = pair.split(':');
+                            if (k && v) {
+                                styleObj[k.trim()] = v.trim();
+                            }
+                        });
+                        try {
+                            const className = papyr.css(styleObj);
+                            el.removeAttribute('style');
+                            el.classList.add(className);
+                        } catch (e) {}
+                    }
+                }
+            }
+
+            // C. Legacy Element Detection
+            if (['font', 'center', 'marquee', 'dir', 'applet', 'strike'].includes(tagName)) {
+                auditResults.legacyElements.push({
+                    element: el,
+                    issue: `Obsolete layout element <${tagName}> detected.`,
+                    severity: "high"
+                });
+            }
+
+            // D. Responsive Auditing
+            if (el.hasAttribute('width') && !['canvas', 'svg', 'img', 'video', 'embed'].includes(tagName)) {
+                auditResults.responsive.push({
+                    element: el,
+                    issue: `Hardcoded width attribute on <${tagName}> reduces responsiveness.`,
+                    severity: "medium"
+                });
+                if (!preserveLayout) {
+                    el.style.width = '100%';
+                    el.removeAttribute('width');
+                }
+            }
+
+            if (el.hasAttribute('height') && !['canvas', 'svg', 'img', 'video', 'embed'].includes(tagName)) {
+                auditResults.responsive.push({
+                    element: el,
+                    issue: `Hardcoded height attribute on <${tagName}>.`,
+                    severity: "medium"
+                });
+                if (!preserveLayout) {
+                    el.removeAttribute('height');
+                }
+            }
+
+            Array.from(el.children).forEach(walk);
+        };
+
+        walk(rootEl);
+
+        // 2. Component Substitutions (Progressive Modernization)
+        Object.entries(replacements).forEach(([selector, componentFactory]) => {
+            const targets = rootEl.querySelectorAll(selector);
+            targets.forEach(target => {
+                const parent = target.parentNode;
+                if (!parent) return;
+
+                // Capture legacy styles, class names and data for preservation
+                let backupClasses = [];
+                let backupStyles = '';
+                if (preserveStyles) {
+                    backupClasses = Array.from(target.classList);
+                    backupStyles = target.getAttribute('style') || '';
+                }
+
+                // Instantiate the Papyr component replacing it
+                const replacementNode = typeof componentFactory === 'function' ? componentFactory(target) : componentFactory;
+                if (replacementNode) {
+                    if (preserveStyles && replacementNode.nodeType === 1) {
+                        backupClasses.forEach(cls => replacementNode.classList.add(cls));
+                        if (backupStyles) {
+                            const currentStyle = replacementNode.getAttribute('style') || '';
+                            replacementNode.setAttribute('style', [currentStyle, backupStyles].filter(Boolean).join('; '));
+                        }
+                    }
+                    
+                    // Maintain compatibility: Clean up target events before replacement
+                    if (typeof papyr._cleanupElement === 'function') {
+                        papyr._cleanupElement(target);
+                    }
+                    
+                    parent.replaceChild(replacementNode, target);
+                }
+            });
+        });
+
+        console.log(`🏠 [Papyr Renovate] Legacy renovation completed on "${rootSelector}". Accessibility issues: ${auditResults.accessibility.length}, Performance issues: ${auditResults.performance.length}, Responsive: ${auditResults.responsive.length}, Legacy Tags: ${auditResults.legacyElements.length}.`);
+
+        return {
+            auditResults,
+            root: rootEl
+        };
+    };
+});
+
+
+// --- MODULE: core/gateway.js ---
+/**
+ * PAPYR OPEN GATEWAY ARCHITECTURE
+ * Core Gateway registration interface supporting unified adapters.
+ */
+
+coreInitializers.push((papyr) => {
+    const registeredGateways = new Map();
+    
+    papyr.gateway = {
+        register(name, adapter) {
+            if (!name || !adapter) return;
+            registeredGateways.set(name.toLowerCase(), adapter);
+            console.log(`🔌 Papyr Gateway: Registered adapter "${name}" successfully.`);
+            if (typeof adapter.initialize === 'function') {
+                adapter.initialize(papyr);
+            }
+        },
+        resolve(name) {
+            return registeredGateways.get(name.toLowerCase());
+        },
+        list() {
+            return Array.from(registeredGateways.keys());
+        }
+    };
+});
+
+
+// --- MODULE: core/sdk.js ---
+/**
+ * PAPYR STUDIO & IDE SDK FOUNDATION
+ * Diagnostics, structural tree inspectors, layout grid overlays, and dev-tooling integration.
+ */
+
+coreInitializers.push((papyr) => {
+    papyr.sdk = {
+        getComponentTree() {
+            if (!papyr.isBrowser()) return {};
+            const root = document.body;
+            
+            const buildNode = (node) => {
+                if (node.nodeType === 3) {
+                    const txt = node.nodeValue.trim();
+                    return txt ? { type: 'text', content: txt } : null;
+                }
+                if (node.nodeType !== 1) return null;
+
+                const info = {
+                    tag: node.tagName.toLowerCase(),
+                    id: node.id || undefined,
+                    classes: node.className ? node.className.split(' ').filter(Boolean) : undefined,
+                    isMounted: node._isMounted || false
+                };
+
+                if (node._renderFn) {
+                    info.componentName = node._renderFn.name || 'AnonymousComponent';
+                }
+
+                const children = Array.from(node.childNodes)
+                    .map(buildNode)
+                    .filter(Boolean);
+                
+                if (children.length > 0) info.children = children;
+                return info;
+            };
+
+            return buildNode(root);
+        },
+
+        inspectState() {
+            if (papyr.state && typeof papyr.state.list === 'function') {
+                return papyr.state.list().map((s, idx) => ({
+                    id: idx,
+                    value: s.value,
+                    subscribersCount: s._subscribers ? s._subscribers.size : 0
+                }));
+            }
+            return [];
+        },
+
+        onHotReload(cb) {
+            if (typeof window !== 'undefined') {
+                window.addEventListener('papyr-hot-reload', (e) => {
+                    cb(e.detail);
+                });
+            }
+        },
+
+        toggleDesignGrid(enable, spacing = 8) {
+            if (!papyr.isBrowser()) return;
+            
+            let gridOverlay = document.getElementById('papyr-design-grid-overlay');
+            if (!enable) {
+                if (gridOverlay) gridOverlay.remove();
+                return;
+            }
+            
+            if (gridOverlay) {
+                gridOverlay.style.backgroundSize = `${spacing}px ${spacing}px`;
+                return;
+            }
+
+            gridOverlay = document.createElement('div');
+            gridOverlay.id = 'papyr-design-grid-overlay';
+            gridOverlay.style.cssText = `
+                position: fixed;
+                top: 0; left: 0; width: 100vw; height: 100vh;
+                pointer-events: none;
+                z-index: 999999;
+                background-image: 
+                    linear-gradient(to right, rgba(99, 102, 241, 0.04) 1px, transparent 1px),
+                    linear-gradient(to bottom, rgba(99, 102, 241, 0.04) 1px, transparent 1px);
+                background-size: ${spacing}px ${spacing}px;
+            `;
+            document.body.appendChild(gridOverlay);
+        }
+    };
+});
+
+
+// --- MODULE: core/virtualization.js ---
+/**
+ * PAPYR VIRTUALIZATION ENGINE
+ * High-performance virtual rendering engines for massive dataset handling in lists, grids, and tables.
+ */
+
+coreInitializers.push((papyr) => {
+    // 1. Virtual List
+    papyr.virtualList = (options) => {
+        const { items, itemHeight, renderItem, height = 400 } = options;
+        
+        const container = papyr.div({
+            style: {
+                height: typeof height === 'number' ? `${height}px` : height,
+                overflowY: 'auto',
+                position: 'relative'
+            }
+        });
+
+        const listHeight = items.length * itemHeight;
+        const innerContainer = papyr.div({
+            style: {
+                height: `${listHeight}px`,
+                position: 'relative',
+                width: '100%'
+            }
+        });
+        container.appendChild(innerContainer);
+
+        const visibleItems = new Map();
+
+        const updateItems = () => {
+            const scrollTop = container.scrollTop;
+            const viewportHeight = container.clientHeight;
+            
+            const startIndex = Math.max(0, Math.floor(scrollTop / itemHeight) - 2);
+            const endIndex = Math.min(items.length - 1, Math.floor((scrollTop + viewportHeight) / itemHeight) + 2);
+
+            // Cleanup non-visible
+            visibleItems.forEach((el, index) => {
+                if (index < startIndex || index > endIndex) {
+                    if (el.parentNode === innerContainer) {
+                        innerContainer.removeChild(el);
+                    }
+                    if (typeof papyr._cleanupElement === 'function') {
+                        papyr._cleanupElement(el);
+                    }
+                    visibleItems.delete(index);
+                }
+            });
+
+            // Render visible
+            for (let i = startIndex; i <= endIndex; i++) {
+                if (!visibleItems.has(i)) {
+                    const itemEl = renderItem(items[i], i);
+                    itemEl.style.position = 'absolute';
+                    itemEl.style.top = `${i * itemHeight}px`;
+                    itemEl.style.left = '0';
+                    itemEl.style.width = '100%';
+                    itemEl.style.height = `${itemHeight}px`;
+                    innerContainer.appendChild(itemEl);
+                    visibleItems.set(i, itemEl);
+                }
+            }
+        };
+
+        container.addEventListener('scroll', updateItems);
+        
+        // Trigger updates once mounted
+        if (typeof requestAnimationFrame === 'function') {
+            requestAnimationFrame(updateItems);
+        } else {
+            setTimeout(updateItems, 0);
+        }
+
+        return container;
+    };
+
+    // 2. Virtual Grid
+    papyr.virtualGrid = (options) => {
+        const { items, itemHeight, columnsCount, renderItem, height = 400 } = options;
+        
+        const container = papyr.div({
+            style: {
+                height: typeof height === 'number' ? `${height}px` : height,
+                overflowY: 'auto',
+                position: 'relative'
+            }
+        });
+
+        const rowsCount = Math.ceil(items.length / columnsCount);
+        const listHeight = rowsCount * itemHeight;
+        
+        const innerContainer = papyr.div({
+            style: {
+                height: `${listHeight}px`,
+                position: 'relative',
+                width: '100%'
+            }
+        });
+        container.appendChild(innerContainer);
+
+        const visibleItems = new Map();
+
+        const updateItems = () => {
+            const scrollTop = container.scrollTop;
+            const viewportHeight = container.clientHeight;
+            
+            const startRow = Math.max(0, Math.floor(scrollTop / itemHeight) - 1);
+            const endRow = Math.min(rowsCount - 1, Math.floor((scrollTop + viewportHeight) / itemHeight) + 1);
+
+            const startIndex = startRow * columnsCount;
+            const endIndex = Math.min(items.length - 1, (endRow + 1) * columnsCount - 1);
+
+            // Cleanup non-visible
+            visibleItems.forEach((el, index) => {
+                if (index < startIndex || index > endIndex) {
+                    if (el.parentNode === innerContainer) {
+                        innerContainer.removeChild(el);
+                    }
+                    if (typeof papyr._cleanupElement === 'function') {
+                        papyr._cleanupElement(el);
+                    }
+                    visibleItems.delete(index);
+                }
+            });
+
+            // Render visible
+            for (let i = startIndex; i <= endIndex; i++) {
+                if (!visibleItems.has(i)) {
+                    const row = Math.floor(i / columnsCount);
+                    const col = i % columnsCount;
+                    
+                    const itemEl = renderItem(items[i], i);
+                    itemEl.style.position = 'absolute';
+                    itemEl.style.top = `${row * itemHeight}px`;
+                    itemEl.style.left = `${(col * 100) / columnsCount}%`;
+                    itemEl.style.width = `${100 / columnsCount}%`;
+                    itemEl.style.height = `${itemHeight}px`;
+                    innerContainer.appendChild(itemEl);
+                    visibleItems.set(i, itemEl);
+                }
+            }
+        };
+
+        container.addEventListener('scroll', updateItems);
+        
+        if (typeof requestAnimationFrame === 'function') {
+            requestAnimationFrame(updateItems);
+        } else {
+            setTimeout(updateItems, 0);
+        }
+
+        return container;
+    };
+
+    // 3. Virtual Table
+    papyr.virtualTable = (options) => {
+        const { items, rowHeight, columns, renderCell, height = 400 } = options;
+        
+        const scrollContainer = papyr.div({
+            style: {
+                height: typeof height === 'number' ? `${height}px` : height,
+                overflowY: 'auto',
+                position: 'relative'
+            }
+        });
+
+        const listHeight = items.length * rowHeight;
+        const innerContainer = papyr.div({
+            style: {
+                height: `${listHeight}px`,
+                position: 'relative',
+                width: '100%'
+            }
+        });
+        scrollContainer.appendChild(innerContainer);
+
+        const visibleRows = new Map();
+
+        const updateItems = () => {
+            const scrollTop = scrollContainer.scrollTop;
+            const viewportHeight = scrollContainer.clientHeight;
+            
+            const startIndex = Math.max(0, Math.floor(scrollTop / rowHeight) - 2);
+            const endIndex = Math.min(items.length - 1, Math.floor((scrollTop + viewportHeight) / rowHeight) + 2);
+
+            // Cleanup non-visible rows
+            visibleRows.forEach((el, index) => {
+                if (index < startIndex || index > endIndex) {
+                    if (el.parentNode === innerContainer) {
+                        innerContainer.removeChild(el);
+                    }
+                    if (typeof papyr._cleanupElement === 'function') {
+                        papyr._cleanupElement(el);
+                    }
+                    visibleRows.delete(index);
+                }
+            });
+
+            // Render visible rows
+            for (let i = startIndex; i <= endIndex; i++) {
+                if (!visibleRows.has(i)) {
+                    // Create row element (represented as absolute positioned div containing grid cells)
+                    const cells = columns.map((col, cIdx) => {
+                        const cellVal = items[i][col.key];
+                        const cellContent = renderCell ? renderCell(cellVal, col, items[i], i) : String(cellVal || '');
+                        
+                        return papyr.div({
+                            style: {
+                                flex: col.width ? `0 0 ${col.width}` : '1',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
+                                padding: '8px'
+                            }
+                        }, cellContent);
+                    });
+
+                    const rowEl = papyr.flex.row({
+                        style: {
+                            position: 'absolute',
+                            top: `${i * rowHeight}px`,
+                            left: '0',
+                            width: '100%',
+                            height: `${rowHeight}px`,
+                            alignItems: 'center',
+                            borderBottom: '1px solid rgba(255,255,255,0.05)',
+                            background: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.01)'
+                        }
+                    }, ...cells);
+
+                    innerContainer.appendChild(rowEl);
+                    visibleRows.set(i, rowEl);
+                }
+            }
+        };
+
+        scrollContainer.addEventListener('scroll', updateItems);
+        
+        if (typeof requestAnimationFrame === 'function') {
+            requestAnimationFrame(updateItems);
+        } else {
+            setTimeout(updateItems, 0);
+        }
+
+        return scrollContainer;
+    };
+});
+
+
 
     // Export isomorphic context BEFORE loading plugins
     let papyrInstance = createPapyr();
@@ -4328,91 +6363,7 @@ if (typeof window !== 'undefined' && !window.papyr) {
     // 1. NODE.JS & EXPRESS SERVER-SIDE RENDERING
     // ==========================================
     
-    /**
-     * Renders standard Papyr DOM elements and nested structures to a pure static HTML string.
-     * Supports browser nodes, DocumentFragments, array loops, text nodes, and virtual testing objects.
-     */
-    papyr.ssr = function ssr(element) {
-        if (element === null || element === undefined) return '';
-        
-        // 1. Primitive values (strings, numbers)
-        if (typeof element === 'string' || typeof element === 'number') {
-            return String(element);
-        }
-        
-        // 2. Arrays of elements
-        if (Array.isArray(element)) {
-            return element.map(ssr).join('');
-        }
-        
-        // 3. Text Nodes (native nodeType 3 or virtual structure objects)
-        if (element.nodeType === 3 || (element.textContent !== undefined && !element.tagName)) {
-            return String(element.textContent || '');
-        }
 
-        // 4. DocumentFragments / template contents
-        if (element instanceof DocumentFragment || element.tagName === 'TEMPLATE-CONTENT' || (element.children && !element.tagName)) {
-            if (element.children && Array.isArray(element.children)) {
-                return element.children.map(ssr).join('');
-            }
-            return '';
-        }
-
-        // 5. Native and virtual HTML elements
-        let tag = (element.tagName || 'DIV').toLowerCase();
-        
-        let attrsStr = '';
-        if (element.id) {
-            attrsStr += ` id="${element.id}"`;
-        }
-        
-        if (element.className) {
-            attrsStr += ` class="${element.className}"`;
-        }
-        
-        if (element.style) {
-            let styleKeys = Object.keys(element.style);
-            if (styleKeys.length > 0) {
-                let styleStr = styleKeys.map(k => {
-                    let cssKey = k.replace(/([A-Z])/g, '-$1').toLowerCase();
-                    return `${cssKey}:${element.style[k]}`;
-                }).join(';');
-                attrsStr += ` style="${styleStr}"`;
-            }
-        }
-
-        if (element.dataset) {
-            Object.entries(element.dataset).forEach(([k, v]) => {
-                attrsStr += ` data-${k.replace(/([A-Z])/g, '-$1').toLowerCase()}="${v}"`;
-            });
-        }
-
-        // Render other direct primitive properties as HTML attributes (excluding internal variables)
-        const ignoredKeys = ['tagName', 'style', 'dataset', 'classList', 'children', 'parentNode', 'listeners', 'className', 'id', 'textContent', 'nodeType', 'innerHTML'];
-        Object.entries(element).forEach(([k, v]) => {
-            if (!ignoredKeys.includes(k) && typeof v !== 'function' && typeof v !== 'object') {
-                attrsStr += ` ${k}="${v}"`;
-            }
-        });
-
-        // HTML5 self-closing elements
-        const selfClosing = ['area','base','br','col','embed','hr','img','input','link','meta','param','source','track','wbr'];
-        if (selfClosing.includes(tag)) {
-            return `<${tag}${attrsStr} />`;
-        }
-
-        // Child components serialization
-        let childrenStr = '';
-        if (element.children && element.children.length > 0) {
-            childrenStr = element.children.map(ssr).join('');
-        } else if (element.textContent) {
-            childrenStr = String(element.textContent);
-        } else if (element.innerHTML) {
-            childrenStr = String(element.innerHTML);
-        }
-
-        return `<${tag}${attrsStr}>${childrenStr}</${tag}>`;
-    };
 
     /**
      * Express.js custom template rendering engine callback.
@@ -4743,23 +6694,7 @@ if (typeof window !== 'undefined' && !window.papyr) {
         }
     };
 
-    const registeredGateways = new Map();
-    papyr.gateway = {
-        register(name, adapter) {
-            if (!name || !adapter) return;
-            registeredGateways.set(name, adapter);
-            console.log(`🔌 Papyr Gateway: Registered adapter "${name}" successfully.`);
-            if (typeof adapter.initialize === 'function') {
-                adapter.initialize(papyr);
-            }
-        },
-        resolve(name) {
-            return registeredGateways.get(name);
-        },
-        list() {
-            return Array.from(registeredGateways.keys());
-        }
-    };
+
 
     // Override use to support dynamic runtime loads
     const originalUse = papyr.use;
@@ -4792,6 +6727,322 @@ if (typeof window !== 'undefined' && !window.papyr) {
             }
         }
         return originalUse(plugin);
+    };
+
+    // ==========================================
+    // 7. VUE, SVELTE & NEXT.JS BRIDGES
+    // ==========================================
+    
+    // Vue Bridge
+    papyr.vue = {
+        /**
+         * Vue Bridge Component
+         * Usage in Vue templates: <papyr-vue-bridge :el="MyComponent" />
+         */
+        Bridge: {
+            props: {
+                el: { required: true }
+            },
+            mounted() {
+                this.renderPapyr();
+            },
+            updated() {
+                this.renderPapyr();
+            },
+            methods: {
+                renderPapyr() {
+                    const container = this.$refs.container;
+                    if (container) {
+                        container.innerHTML = '';
+                        const node = typeof this.el === 'function' ? this.el() : this.el;
+                        if (node) container.appendChild(node);
+                    }
+                }
+            },
+            render() {
+                const Vue = window.Vue;
+                if (Vue && typeof Vue.h === 'function') {
+                    return Vue.h('div', { ref: 'container' });
+                }
+                return typeof this.$createElement === 'function' 
+                    ? this.$createElement('div', { ref: 'container' })
+                    : { tag: 'div', data: { ref: 'container' }, context: this };
+            }
+        }
+    };
+
+    // Svelte Bridge
+    papyr.svelte = {
+        /**
+         * Svelte Action Mount Bridge
+         * Usage in Svelte: <div use:papyr.svelte.mount={MyComponent} />
+         */
+        mount(node, component) {
+            node.innerHTML = '';
+            let rendered = typeof component === 'function' ? component() : component;
+            if (rendered) {
+                node.appendChild(rendered);
+            }
+            return {
+                update(newComponent) {
+                    node.innerHTML = '';
+                    let newRendered = typeof newComponent === 'function' ? newComponent() : newComponent;
+                    if (newRendered) {
+                        node.appendChild(newRendered);
+                    }
+                },
+                destroy() {
+                    if (typeof papyr._cleanupElement === 'function') {
+                        papyr._cleanupElement(node);
+                    }
+                    node.innerHTML = '';
+                }
+            };
+        }
+    };
+
+    // Next.js Bridge
+    papyr.next = {
+        /**
+         * Next.js SSR and Hydration Element Wrapper
+         */
+        Bridge({ el, island = false, ...props }) {
+            const React = window.React || (typeof require === 'function' ? require('react') : null);
+            if (!React) return null;
+
+            const ref = React.useRef(null);
+            const [isClient, setIsClient] = React.useState(false);
+
+            React.useEffect(() => {
+                setIsClient(true);
+            }, []);
+
+            if (isClient) {
+                React.useEffect(() => {
+                    if (ref.current) {
+                        if (island && papyr.ssr && typeof papyr.ssr.hydrate === 'function') {
+                            papyr.ssr.hydrate(ref.current, el);
+                        } else {
+                            ref.current.innerHTML = '';
+                            let element = typeof el === 'function' ? el() : el;
+                            if (element) {
+                                ref.current.appendChild(element);
+                            }
+                        }
+                    }
+                }, [el, island]);
+
+                return React.createElement('div', Object.assign({ ref }, props));
+            } else {
+                let htmlString = '';
+                if (papyr.ssr && typeof papyr.ssr === 'function') {
+                    try {
+                        let element = typeof el === 'function' ? el() : el;
+                        htmlString = papyr.ssr(element);
+                    } catch (e) {
+                        console.error("Next.js SSR Bridge Error:", e);
+                    }
+                }
+                return React.createElement('div', Object.assign({
+                    dangerouslySetInnerHTML: { __html: htmlString }
+                }, props));
+            }
+        }
+    };
+
+    // ==========================================
+    // 8. MODULAR DATABASE ADAPTERS
+    // ==========================================
+
+    // Supabase Adapter
+    papyr.db.registerSupabase = (config) => {
+        if (!config || !config.url || !config.key) {
+            console.error("PapyrDB [supabase]: Missing url or apikey in config.");
+            return;
+        }
+        papyr.db.registerDriver('supabase', (collectionName) => {
+            const baseUrl = `${config.url}/rest/v1/${collectionName}`;
+            const headers = {
+                'apikey': config.key,
+                'Authorization': `Bearer ${config.key}`,
+                'Content-Type': 'application/json'
+            };
+            return {
+                async getAsync() {
+                    const res = await fetch(`${baseUrl}?select=*`, { headers });
+                    return res.ok ? await res.json() : [];
+                },
+                async insertAsync(item) {
+                    await fetch(baseUrl, {
+                        method: 'POST',
+                        headers: Object.assign({}, headers, { 'Prefer': 'return=representation' }),
+                        body: JSON.stringify(item)
+                    });
+                },
+                async updateAsync(id, updates) {
+                    await fetch(`${baseUrl}?id=eq.${id}`, {
+                        method: 'PATCH',
+                        headers,
+                        body: JSON.stringify(updates)
+                    });
+                },
+                async deleteAsync(id) {
+                    await fetch(`${baseUrl}?id=eq.${id}`, {
+                        method: 'DELETE',
+                        headers
+                    });
+                },
+                async clearAsync() {
+                    await fetch(baseUrl, {
+                        method: 'DELETE',
+                        headers
+                    });
+                }
+            };
+        });
+    };
+
+    // Firebase Adapter
+    papyr.db.registerFirebase = (config) => {
+        if (!config || !config.databaseURL) {
+            console.error("PapyrDB [firebase]: Missing databaseURL in config.");
+            return;
+        }
+        papyr.db.registerDriver('firebase', (collectionName) => {
+            const url = `${config.databaseURL}/${collectionName}`;
+            return {
+                async getAsync() {
+                    const res = await fetch(`${url}.json`);
+                    if (!res.ok) return [];
+                    const data = await res.json();
+                    if (!data) return [];
+                    return Object.entries(data).map(([id, val]) => (Object.assign({ id }, val)));
+                },
+                async insertAsync(item) {
+                    await fetch(`${url}/${item.id}.json`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(item)
+                    });
+                },
+                async updateAsync(id, updates) {
+                    await fetch(`${url}/${id}.json`, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(updates)
+                    });
+                },
+                async deleteAsync(id) {
+                    await fetch(`${url}/${id}.json`, {
+                        method: 'DELETE'
+                    });
+                },
+                async clearAsync() {
+                    await fetch(`${url}.json`, {
+                        method: 'DELETE'
+                    });
+                }
+            };
+        });
+    };
+
+    // Postgres Adapter
+    papyr.db.registerPostgres = (config = {}) => {
+        papyr.db.registerDriver('postgres', (collectionName) => {
+            const gatewayUrl = config.gatewayUrl || `/api/db/${collectionName}`;
+            return {
+                async getAsync() {
+                    const res = await fetch(gatewayUrl);
+                    return res.ok ? await res.json() : [];
+                },
+                async insertAsync(item) {
+                    await fetch(gatewayUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(item)
+                    });
+                },
+                async updateAsync(id, updates) {
+                    await fetch(`${gatewayUrl}/${id}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(updates)
+                    });
+                },
+                async deleteAsync(id) {
+                    await fetch(`${gatewayUrl}/${id}`, { method: 'DELETE' });
+                },
+                async clearAsync() {
+                    await fetch(gatewayUrl, { method: 'DELETE' });
+                }
+            };
+        });
+    };
+
+    // MySQL Adapter
+    papyr.db.registerMysql = (config = {}) => {
+        papyr.db.registerDriver('mysql', (collectionName) => {
+            const gatewayUrl = config.gatewayUrl || `/api/db/${collectionName}`;
+            return {
+                async getAsync() {
+                    const res = await fetch(gatewayUrl);
+                    return res.ok ? await res.json() : [];
+                },
+                async insertAsync(item) {
+                    await fetch(gatewayUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(item)
+                    });
+                },
+                async updateAsync(id, updates) {
+                    await fetch(`${gatewayUrl}/${id}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(updates)
+                    });
+                },
+                async deleteAsync(id) {
+                    await fetch(`${gatewayUrl}/${id}`, { method: 'DELETE' });
+                },
+                async clearAsync() {
+                    await fetch(gatewayUrl, { method: 'DELETE' });
+                }
+            };
+        });
+    };
+
+    // MongoDB Adapter
+    papyr.db.registerMongodb = (config = {}) => {
+        papyr.db.registerDriver('mongodb', (collectionName) => {
+            const gatewayUrl = config.gatewayUrl || `/api/db/${collectionName}`;
+            return {
+                async getAsync() {
+                    const res = await fetch(gatewayUrl);
+                    return res.ok ? await res.json() : [];
+                },
+                async insertAsync(item) {
+                    await fetch(gatewayUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(item)
+                    });
+                },
+                async updateAsync(id, updates) {
+                    await fetch(`${gatewayUrl}/${id}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(updates)
+                    });
+                },
+                async deleteAsync(id) {
+                    await fetch(`${gatewayUrl}/${id}`, { method: 'DELETE' });
+                },
+                async clearAsync() {
+                    await fetch(gatewayUrl, { method: 'DELETE' });
+                }
+            };
+        });
     };
 
 })(typeof window !== 'undefined' ? window : this);

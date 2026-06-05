@@ -8,6 +8,15 @@ This module details the unified database engine driver supporting sync and async
 
 Instantiates a transaction-safe persistent dataset connection.
 
+### Default Engine Selection
+```javascript
+// Configure default engine globally (defaults to 'local')
+papyr.db.use('sqlite');
+
+// Collection will now automatically use the default engine
+const store = papyr.db(collectionName);
+```
+
 ### Signature
 ```javascript
 const store = papyr.db(collectionName, engine)
@@ -15,12 +24,15 @@ const store = papyr.db(collectionName, engine)
 
 ### Parameters
 * `collectionName` (String): Namespace identifier.
-* `engine` (String): Storage provider endpoint. Supported values:
+* `engine` (String): Storage provider endpoint override. Supported values:
   * `'local'` (Default): Persistent LocalStorage wrapper (Synchronous).
   * `'session'`: Tab-bounded SessionStorage wrapper (Synchronous).
   * `'indexeddb'`: Client asynchronous Object Store (Asynchronous).
   * `'sqlite'`: Relational SQL client driver (SQL.js or WebSQL cordova plugin) (Asynchronous).
-  * `'firebase'`: Firestore document synchronization driver (Asynchronous).
+  * `'supabase'`: Remote Supabase database (requires `registerSupabase`) (Asynchronous).
+  * `'firebase'`: Remote Firestore database (requires `registerFirebase`) (Asynchronous).
+  * `'postgres'` / `'mysql'` / `'mongodb'`: Modular relational/document backend gateways (Asynchronous).
+
 
 ---
 

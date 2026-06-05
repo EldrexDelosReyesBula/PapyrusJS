@@ -37,7 +37,9 @@ coreInitializers.push((papyr) => {
         });
     };
 
-    papyr.db = (collectionName, engine = 'local') => {
+    let defaultEngine = 'local';
+    papyr.db = (collectionName, engine) => {
+        const selectedEngine = engine || defaultEngine;
 
         // Engine Drivers with fully granular transaction-safe CRUD methods
         const drivers = {
@@ -403,9 +405,9 @@ coreInitializers.push((papyr) => {
             }
         });
 
-        const isAsync = engine !== 'local' && engine !== 'session' && drivers[engine];
+        const isAsync = selectedEngine !== 'local' && selectedEngine !== 'session' && drivers[selectedEngine];
         // eslint-disable-next-line security/detect-object-injection
-        const driver = (engine && engine !== '__proto__' && engine !== 'constructor' && engine !== 'prototype' && Object.prototype.hasOwnProperty.call(drivers, engine)) ? drivers[engine] : drivers['local'];
+        const driver = (selectedEngine && selectedEngine !== '__proto__' && selectedEngine !== 'constructor' && selectedEngine !== 'prototype' && Object.prototype.hasOwnProperty.call(drivers, selectedEngine)) ? drivers[selectedEngine] : drivers['local'];
 
         let state = papyr.state([]);
         let watchers = [];
@@ -653,9 +655,16 @@ coreInitializers.push((papyr) => {
         if (name === '__proto__' || name === 'constructor' || name === 'prototype') return;
         papyr.db.drivers[name] = driverFactory;
     };
+    papyr.db.use = (engineName) => {
+        if (engineName) {
+            defaultEngine = engineName.toLowerCase();
+        }
+        return papyr.db;
+    };
 
     // Upgraded storage helper function with dual call signature compatibility
     const storageFunc = (key, val) => {
+        if (typeof localStorage === 'undefined') return null;
         if (typeof val === 'undefined') {
             let data = localStorage.getItem(key);
             if (data === null || data === undefined) return null;
@@ -669,19 +678,22 @@ coreInitializers.push((papyr) => {
     };
     storageFunc.set = (k, v) => storageFunc(k, v);
     storageFunc.get = (k) => storageFunc(k);
-    storageFunc.remove = (k) => localStorage.removeItem(k);
-    storageFunc.clear = () => localStorage.clear();
+    storageFunc.remove = (k) => typeof localStorage !== 'undefined' && localStorage.removeItem(k);
+    storageFunc.clear = () => typeof localStorage !== 'undefined' && localStorage.clear();
     storageFunc.secureSet = (k, v, password) => {
+        if (typeof localStorage === 'undefined') return;
         if (!papyr.security) return console.error("PapyrError: Security module not loaded.");
         localStorage.setItem(k, papyr.security.encrypt(JSON.stringify(v), password));
     };
     storageFunc.secureGet = (k, password) => {
+        if (typeof localStorage === 'undefined') return null;
         if (!papyr.security) return console.error("PapyrError: Security module not loaded.");
         let enc = localStorage.getItem(k);
         if (!enc) return null;
         try { return JSON.parse(papyr.security.decrypt(enc, password)); } catch (e) { return null; }
     };
     storageFunc.secureSetAsync = async (k, v, password) => {
+        if (typeof localStorage === 'undefined') return;
         if (!papyr.security || typeof papyr.security.encryptAsync !== 'function') {
             return storageFunc.secureSet(k, v, password);
         }
@@ -689,6 +701,7 @@ coreInitializers.push((papyr) => {
         localStorage.setItem(k, enc);
     };
     storageFunc.secureGetAsync = async (k, password) => {
+        if (typeof localStorage === 'undefined') return null;
         if (!papyr.security || typeof papyr.security.decryptAsync !== 'function') {
             return storageFunc.secureGet(k, password);
         }
@@ -703,6 +716,7 @@ coreInitializers.push((papyr) => {
 
     // Upgraded session helper function with dual call signature compatibility
     const sessionFunc = (key, val) => {
+        if (typeof sessionStorage === 'undefined') return null;
         if (typeof val === 'undefined') {
             let data = sessionStorage.getItem(key);
             if (data === null || data === undefined) return null;
@@ -716,19 +730,22 @@ coreInitializers.push((papyr) => {
     };
     sessionFunc.set = (k, v) => sessionFunc(k, v);
     sessionFunc.get = (k) => sessionFunc(k);
-    sessionFunc.remove = (k) => sessionStorage.removeItem(k);
-    sessionFunc.clear = () => sessionStorage.clear();
+    sessionFunc.remove = (k) => typeof sessionStorage !== 'undefined' && sessionStorage.removeItem(k);
+    sessionFunc.clear = () => typeof sessionStorage !== 'undefined' && sessionStorage.clear();
     sessionFunc.secureSet = (k, v, password) => {
+        if (typeof sessionStorage === 'undefined') return;
         if (!papyr.security) return console.error("PapyrError: Security module not loaded.");
         sessionStorage.setItem(k, papyr.security.encrypt(JSON.stringify(v), password));
     };
     sessionFunc.secureGet = (k, password) => {
+        if (typeof sessionStorage === 'undefined') return null;
         if (!papyr.security) return console.error("PapyrError: Security module not loaded.");
         let enc = sessionStorage.getItem(k);
         if (!enc) return null;
         try { return JSON.parse(papyr.security.decrypt(enc, password)); } catch (e) { return null; }
     };
     sessionFunc.secureSetAsync = async (k, v, password) => {
+        if (typeof sessionStorage === 'undefined') return;
         if (!papyr.security || typeof papyr.security.encryptAsync !== 'function') {
             return sessionFunc.secureSet(k, v, password);
         }
@@ -736,6 +753,7 @@ coreInitializers.push((papyr) => {
         sessionStorage.setItem(k, enc);
     };
     sessionFunc.secureGetAsync = async (k, password) => {
+        if (typeof sessionStorage === 'undefined') return null;
         if (!papyr.security || typeof papyr.security.decryptAsync !== 'function') {
             return sessionFunc.secureGet(k, password);
         }

@@ -10,8 +10,14 @@ Creates an auto-tracking reactive state object.
 
 ### Signature
 ```javascript
-let count = papyr.state(initialValue);
+let count = papyr.state(initialValue, options);
 ```
+
+### Options
+* `persist` (Boolean): If `true`, synchronizes state value changes with persistent storage automatically.
+* `key` (String): The storage key namespace identifier used for saving/restoring value state (required if `persist` is enabled).
+* `storage` (String): The storage driver to use (`'local'` for LocalStorage, `'session'` for SessionStorage). Defaults to `'local'`.
+
 
 ### Accessing Value
 * Get or set the value using `.value`:

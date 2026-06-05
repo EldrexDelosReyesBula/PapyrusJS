@@ -853,6 +853,85 @@ const { papyr } = require('@eldrex/papyr');
 
 ---
 
+## 3.1.2 Subsystems Translation Guide
+
+### State Persistence Continuity
+
+#### Papyr Code
+```javascript
+let count = papyr.state(0, { persist: true, key: "user_clicks" });
+```
+
+#### Vanilla JavaScript Translation
+```javascript
+let saved = localStorage.getItem("user_clicks");
+let val = saved !== null ? JSON.parse(saved) : 0;
+const subscribers = new Set();
+
+const countState = {
+    get value() {
+        return val;
+    },
+    set value(newVal) {
+        val = newVal;
+        localStorage.setItem("user_clicks", typeof newVal === 'object' ? JSON.stringify(newVal) : String(newVal));
+        subscribers.forEach(cb => cb(newVal));
+    },
+    subscribe(cb) {
+        subscribers.add(cb);
+        cb(val);
+        return () => subscribers.delete(cb);
+    }
+};
+```
+
+---
+
+### Vector Shape Rendering
+
+#### Papyr Code
+```javascript
+let ball = papyr.circle({ radius: 50, color: "red" });
+```
+
+#### Vanilla SVG Translation
+```javascript
+const svgNS = "http://www.w3.org/2000/svg";
+const svg = document.createElementNS(svgNS, "svg");
+svg.setAttribute("viewBox", "0 0 100 100");
+svg.setAttribute("width", "100");
+svg.setAttribute("height", "100");
+
+const circle = document.createElementNS(svgNS, "circle");
+circle.setAttribute("cx", "50");
+circle.setAttribute("cy", "50");
+circle.setAttribute("r", "50");
+circle.setAttribute("fill", "red");
+
+svg.appendChild(circle);
+```
+
+---
+
+### Svelte Action Mounting Bridge
+
+#### Papyr Svelte Action
+```html
+<div use:papyr.svelte.mount={MyComponent} />
+```
+
+#### Svelte Component Mount Lifecycle Translation
+```javascript
+// Svelte calls the action function on element mount
+let actionResult = papyr.svelte.mount(divNode, MyComponent);
+
+// Svelte calls update() if MyComponent updates, or destroy() on unmount
+actionResult.update(NewComponent);
+actionResult.destroy();
+```
+
+---
+
 ## Resources
 
 - [MDN Web Docs - DOM API](https://developer.mozilla.org/en-US/docs/Web/API/Document_Object_Model)

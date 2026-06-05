@@ -114,3 +114,19 @@ setTimeout(() => {
     pageTitle.value = "Dashboard";
 }, 2000);
 ```
+
+---
+
+## 7. Coexistence Over Lock-In
+
+Papyr never forces you to rebuild your entire stack. If you have an existing React dashboard, Vue app, or Svelte component framework, use bridges and actions to mount Papyr nodes into specific scopes. Share reactive states across the bridge boundary rather than duplicating state trees.
+
+---
+
+## 8. Audited & Non-Destructive Renovation
+
+When upgrading legacy web pages (jQuery, PHP/WordPress blocks):
+* **Do not rewrite everything from scratch.**
+* Call `papyr.renovate()` to progressively inspect and replace target widgets.
+* Preserve existing styles and layouts by default so the application stays visual-stable during modernization.
+

@@ -1,6 +1,6 @@
 {
   "name": "@eldrex/papyr-ai",
-  "version": "3.0.4",
+  "version": "3.1.2",
   "description": "Speech recognition, text-to-speech, camera and semantic AI utilities for Papyr.js",
   "main": "dist/papyr-ai.js",
   "module": "dist/papyr-ai.esm.js",

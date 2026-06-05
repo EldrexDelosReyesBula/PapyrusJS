@@ -69,3 +69,31 @@ papyr.loadFramework('tailwind');
 papyr.loadFramework('bootstrap');
 ```
 * Note: Loading Bootstrap automatically sets dark theme variables (`data-bs-theme="dark"`) on your document nodes.
+
+---
+
+### Can I use Papyr inside an existing React/Next.js/Vue/Svelte project?
+
+**Yes, completely.** Papyr 3.1.2 introduces official framework bridges. You can mount Papyr components into Svelte using actions (`use:papyr.svelte.mount`), bind reactive state into React functional components via custom hooks, or render interactive islands in Next.js SSR apps without routing conflicts.
+
+---
+
+### How does isomorphic state persistence (`persist: true`) work under the hood?
+
+When creating a state like `papyr.state(0, { persist: true, key: "user_clicks" })`:
+1. During initialization, the engine checks for `localStorage` presence (safe from server-side Node crash).
+2. It attempts to load any previous values mapped to `"user_clicks"`.
+3. Whenever the reactive value changes, the setter serializes and stores the new value back to storage.
+
+---
+
+### What is Legacy Renovation Mode and when should I use it?
+
+`papyr.renovate()` is a progressive migration tool designed for legacy pages (e.g. jQuery CRM, old PHP sites). It runs audits for accessibility, responsiveness, and outdated layouts, then replaces selected elements with modernized, reactive Papyr components on the fly without breaking surrounding markup or styling rules.
+
+---
+
+### Does Papyr's physics simulation run on a separate thread?
+
+No, the built-in physics simulation runs a lightweight isomorphic update loop on the main browser thread. It uses an energy-aware manager to throttle updates when the window is inactive or when the device goes into low-battery mode, ensuring zero page lag.
+

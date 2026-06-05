@@ -182,6 +182,43 @@ Let's combine everything you learned to build a reactive checklist application:
 
 ---
 
+## Step 6: Add Persistent State & Vector Shapes
+
+In Papyr 3.1.2, you can persist reactive states across page reloads automatically by passing `{ persist: true, key: "unique_key" }` to `papyr.state()`. You can also draw vector geometries easily using the Papyrus Shapes Engine (PSE).
+
+Let's build a bouncing ball with a persistent click-counter:
+
+```javascript
+// 1. Reactive state saved in localStorage automatically
+let clicks = papyr.state(0, { persist: true, key: "ball_clicks" });
+
+// 2. Render a red vector circle shape that reacts to clicks
+let ballShape = papyr.circle({
+    radius: 40,
+    style: {
+        fill: "red",
+        cursor: "pointer",
+        transition: "transform 0.1s ease"
+    },
+    onclick: (e) => {
+        clicks.value++;
+        // Apply elastic click scale animation
+        e.target.style.transform = "scale(1.2)";
+        setTimeout(() => e.target.style.transform = "scale(1)", 100);
+    }
+});
+
+// 3. Assemble viewport layout
+let PageLayout = papyr.div({ style: { textAlign: "center", marginTop: "50px" } },
+    papyr.h3(() => `Ball clicked ${clicks.value} times (refresh the page to test persistence!)`),
+    ballShape
+);
+
+papyr.mount("#app", PageLayout);
+```
+
+---
+
 ## What You Learned
 
 Congratulations! You have successfully mastered:
@@ -189,5 +226,8 @@ Congratulations! You have successfully mastered:
 2. Binding states dynamically.
 3. Hooking event handlers.
 4. Setting up list bindings that synchronize with arrays.
+5. Persisting state automatically.
+6. Rendering interactive vector shapes via PSE.
 
 Ready to deep-dive? Head over to **[The Papyr Way](https://github.com/EldrexDelosReyesBula/PapyrusJS/blob/main/docs/papyr-way.md)** to learn how to structure applications professionally.
+

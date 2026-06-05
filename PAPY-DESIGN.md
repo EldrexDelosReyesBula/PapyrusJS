@@ -12,8 +12,9 @@ This document serves as the master specification for typography, layout orchestr
 3. [Layout Orchestration Engine (`papyr.layout`)](#3-layout-orchestration-engine-papyrlayout)
 4. [Aesthetic Design Helpers (`papyr.design`)](#4-aesthetic-design-helpers-papyrdesign)
 5. [Cinematic Animations & Spring Physics (`papyr.animate`)](#5-cinematic-animations--spring-physics-papyranimate)
-6. [Creating Custom Design Layers](#6-creating-custom-design-layers)
-7. [Live Interactive Showcase Page](#7-live-interactive-showcase-page)
+6. [Papyrus Shapes Engine (PSE) Design Standards](#6-papyrus-shapes-engine-pse-design-standards)
+7. [Creating Custom Design Layers](#7-creating-custom-design-layers)
+8. [Live Interactive Showcase Page](#8-live-interactive-showcase-page)
 
 ---
 
@@ -219,7 +220,67 @@ papyr.parallax('.bg-stars', 0.15);
 
 ---
 
-## 6. Creating Custom Design Layers
+## 6. Papyrus Shapes Engine (PSE) Design Standards
+
+The **Papyrus Shapes Engine (PSE)** introduces programmatic vector geometry, morphing curves, CSS 3D objects, and physics environments to enrich the interactive aesthetic.
+
+### A. Vector Geometry Elements
+
+All geometry functions return native, styled SVG or HTML nodes configured with high-contrast gradient/color defaults:
+* **`papyr.rect(options)`**: Standard rectangle element.
+* **`papyr.circle(options)`**: Standard circle element.
+* **`papyr.triangle(options)`**: Standard triangle shape.
+* **`papyr.ellipse(options)`**: Radial-skewed ellipse.
+* **`papyr.polygon(options)`**: N-sided polygon shape (configured using `sides: 5` etc.).
+
+Example:
+```javascript
+// Render a responsive vector polygon accented in primary indigo
+papyr.polygon({
+    sides: 6,
+    size: 120,
+    style: { fill: 'var(--papyr-primary)', stroke: 'var(--papyr-border)', strokeWidth: '2px' }
+});
+```
+
+### B. Animated Organic Shapes
+
+* **`papyr.blob(options)`**: Generates a morphing SVG blob driven by frame-rate throttled animation loops.
+* **`papyr.organic(options)`**: Modern rounded panel utilizing shifting `border-radius` transitions.
+* **`papyr.liquid(options)`**: Interactive water wave panel suitable for hero footer cards.
+
+```javascript
+// Add a morphing dark-glass blob card background
+papyr.blob({
+    size: 300,
+    animate: true,
+    speed: 0.05,
+    style: { fill: 'url(#glass-gradient)', filter: 'blur(8px)' }
+});
+```
+
+### C. 3D CSS Mesh Projections
+
+For immersive cards and objects without WebGL overhead, Papyr compiles CSS 3D nested grids:
+* **`papyr.cube(options)`**: Native six-sided transform-style cube structure.
+* **`papyr.card(options)`**: Pointer-interactive perspective tilt container:
+```javascript
+// Create a glassmorphic 3D Card with pointer tilt enabled
+papyr.card({
+    tilt: true,
+    style: {
+        width: '320px',
+        height: '200px',
+        background: 'rgba(255, 255, 255, 0.03)',
+        border: '1px solid var(--papyr-border)',
+        borderRadius: 'var(--papyr-radius)'
+    }
+}, papyr.h3("Glass 3D Card"));
+```
+
+---
+
+## 7. Creating Custom Design Layers
 
 Developers can register custom utility mappings, breakpoints, and themes by installing a custom design layer:
 
@@ -272,7 +333,7 @@ const customCard = papyr.layout.neocard(
 
 ---
 
-## 7. Live Interactive Showcase Page
+## 8. Live Interactive Showcase Page
 
 This self-contained showcase code loads the `complete` bundle and highlights how responsive layouts, inline utilities, and spring animations operate:
 

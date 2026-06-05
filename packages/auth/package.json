@@ -1,6 +1,6 @@
 {
   "name": "@eldrex/papyr-auth",
-  "version": "3.0.4",
+  "version": "3.1.2",
   "description": "Unified authentication engine mapping local, JWT, and OAuth credentials for Papyr.js",
   "main": "dist/papyr-auth.js",
   "module": "dist/papyr-auth.esm.js",

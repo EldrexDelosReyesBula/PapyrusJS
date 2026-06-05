@@ -243,11 +243,17 @@ todos.clear();
 ```
 
 ### B. Multi-Engine Unified DB (`papyr.db`)
-Synchronize datasets natively with standard engines: `'local'`, `'session'`, `'indexeddb'`, `'sqlite'`, or `'firebase'`.
+Configure default providers globally and synchronize datasets with built-in or external adapters.
 
 ```javascript
-// SQLite or IndexedDB storage
-const offlineDB = papyr.db("customers", "indexeddb");
+// Set the default database engine globally (defaults to 'local')
+papyr.db.use('sqlite');
+
+// Customers collection will automatically use the configured 'sqlite' engine
+const offlineDB = papyr.db("customers");
+
+// Or specify the engine explicitly override
+const sessionDB = papyr.db("temp_cache", "session");
 
 // Async operations
 await offlineDB.insertAsync({ name: "Alice", rank: 1 });
@@ -256,22 +262,40 @@ let list = await offlineDB.listAsync();
 
 ### C. Database Engine Capabilities & Matrix
 
-| Feature | local | session | indexeddb | firebase | sqlite |
-|---------|-------|---------|-----------|----------|--------|
-| Persistence | ✅ | ❌ (tab only) | ✅ | ✅ | ✅ |
-| Capacity | ~5-10MB | ~5-10MB | ~50MB+ | Unlimited | ~50MB+ |
-| Async | ❌ | ❌ | ✅ | ✅ | ✅ |
-| Offline | ✅ | ✅ | ✅ | ❌ | ✅ |
-| Sync | ❌ | ❌ | ❌ | ✅ | ❌ |
-| Queries | Simple | Simple | Simple | Realtime | SQL |
-| Setup | None | None | None | API Key | None |
+| Feature | local | session | indexeddb | sqlite | supabase | firebase | postgres/mysql/mongodb |
+|---------|-------|---------|-----------|--------|----------|----------|------------------------|
+| Persistence | ✅ | ❌ (tab only) | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Capacity | ~5-10MB | ~5-10MB | ~50MB+ | ~50MB+ | Unlimited | Unlimited | Unlimited |
+| Async | ❌ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Offline | ✅ | ✅ | ✅ | ✅ | ❌ (hybrid) | ❌ (hybrid) | ❌ (hybrid) |
+| Sync | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ | ✅ |
+| Setup | None | None | None | None | URL/API Key | Database URL | Config API / REST Gateway |
+
+#### Decoupled External Adapters
+Developers install only what they need to keep Core light. Register external providers dynamically:
+
+1. **Supabase**:
+   ```javascript
+   papyr.db.registerSupabase({ url: 'https://xyz.supabase.co', key: 'supabase-anon-key' });
+   papyr.db.use('supabase');
+   ```
+2. **Firebase**:
+   ```javascript
+   papyr.db.registerFirebase({ databaseURL: 'https://xyz.firebaseio.com' });
+   papyr.db.use('firebase');
+   ```
+3. **Relational / Document Gateway Adapters (PostgreSQL, MySQL, MongoDB)**:
+   ```javascript
+   papyr.db.registerPostgres({ gatewayUrl: '/api/db/postgres' });
+   papyr.db.use('postgres');
+   ```
 
 #### Engine-Specific Configurations & Workflows
 - **LocalStorage (`local`)**: Synchronous, ideal for tiny configurations, settings, or user preferences.
 - **SessionStorage (`session`)**: Transient, active only for the duration of the browser tab session.
 - **IndexedDB (`indexeddb`)**: High-capacity asynchronous object store built for offline-first data caching.
-- **Firebase (`firebase`)**: Connects to dynamic remote cloud Firestore nodes for real-time document synchronization.
 - **SQLite (`sqlite`)**: Accesses local relational SQL engines natively where Web SQL/SQL.js APIs are available.
+- **External BaaS/SQL/NoSQL**: Connects client-side apps to remote datastores with standard query structures.
 
 ---
 

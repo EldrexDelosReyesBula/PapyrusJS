@@ -4,36 +4,30 @@ While Papyr.js provides a simple and lightweight developer experience, it has sp
 
 ---
 
-## 1. No Server-Side Rendering (SSR) Hydration
+## 1. Server-Side Rendering (SSR) Hydration
 
-Papyr supports basic SSR string compilation:
+Historically, Papyr only supported basic static string compilation on the server:
 
 ```javascript
 // Runs on Node.js server to output static string
 const htmlString = papyr.ssr(papyr.div(".panel", "Server Data"));
 ```
 
-However, it **does not support isomorphic hydration**. When the client receives this static markup:
-* The client cannot automatically hook reactivity listeners onto the existing HTML elements.
-* Instead, the client must recreate the component tree and mount it, completely replacing the static HTML.
+Without client-side hydration, the client would need to completely replace the server-rendered DOM.
 
-**Recommended Workaround:** Use Papyr for client-rendered applications (SPAs) or static dashboards where initial search engine optimization (SEO) payload indexing is not a hard constraint.
+**Update in 3.1.2:** Papyr now supports hybrid hydration islands through its React/Next.js and Vue bridges, letting you selectively hydrate reactive sub-trees while keeping the rest of the layout static.
 
 ---
 
 ## 2. DOM Rendering Reflows on Large Lists
 
-Because Papyr utilizes native DOM reconciliation rather than a virtual diff engine, rendering large lists (e.g. 5,000+ items) can cause performance bottlenecks.
+Because Papyr utilizes native DOM reconciliation rather than a virtual diff engine, rendering large lists (e.g. 5,000+ items) in a single frame can cause layout thrashing.
 
-* **Reconciliation Cost:** Although `papyr.for()` reconciles elements in-place and preserves DOM nodes, appending hundreds of elements in a single tick triggers significant browser layouts (reflows).
-* **Memory Footprint:** Each list item registers active state dependencies and cleanup hooks (`_cleanups`), which increases memory usage.
+* **Reconciliation Cost:** Appending hundreds of elements in a single tick triggers browser layouts (reflows).
+* **Memory Footprint:** Each list item registers active state dependencies and cleanup hooks (`_cleanups`).
 
-**Recommended Workarounds:**
-* Implement pagination or infinite scrolling.
-* Restrict list rendering size using queries:
-  ```javascript
-  let tasksList = myCrud.query({ limit: 50 });
-  ```
+**Update in 3.1.2:** You can mitigate this using the new **Priority Scheduler (`scheduler.js`)** to chunk heavy rendering operations across frames. Additionally, the **List Virtualization Layer (`virtualization.js`)** is available to dynamically render only the items visible in the user's viewport.
+
 
 ---
 

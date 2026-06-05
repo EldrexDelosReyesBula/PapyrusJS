@@ -4,6 +4,21 @@ All notable changes to **Papyr.js** will be documented in this file.
 
 ---
 
+## [3.1.2] - 2026-06-05
+
+### Added
+* **Papyrus Shapes Engine (PSE):** Comprehensive vector shape primitives (`rect`, `circle`, `triangle`, `ellipse`, `polygon`), curves (`line`, `curve`, `arc`, `spline`), morphing blobs (`blob`, `organic`, `liquid`), pattern generator (`pattern` checkerboard, grids, hex), CSS 3D projections (`cube`, `sphere`, `cylinder`, `cone`, `torus`), pointer tilt interactive elements (`card`), and integrated Three.js adapter bindings.
+* **Built-in Physics Engine Adapter:** Simulated gravity, viewport wall bounds collision, friction, and bounce coefficients dynamically mapped onto registered DOM elements.
+* **Legacy Modernization & Renovation (`papyr.renovate`):** Live element auditing and progressive component replacements supporting non-destructive layout/styling preservation.
+* **Framework Bridges:** Dedicated bridges for React/Next.js (supporting isomorphic SSR rendering and hydration), Vue 2/3 (`Bridge`), Svelte (Action mount action), and Angular life cycle binders.
+* **Storage Continuity Engine:** Automatic state persistence and recovery option (`persist: true`, `key`) integrated into `papyr.state`.
+* **Unified Database defaults (`papyr.db.use`):** Supported selecting a default database driver globally and added modular adapter registers for Supabase, Firebase, PostgreSQL, MySQL, and MongoDB.
+* **Isomorphic Server Safety:** Made storage and session helper hooks safe for Node/Server-side execution.
+* **Priority Scheduler & UI Recovery:** Frametime-budgeted prioritization queue (`scheduler.js`) and UI block performance observers with auto recovery.
+* **WATT Security 2.0:** SANDBOX credential scanning, geolocation/media interceptors, and AI data transparency prompt consent overlays.
+
+---
+
 ## [3.1.1] - 2026-06-04
 
 ### Fixed
@@ -29,7 +44,7 @@ All notable changes to **Papyr.js** will be documented in this file.
 
 ---
 
-## [3.0.0] - 2026-06-03
+## [3.0.0] - 2026-06-02
 
 ### Added
 * **Agile Monorepo Architecture:** Split codebase into separate workspaces (`packages/core`, `packages/db`, `packages/router`, `packages/animate`, `packages/charts`, `packages/ai`) for optimized loading and size controls.
@@ -47,7 +62,7 @@ All notable changes to **Papyr.js** will be documented in this file.
 
 ---
 
-## [2.0.0] - 2025-08-12
+## [2.0.0] - 2026-04-20
 
 ### Added
 * **First Isomorphic Render Support:** Server Side Rendering (`papyr.ssr()`) compiling component templates to HTML strings in Node.js backend.
@@ -56,7 +71,7 @@ All notable changes to **Papyr.js** will be documented in this file.
 
 ---
 
-## [1.0.0] - 2024-03-20
+## [1.0.0] - 2026-03-20
 
 ### Added
 * **Baseline Kernel Release:** Tag selector builders, basic state reactivity, and single-page routing hashes.

@@ -8,15 +8,26 @@
 coreInitializers.push((papyr) => {
     const pendingSubscribers = new Set();
     let isSchedulerScheduled = false;
+    let autoKeyCounter = 0;
 
     const queueSubscriber = (sub, val) => {
-        pendingSubscribers.add({ sub, val });
-        if (!isSchedulerScheduled) {
-            isSchedulerScheduled = true;
-            if (typeof requestAnimationFrame !== 'undefined') {
-                requestAnimationFrame(flushScheduler);
-            } else {
-                setTimeout(flushScheduler, 0);
+        if (papyr.scheduler && typeof papyr.scheduler.schedule === 'function') {
+            papyr.scheduler.schedule(() => {
+                try {
+                    sub(val);
+                } catch (err) {
+                    papyr.diagnostics.reportError(err);
+                }
+            }, 'normal');
+        } else {
+            pendingSubscribers.add({ sub, val });
+            if (!isSchedulerScheduled) {
+                isSchedulerScheduled = true;
+                if (typeof requestAnimationFrame !== 'undefined') {
+                    requestAnimationFrame(flushScheduler);
+                } else {
+                    setTimeout(flushScheduler, 0);
+                }
             }
         }
     };
@@ -63,6 +74,17 @@ coreInitializers.push((papyr) => {
                 }
             });
             n._cleanups = [];
+        }
+        if (n._listeners) {
+            const originalRemoveEventListener = n.removeEventListener;
+            n._listeners.forEach(l => {
+                try {
+                    if (typeof originalRemoveEventListener === 'function') {
+                        originalRemoveEventListener.call(n, l.event, l.handler, l.options);
+                    }
+                } catch(e) {}
+            });
+            n._listeners = [];
         }
         if (n._onUnmounted) {
             n._isMounted = false;
@@ -225,7 +247,36 @@ coreInitializers.push((papyr) => {
         let subscribers = new Set();
         let predictor = options.predictive ? new Predictor(val, options) : null;
         
+        const storageKey = options.key || (options.persist ? `papyr_state_auto_${++autoKeyCounter}` : null);
+        
+        // Restore value on load if persist is true
+        if (options.persist && storageKey && typeof localStorage !== 'undefined') {
+            try {
+                let storedVal = localStorage.getItem(storageKey);
+                if (storedVal !== null) {
+                    try {
+                        val = JSON.parse(storedVal);
+                    } catch (e) {
+                        val = storedVal;
+                    }
+                }
+            } catch (e) {
+                console.warn("Storage Continuity Engine: Failed to read from localStorage:", e);
+            }
+        }
+
+        const persistState = (newVal) => {
+            if (options.persist && storageKey && typeof localStorage !== 'undefined') {
+                try {
+                    localStorage.setItem(storageKey, typeof newVal === 'object' ? JSON.stringify(newVal) : String(newVal));
+                } catch (e) {
+                    console.warn("Storage Continuity Engine: Failed to write to localStorage:", e);
+                }
+            }
+        };
+
         let notify = () => {
+            persistState(val);
             if (predictor) predictor.update(val);
             papyr.diagnostics.trackUpdate(stateObj, val, val);
             Array.from(subscribers).forEach(sub => {
@@ -249,6 +300,7 @@ coreInitializers.push((papyr) => {
                 if (val === newVal && (typeof newVal !== 'object' || newVal === null)) return;
                 let oldVal = val;
                 val = newVal;
+                persistState(newVal);
                 if (predictor) predictor.update(newVal);
                 papyr.diagnostics.trackUpdate(stateObj, newVal, oldVal);
                 Array.from(subscribers).forEach(sub => {

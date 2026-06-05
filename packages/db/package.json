@@ -1,6 +1,6 @@
 {
   "name": "@eldrex/papyr-db",
-  "version": "3.0.4",
+  "version": "3.1.2",
   "description": "Multi-engine local database and CRUD wrapper for Papyr.js",
   "main": "dist/papyr-db.js",
   "module": "dist/papyr-db.esm.js",
