@@ -379,11 +379,11 @@
             // 0. Initialize PWA offline support
             if (papyr.pwa && typeof papyr.pwa.init === 'function') {
                 papyr.pwa.init({
-                    swPath: './sw.js',
+                    swPath: '../sw.js',
                     assets: [
-                        './',
-                        './index.html',
-                        './papyr-complete.js'
+                        '../',
+                        '../index.html',
+                        '../papyr-complete.js'
                     ]
                 }).catch(err => console.warn("PWA Init error:", err));
             }
@@ -580,23 +580,30 @@
                                         return papyr.div('.todo-item',
                                             papyr.div('.todo-content',
                                                 papyr.div(`.todo-checkbox${todo.done ? '.checked' : ''}`, {
-                                                    onclick: () => handleToggleTodo(todo.id)
-                                                }),
-                                                papyr.span(`.todo-title${todo.done ? '.done' : ''}`, todo.title)
-                                            ),
-                                            papyr.button('.studio-btn', {
-                                                style: { padding: '4px 8px', background: '#f43f5e', fontSize: '0.75rem', borderRadius: '50%', width: '22px', height: '22px', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: '1' },
-                                                onclick: () => handleDeleteTodo(todo.id)
-                                            }, '×')
-                                        );
-                                    })
+                            
+                            // Task List items
+                            papyr.div({ style: { display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '160px', overflowY: 'auto' } },
+                                () => todosList.value.map(item => 
+                                    papyr.div({ style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '8px' } },
+                                        papyr.div({ style: { display: 'flex', alignItems: 'center', gap: '8px' } },
+                                            papyr.input('checkbox', {
+                                                checked: item.done,
+                                                onclick: () => handleToggleTodo(item.id)
+                                            }),
+                                            papyr.span(item.title, { style: { textDecoration: item.done ? 'line-through' : 'none', color: item.done ? 'var(--text-muted)' : '#f8fafc', fontSize: '0.85rem' } })
+                                        ),
+                                        papyr.button({
+                                            style: { background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '12px' },
+                                            onclick: () => handleDeleteTodo(item.id)
+                                        }, "✕")
+                                    )
                                 )
-                            ),
+                            )
+                        ),
 
-                            papyr.hr({ style: { border: 'none', borderTop: '1px solid rgba(255,255,255,0.06)', margin: '4px 0' } }),
-
-                            // Legacy Renovations Showcase
-                            papyr.div('.control-group',
+                        // Legacy integration Showcase
+                        papyr.div('.control-group',
+                            papyr.div({ style: { borderTop: '1px dashed rgba(255,255,255,0.08)', paddingTop: '16px' } },
                                 papyr.span('.legacy-badge', "🔧 Legacy Renovations"),
                                 papyr.label('.control-label', "Vanilla JS Interop Showcase"),
                                 papyr.p({ style: { color: 'var(--text-muted)', fontSize: '0.8rem', marginTop: '4px', marginBottom: '12px' } },
@@ -649,7 +656,7 @@
                                     "Renders dynamically matching your live slider mutations."
                                 ),
                                 // Canvas mount target
-                        papyr.div('#chart-container', { style: { flex: '1', minHeight: '200px', display: 'flex', alignItems: 'center', justifyContent: 'center' } })
+                                papyr.div('#chart-container', { style: { flex: '1', minHeight: '200px', display: 'flex', alignItems: 'center', justifyContent: 'center' } })
                             )
 
                         ),
@@ -735,7 +742,7 @@
                                             papyr.label({ 
                                                 for: 'toggle-3d-gravity', 
                                                 style: { fontSize: '0.85rem', color: '#fb7185', fontWeight: 'bold', cursor: 'pointer' } 
-                                            }, "Activate Gravity & Physics Bounds")
+                                             }, "Activate Gravity & Physics Bounds")
                                         )
                                     )
                                 ),
@@ -779,7 +786,8 @@
                                 
                                 // Interactive training board canvas
                                 papyr.div({ style: { position: 'relative' } },
-                                    papyr.canvas('#ml-canvas', {
+                                    papyr.canvas({
+                                        id: 'ml-canvas',
                                         style: {
                                             background: '#04060d',
                                             border: '1px solid rgba(255,255,255,0.06)',
@@ -787,7 +795,8 @@
                                             cursor: 'crosshair',
                                             display: 'block'
                                         },
-                                        attrs: { width: '300', height: '300' }
+                                        width: 300,
+                                        height: 300
                                     }),
                                     papyr.span({ style: { position: 'absolute', bottom: '8px', left: '12px', fontSize: '0.75rem', color: 'var(--text-muted)' } }, "X1 (Width)"),
                                     papyr.span({ style: { position: 'absolute', top: '12px', right: '12px', fontSize: '0.75rem', color: 'var(--text-muted)' } }, "X2 (Height)")
