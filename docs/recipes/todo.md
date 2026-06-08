@@ -1,10 +1,39 @@
-# Recipe: Todo App with LocalStorage CRUD Sync
+# 📝 Todo App with LocalStorage CRUD Sync
 
-This recipe details how to construct a task checklists application featuring state updates, computed filtering, keypress inputs, and persistent storage synchronization.
+A reactive task checklist application built with **Papyr.js**.  
+Features include real‑time filtering, keyboard input support, and automatic persistence to `localStorage`.
+
+[![Papyr.js](https://img.shields.io/badge/Papyr.js-Reactive-blue)](https://papyrus-js.vercel.app/)
 
 ---
 
-## Code Example
+## 🚀 Live Demo Concept
+
+- Add new tasks (press `Enter` or click **Add**)
+- Mark tasks as completed using the checkbox
+- Delete individual tasks with the **✕** button
+- Filter tasks: *All*, *Active* (incomplete), *Completed*
+- All changes are automatically saved to `localStorage` and survive page reloads
+
+---
+
+## 🧠 Key Concepts
+
+| Concept | Implementation |
+|--------|----------------|
+| **Reactive CRUD store** | `papyr.crud()` – manages an array of objects, syncs every mutation to `localStorage` |
+| **Local reactive state** | `papyr.state()` – for the current filter and input field value |
+| **Computed filtering** | `papyr.computed()` – derives a filtered list from the store and current filter |
+| **Two‑way binding** | `papyr.model()` – binds the input field to `inputVal` |
+| **Conditional classes** | Dynamic classes via arrow functions (e.g., `class: () => ...`) |
+| **List rendering** | `papyr.for()` – efficiently reuses DOM nodes when the filtered list changes |
+| **Event handlers** | Inline `onclick`, `onchange`, `onkeypress` with direct access to state |
+
+---
+
+## 📦 Full Code
+
+Create an `index.html` file and paste the following:
 
 ```html
 <!DOCTYPE html>
@@ -27,7 +56,7 @@ This recipe details how to construct a task checklists application featuring sta
 <body>
     <div id="todo-mount"></div>
     <script>
-        // 1. Initialize persistent CRUD store
+        // 1. Initialize persistent CRUD store (syncs to localStorage)
         const db = papyr.crud("my_tasks_store", [
             { text: "Learn reactivity models", done: false },
             { text: "Scaffold layout grids", done: true }
@@ -113,7 +142,115 @@ This recipe details how to construct a task checklists application featuring sta
 
 ---
 
-## Key Design Principles
-* **`papyr.crud` Wrapper:** Manages local memory collection states and writes serialized JSON payloads automatically back to `localStorage` on writes.
-* **Derived Collections:** Avoid modifying array elements directly in layouts. The `filteredTasks` computed state tracks `db.list` updates and updates lists whenever tasks are created, toggled, or deleted.
-* **Automatic Node Recycling:** List bindings inside `papyr.for` preserve elements, preventing document reflow layout shifts when toggling checkboxes.
+🔍 How It Works – Step by Step
+
+1. Persistent CRUD Store
+
+```js
+const db = papyr.crud("my_tasks_store", initialTasks);
+```
+
+· Creates a reactive collection named "my_tasks_store".
+· Every create, update, or delete automatically serializes the whole array to localStorage.
+· db.list() returns the current array of task objects (each task has id, text, done).
+
+2. Reactive State
+
+```js
+let currentFilter = papyr.state("all");
+let inputVal = papyr.state("");
+```
+
+· papyr.state holds a value that triggers UI updates when changed.
+· Used for the active filter and the new task input.
+
+3. Computed Filtering
+
+```js
+let filteredTasks = papyr.computed(() => { ... });
+```
+
+· Automatically recomputes whenever db.list() or currentFilter.value changes.
+· Returns the subset of tasks based on the chosen filter.
+
+4. Two‑Way Binding on Input
+
+```js
+papyr.input("text", {
+  ...papyr.model(inputVal),
+  onkeypress: (e) => { if (e.key === "Enter") addTask(); }
+})
+```
+
+· papyr.model(inputVal) links the input’s value to inputVal.state.
+· Typing updates inputVal.value; changing inputVal.value updates the input.
+
+5. Dynamic Classes & Checkbox Binding
+
+```js
+class: () => `todo-item ${task.done ? 'completed' : ''}`
+checked: () => task.done
+```
+
+· Arrow functions let classes and checkbox states react to live data.
+· onchange toggles the task’s done status via db.update().
+
+6. Efficient List Rendering
+
+```js
+papyr.for(filteredTasks, (task) => ...)
+```
+
+· Renders a <li> for each task in the filtered list.
+· Automatically adds, removes, or reorders DOM nodes when the filtered list changes – no manual DOM manipulation.
+
+---
+
+💾 localStorage Persistence
+
+Operation What happens
+Page load Papyr reads localStorage["my_tasks_store"] (or uses initial data)
+Add / toggle / delete The store updates → UI refreshes → array is written back to localStorage
+Page reload Data is restored from localStorage, preserving all tasks
+
+You can inspect the saved data in your browser’s DevTools → Application → Local Storage.
+
+---
+
+🎨 Customisation Ideas
+
+· Due dates – add a dueDate property and sort tasks.
+· Task editing – double‑click a task to replace it with an input field.
+· Clear completed – add a button that calls db.delete(id) for all done tasks.
+· Dark mode – extend the CSS and toggle a dark class on the root element.
+
+---
+
+📚 Papyr.js Documentation
+
+Papyr is a tiny reactive UI library with a syntax similar to React but without a build step.
+Learn more at: papyrus-js.vercel.app
+
+Key methods used in this recipe:
+
+· papyr.crud(name, initialData)
+· papyr.state(initialValue)
+· papyr.computed(fn)
+· papyr.model(stateObject)
+· papyr.for(reactiveArray, renderFn)
+· papyr.mount(selector, component)
+
+---
+
+✅ Summary
+
+This recipe demonstrates a complete, production‑ready Todo app with:
+
+· ✅ Reactive CRUD + localStorage sync
+· ✅ Computed filtering (All / Active / Completed)
+· ✅ Keyboard support (Enter to add)
+· ✅ No external dependencies except Papyr.js
+· ✅ Fully self‑contained in a single HTML file
+
+Just copy the code into index.html and open it in any modern browser – it works offline too!
+
