@@ -1,0 +1,323 @@
+name: Release — Publish to npm & GitHub Packages
+
+on:
+  push:
+    tags:
+      - 'v*'          # triggers on v3.1.3, v3.2.0, etc.
+
+permissions:
+  contents: write     # needed to create GitHub Release
+  packages: write     # needed to publish to GitHub Packages
+  id-token: write     # needed for npm provenance
+
+jobs:
+  # ─────────────────────────────────────────────────────────────────────────
+  # 1. Build — compile all bundles and run full verification
+  # ─────────────────────────────────────────────────────────────────────────
+  build:
+    name: Build & Verify
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Build all bundles (19 targets)
+        run: node build.js
+
+      - name: Run verification suite (150+ assertions)
+        run: node public/tests/verify-build.js
+
+      - name: Cache built bundles for publish jobs
+        uses: actions/upload-artifact@v4
+        with:
+          name: papyr-release-bundles
+          path: |
+            public/
+            packages/
+          retention-days: 1
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # 2. Publish to npm (registry.npmjs.org)
+  # ─────────────────────────────────────────────────────────────────────────
+  publish-npm:
+    name: Publish → npmjs.org
+    runs-on: ubuntu-latest
+    needs: build
+    environment: npm
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js with npm registry
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          registry-url: 'https://registry.npmjs.org'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Restore built bundles
+        uses: actions/download-artifact@v4
+        with:
+          name: papyr-release-bundles
+          path: .
+
+      - name: Publish @eldrex/papyr (core)
+        run: npm publish packages/core --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish @eldrex/papyr-watt
+        run: npm publish packages/watt --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish @eldrex/papyr-pssr
+        run: npm publish packages/pssr --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish @eldrex/papyr-router
+        run: npm publish packages/router --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish @eldrex/papyr-animate
+        run: npm publish packages/animate --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish @eldrex/papyr-charts
+        run: npm publish packages/charts --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish @eldrex/papyr-ai
+        run: npm publish packages/ai --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish @eldrex/papyr-db
+        run: npm publish packages/db --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish @eldrex/papyr-auth
+        run: npm publish packages/auth --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish @eldrex/papyr-ssr
+        run: npm publish packages/ssr --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish @eldrex/papyr-seo
+        run: npm publish packages/seo --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish @eldrex/papyr-game
+        run: npm publish packages/game --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish @eldrex/papyr-shapes
+        run: npm publish packages/shapes --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish @eldrex/papyr-3d
+        run: npm publish packages/3d --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # 3. Publish to GitHub Packages (npm.pkg.github.com)
+  # ─────────────────────────────────────────────────────────────────────────
+  publish-github-packages:
+    name: Publish → GitHub Packages
+    runs-on: ubuntu-latest
+    needs: build
+    environment: github-packages
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js with GitHub Packages registry
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          registry-url: 'https://npm.pkg.github.com'
+          scope: '@eldrex'
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Restore built bundles
+        uses: actions/download-artifact@v4
+        with:
+          name: papyr-release-bundles
+          path: .
+
+      - name: Configure GitHub Packages scope
+        run: |
+          echo "@eldrex:registry=https://npm.pkg.github.com" >> .npmrc
+          echo "//npm.pkg.github.com/:_authToken=${{ secrets.GITHUB_TOKEN }}" >> .npmrc
+
+      - name: Publish @eldrex/papyr (core)
+        run: npm publish packages/core --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish @eldrex/papyr-watt
+        run: npm publish packages/watt --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish @eldrex/papyr-pssr
+        run: npm publish packages/pssr --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish @eldrex/papyr-router
+        run: npm publish packages/router --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish @eldrex/papyr-animate
+        run: npm publish packages/animate --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish @eldrex/papyr-charts
+        run: npm publish packages/charts --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish @eldrex/papyr-ai
+        run: npm publish packages/ai --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish @eldrex/papyr-db
+        run: npm publish packages/db --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish @eldrex/papyr-auth
+        run: npm publish packages/auth --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish @eldrex/papyr-ssr
+        run: npm publish packages/ssr --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish @eldrex/papyr-seo
+        run: npm publish packages/seo --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish @eldrex/papyr-game
+        run: npm publish packages/game --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish @eldrex/papyr-shapes
+        run: npm publish packages/shapes --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish @eldrex/papyr-3d
+        run: npm publish packages/3d --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # 4. Create GitHub Release with changenotes and bundle attachments
+  # ─────────────────────────────────────────────────────────────────────────
+  create-github-release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: [publish-npm, publish-github-packages]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Restore built bundles
+        uses: actions/download-artifact@v4
+        with:
+          name: papyr-release-bundles
+          path: release-artifacts
+
+      - name: Extract version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Extract changelog section for this version
+        id: changelog
+        run: |
+          VERSION="${{ steps.version.outputs.VERSION }}"
+          VERSION_NUM="${VERSION#v}"
+          # Extract the section between this version and the previous one
+          NOTES=$(awk "/^## \[${VERSION_NUM}\]/,/^## \[/{if (/^## \[${VERSION_NUM}\]/) next; if (/^## \[/) exit; print}" CHANGELOG.md)
+          echo "NOTES<<EOF" >> $GITHUB_OUTPUT
+          echo "$NOTES" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "Papyrus.js ${{ steps.version.outputs.VERSION }}"
+          body: |
+            ## Papyrus.js ${{ steps.version.outputs.VERSION }}
+
+            ${{ steps.changelog.outputs.NOTES }}
+
+            ---
+
+            ### 📦 npm Packages Published
+
+            ```bash
+            npm install @eldrex/papyr@${{ steps.version.outputs.VERSION }}
+            npm install @eldrex/papyr-watt@${{ steps.version.outputs.VERSION }}
+            npm install @eldrex/papyr-pssr@${{ steps.version.outputs.VERSION }}
+            ```
+
+            ### 🌐 CDN
+
+            ```html
+            <script src="https://papyrus-js.vercel.app/papyr-complete.js"></script>
+            ```
+
+            ### 📖 Documentation
+            https://papyrus-js.vercel.app/
+          draft: false
+          prerelease: false
+          files: |
+            release-artifacts/public/papyr.js
+            release-artifacts/public/papyr-complete.js
+            release-artifacts/public/papyr-watt.js
+            release-artifacts/public/papyr-watt.esm.js
+            release-artifacts/public/papyr-pssr.js
+            release-artifacts/public/papyr-pssr.esm.js
+            release-artifacts/public/papyr-trust.js
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,50 @@
+name: CI — Build & Verify
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-verify:
+    name: Build & Verify (Node ${{ matrix.node-version }})
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        node-version: [18.x, 20.x]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Build all bundles
+        run: node build.js
+
+      - name: Run verification suite
+        run: node public/tests/verify-build.js
+
+      - name: Upload build artifacts
+        if: matrix.node-version == '20.x'
+        uses: actions/upload-artifact@v4
+        with:
+          name: papyr-bundles
+          path: |
+            public/papyr.js
+            public/papyr-complete.js
+            public/papyr-watt.js
+            public/papyr-watt.esm.js
+            public/papyr-pssr.js
+            public/papyr-pssr.esm.js
+            public/papyr-trust.js
+          retention-days: 7

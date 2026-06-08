@@ -1,0 +1,720 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Papyr.js 100% Declarative Developer Studio | Fixed</title>
+    <!-- Load Three.js from CDN for WebGL cinematic graphics -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- Import local Compiled Complete Showcase Bundle (ensure path is correct) -->
+    <script src="../papyr-complete.js"></script>
+    <style>
+        /* Premium Global HSL Styling */
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;600;700&display=swap');
+
+        :root {
+            --primary: #6366f1;
+            --primary-glow: rgba(99, 102, 241, 0.15);
+            --bg-dark: #070913;
+            --text-light: #f8fafc;
+            --text-muted: #94a3b8;
+            --glass-bg: rgba(255, 255, 255, 0.02);
+            --glass-border: rgba(255, 255, 255, 0.06);
+            --glass-blur: blur(12px);
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg-dark);
+            color: var(--text-light);
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            overflow-x: hidden;
+        }
+
+        /* Glassmorphic Container Styles */
+        .glass-panel {
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            backdrop-filter: var(--glass-blur);
+            -webkit-backdrop-filter: var(--glass-blur);
+            border-radius: 16px;
+            padding: 24px;
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+            transition: border-color 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .glass-panel:hover {
+            border-color: rgba(99, 102, 241, 0.3);
+            box-shadow: 0 8px 32px 0 rgba(99, 102, 241, 0.05);
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 40px 24px;
+            position: relative;
+            z-index: 10;
+        }
+
+        .header-section {
+            text-align: center;
+            margin-bottom: 60px;
+        }
+
+        .header-section h1 {
+            font-size: 3rem;
+            font-weight: 700;
+            margin: 0 0 12px 0;
+            background: linear-gradient(135deg, #fff 0%, #a5b4fc 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .header-section p {
+            color: var(--text-muted);
+            font-size: 1.15rem;
+            margin: 0;
+        }
+
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 32px;
+        }
+
+        @media (min-width: 1024px) {
+            .dashboard-grid {
+                grid-template-columns: 380px 1fr;
+            }
+        }
+
+        .control-group {
+            margin-bottom: 24px;
+        }
+
+        .control-label {
+            display: block;
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            margin-bottom: 8px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .custom-slider {
+            -webkit-appearance: none;
+            width: 100%;
+            height: 6px;
+            border-radius: 3px;
+            background: rgba(255, 255, 255, 0.1);
+            outline: none;
+        }
+
+        .custom-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: var(--primary);
+            cursor: pointer;
+            box-shadow: 0 0 10px var(--primary);
+            transition: transform 0.1s ease;
+        }
+
+        .custom-slider::-webkit-slider-thumb:hover {
+            transform: scale(1.2);
+        }
+
+        .studio-btn {
+            background: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            padding: 12px 20px;
+            font-weight: 600;
+            cursor: pointer;
+            box-shadow: 0 4px 12px var(--primary-glow);
+            transition: all 0.2s ease;
+        }
+
+        .studio-btn:hover {
+            background: #4f46e5;
+            box-shadow: 0 4px 20px rgba(99, 102, 241, 0.4);
+            transform: translateY(-2px);
+        }
+
+        .studio-input {
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 8px;
+            padding: 10px 14px;
+            color: white;
+            font-family: inherit;
+            outline: none;
+            width: calc(100% - 30px);
+            transition: border-color 0.2s ease;
+        }
+
+        .studio-input:focus {
+            border-color: var(--primary);
+        }
+
+        .card-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 24px;
+        }
+
+        @media (min-width: 768px) {
+            .card-grid {
+                grid-template-columns: 1fr 1fr;
+            }
+        }
+
+        .badge {
+            background: var(--primary-glow);
+            border: 1px solid rgba(99, 102, 241, 0.3);
+            color: #a5b4fc;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            display: inline-block;
+            margin-bottom: 12px;
+        }
+
+        .snippet-box {
+            background: rgba(0, 0, 0, 0.4);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
+            padding: 16px;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 0.85rem;
+            color: #cbd5e1;
+            overflow-x: auto;
+            white-space: pre;
+            margin-top: 16px;
+        }
+
+        .todo-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 14px;
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            margin-bottom: 8px;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .todo-item:hover {
+            background: rgba(255, 255, 255, 0.04);
+            border-color: rgba(99, 102, 241, 0.2);
+            transform: translateY(-1px);
+        }
+
+        .todo-content {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex: 1;
+        }
+
+        .todo-checkbox {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .todo-checkbox.checked {
+            background: var(--primary);
+            border-color: var(--primary);
+            box-shadow: 0 0 12px var(--primary-glow);
+        }
+
+        .todo-checkbox.checked::after {
+            content: '✓';
+            color: white;
+            font-size: 0.75rem;
+            font-weight: bold;
+        }
+
+        .todo-title {
+            font-size: 0.9rem;
+            color: var(--text-light);
+            transition: color 0.3s ease;
+            position: relative;
+        }
+
+        .todo-title.done {
+            color: var(--text-muted);
+        }
+
+        .todo-title.done::after {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 50%;
+            width: 100%;
+            height: 1.5px;
+            background: var(--primary);
+            transition: width 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+            transform: translateY(-50%);
+        }
+
+        .legacy-box {
+            background: rgba(239, 68, 68, 0.02);
+            border: 1px solid rgba(239, 68, 68, 0.1);
+            border-radius: 12px;
+            padding: 16px;
+            margin-top: 8px;
+            transition: all 0.3s ease;
+        }
+
+        .legacy-box:hover {
+            border-color: rgba(239, 68, 68, 0.25);
+        }
+
+        .legacy-input {
+            background: rgba(0, 0, 0, 0.4);
+            border: 1px solid rgba(239, 68, 68, 0.2);
+            border-radius: 8px;
+            padding: 10px 14px;
+            color: #fca5a5;
+            font-family: inherit;
+            outline: none;
+            width: calc(100% - 30px);
+            transition: border-color 0.2s ease;
+            margin-bottom: 8px;
+        }
+
+        .legacy-input:focus {
+            border-color: #ef4444;
+            box-shadow: 0 0 8px rgba(239, 68, 68, 0.2);
+        }
+
+        .legacy-badge {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            color: #fca5a5;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            display: inline-block;
+            margin-bottom: 12px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- 1. Background Cinematic Starfield Container -->
+    <div id="starfield-bg"
+        style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 1; pointer-events: none;"></div>
+
+    <!-- 2. Main Mount Point -->
+    <div id="app"></div>
+
+    <script>
+        (function () {
+            // SAFETY: wait for Papyr and DOM readiness
+            if (typeof papyr === 'undefined' || !papyr.ready) {
+                console.error("Papyr not loaded. Ensure papyr-complete.js is available.");
+                return;
+            }
+
+            papyr.ready(() => {
+                console.log("🚀 Bootstrapping 100% Papyr Declarative Studio App [FIXED]");
+
+                // 1. Background starfield (3D space)
+                const starfieldContainer = document.getElementById('starfield-bg');
+                if (starfieldContainer && papyr['3d'] && typeof papyr['3d'].scene === 'function') {
+                    const bgScene = papyr['3d'].scene({
+                        environment: 'space',
+                        particles: true,
+                        depth: true
+                    });
+                    if (bgScene) starfieldContainer.appendChild(bgScene);
+                }
+
+                // ==========================================
+                // 2. STATE NODES (Reactive core)
+                // ==========================================
+                const chartDataVal = papyr.state(45);
+                const waveFrequencyVal = papyr.state(2);
+                const wattConsent = papyr.state(false);
+                const todoInputVal = papyr.state("");
+
+                // 3D Customization States
+                const cubeSizeVal = papyr.state(1.2);
+                const sphereRadiusVal = papyr.state(1.0);
+                const torusSpinVal = papyr.state(0.02);
+                const torusColorVal = papyr.state("#a855f7");
+                const gravityActiveVal = papyr.state(false);
+
+                const windowWidthVal = papyr.state(typeof window !== 'undefined' ? window.innerWidth : 1200);
+                if (typeof window !== 'undefined') {
+                    window.addEventListener('resize', () => {
+                        windowWidthVal.value = window.innerWidth;
+                    });
+                }
+
+                const legacyInputVal = papyr.state("Vanilla JS legacy value");
+
+                // PWA initializer
+                if (papyr.pwa && typeof papyr.pwa.init === 'function') {
+                    papyr.pwa.init({
+                        swPath: '../sw.js',
+                        assets: ['../', '../index.html', '../papyr-complete.js']
+                    }).catch(e => console.warn("PWA init warn:", e));
+                }
+
+                // ==========================================
+                // 3. PERSISTENT CRUD (Todos)
+                // ==========================================
+                const todoStore = papyr.crud('playground_todos');
+                const todosList = papyr.computed(() => todoStore.query());
+
+                const handleAddTodo = () => {
+                    const val = todoInputVal.value.trim();
+                    if (!val) return;
+                    todoStore.create({ title: val, done: false });
+                    todoInputVal.value = "";
+                };
+
+                const handleToggleTodo = (id) => {
+                    const item = todoStore.read(id);
+                    if (item) todoStore.update(id, { done: !item.done });
+                };
+
+                const handleDeleteTodo = (id) => {
+                    todoStore.delete(id);
+                };
+
+                // ==========================================
+                // 4. ML PERCEPTRON (with fixed drawMLBoard)
+                // ==========================================
+                const trainingPoints = [];
+                const perceptron = papyr.ml.perceptron({ inputs: 2, lr: 0.1 });
+                const perceptronWeights = papyr.state("[0, 0]");
+                const perceptronBias = papyr.state("0");
+                const perceptronCount = papyr.state(0);
+
+                // GLOBAL drawMLBoard function (fixes the reference error)
+                let mlCanvasElement = null;
+                let mlCtx = null;
+
+                function drawMLBoard() {
+                    if (!mlCanvasElement || !mlCtx) return;
+                    const canvas = mlCanvasElement;
+                    const ctx = mlCtx;
+                    const w = canvas.width;
+                    const h = canvas.height;
+                    ctx.clearRect(0, 0, w, h);
+
+                    // background
+                    ctx.fillStyle = '#04060d';
+                    ctx.fillRect(0, 0, w, h);
+
+                    // draw coordinate grid
+                    ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+                    ctx.lineWidth = 1;
+                    for (let i = 50; i < w; i += 50) {
+                        ctx.beginPath();
+                        ctx.moveTo(i, 0); ctx.lineTo(i, h);
+                        ctx.moveTo(0, i); ctx.lineTo(w, i);
+                        ctx.stroke();
+                    }
+
+                    // decision boundary
+                    const weights = perceptron.weights;
+                    const bias = perceptron.bias;
+                    if (weights && Math.abs(weights[1]) > 0.001) {
+                        ctx.strokeStyle = 'rgba(168, 85, 247, 0.6)';
+                        ctx.lineWidth = 2.5;
+                        ctx.beginPath();
+                        const x1_norm = -1;
+                        const y1_norm = (-weights[0] * x1_norm - bias) / weights[1];
+                        const x2_norm = 1;
+                        const y2_norm = (-weights[0] * x2_norm - bias) / weights[1];
+
+                        const screenX1 = (x1_norm + 1) * (w / 2);
+                        const screenY1 = (1 - y1_norm) * (h / 2);
+                        const screenX2 = (x2_norm + 1) * (w / 2);
+                        const screenY2 = (1 - y2_norm) * (h / 2);
+                        ctx.moveTo(screenX1, screenY1);
+                        ctx.lineTo(screenX2, screenY2);
+                        ctx.stroke();
+                    }
+
+                    // draw training points
+                    trainingPoints.forEach(p => {
+                        ctx.fillStyle = p.label === 1 ? '#6366f1' : '#f43f5e';
+                        ctx.beginPath();
+                        ctx.arc(p.screenX, p.screenY, 7, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.strokeStyle = '#ffffff';
+                        ctx.lineWidth = 1.2;
+                        ctx.stroke();
+                    });
+                }
+
+                const initMLBoard = (canvasEl) => {
+                    if (!canvasEl) return;
+                    mlCanvasElement = canvasEl;
+                    mlCtx = canvasEl.getContext('2d');
+                    const w = 300, h = 300;
+                    canvasEl.width = w;
+                    canvasEl.height = h;
+                    canvasEl.style.width = '300px';
+                    canvasEl.style.height = '300px';
+
+                    drawMLBoard();
+
+                    // Event: click to add points
+                    canvasEl.addEventListener('mousedown', (e) => {
+                        const rect = canvasEl.getBoundingClientRect();
+                        const scaleX = canvasEl.width / rect.width;
+                        const scaleY = canvasEl.height / rect.height;
+                        let screenX = (e.clientX - rect.left) * scaleX;
+                        let screenY = (e.clientY - rect.top) * scaleY;
+                        screenX = Math.min(Math.max(0, screenX), canvasEl.width);
+                        screenY = Math.min(Math.max(0, screenY), canvasEl.height);
+
+                        // transform to normalized coordinates [-1,1]
+                        const x1 = (screenX / (canvasEl.width / 2)) - 1;
+                        const x2 = 1 - (screenY / (canvasEl.height / 2));
+                        const label = trainingPoints.length % 2 === 0 ? 1 : -1;
+
+                        trainingPoints.push({ screenX, screenY, x1, x2, label });
+                        perceptronCount.value = trainingPoints.length;
+                        drawMLBoard();
+                    });
+
+                    canvasEl.addEventListener('contextmenu', (e) => e.preventDefault());
+
+                    // attach training/clear buttons
+                    const trainBtn = document.getElementById('btn-ml-train-fixed');
+                    if (trainBtn) {
+                        const newBtn = trainBtn.cloneNode(true);
+                        trainBtn.parentNode?.replaceChild(newBtn, trainBtn);
+                        newBtn.addEventListener('click', () => {
+                            if (trainingPoints.length === 0) {
+                                alert("Please click inside the black coordinate box first to add training points!");
+                                return;
+                            }
+                            for (let epoch = 0; epoch < 50; epoch++) {
+                                trainingPoints.forEach(p => {
+                                    perceptron.train([p.x1, p.x2], p.label);
+                                });
+                            }
+                            perceptronWeights.value = `[${perceptron.weights[0].toFixed(3)}, ${perceptron.weights[1].toFixed(3)}]`;
+                            perceptronBias.value = perceptron.bias.toFixed(3);
+                            drawMLBoard();
+                        });
+                    }
+
+                    const clearBtn = document.getElementById('btn-ml-clear-fixed');
+                    if (clearBtn) {
+                        const newClear = clearBtn.cloneNode(true);
+                        clearBtn.parentNode?.replaceChild(newClear, clearBtn);
+                        newClear.addEventListener('click', () => {
+                            trainingPoints.length = 0;
+                            perceptronCount.value = 0;
+                            perceptron.weights = [Math.random() * 2 - 1, Math.random() * 2 - 1];
+                            perceptron.bias = Math.random() * 2 - 1;
+                            perceptronWeights.value = "[0, 0]";
+                            perceptronBias.value = "0";
+                            drawMLBoard();
+                        });
+                    }
+                };
+
+                // ==========================================
+                // 5. ASSEMBLE ENTIRE APP TREE WITH PAPYR
+                // ==========================================
+                const App = papyr.div('.container',
+
+                    papyr.header('.header-section',
+                        papyr.span('.badge', "🚀 100% PAPYRUS RENDERED"),
+                        papyr.h1("Live Developer Studio"),
+                        papyr.p("Fully isomorphic single-page dashboard designed, styled, and rendered strictly using Papyr tag creators.")
+                    ),
+
+                    papyr.layout.grid({
+                        cols: papyr.computed(() => windowWidthVal.value < 1024 ? '1fr' : '380px 1fr'),
+                        gap: '32px'
+                    },
+                        // LEFT COLUMN
+                        papyr.aside('.glass-panel', { style: { height: 'fit-content', display: 'flex', flexDirection: 'column', gap: '24px' } },
+                            papyr.div(
+                                papyr.h2({ style: { margin: '0 0 4px 0' } }, "Control Center"),
+                                papyr.p({ style: { color: 'var(--text-muted)', fontSize: '0.9rem', margin: '0' } }, "Mutate reactive values and check local stores.")
+                            ),
+                            // Slider 1
+                            papyr.div('.control-group',
+                                papyr.label('.control-label', "Live State Pacing (Chart Data)"),
+                                papyr.div({ style: { display: 'flex', gap: '12px', alignItems: 'center', marginTop: '8px' } },
+                                    papyr.input('range', { class: 'custom-slider', min: '10', max: '95', ...papyr.model(chartDataVal) }),
+                                    papyr.span({ style: { fontWeight: 'bold', color: 'var(--primary)', minWidth: '32px', textAlign: 'right' } }, () => chartDataVal.value)
+                                )
+                            ),
+                            // Slider 2
+                            papyr.div('.control-group',
+                                papyr.label('.control-label', "STEM Sine Wave Frequency"),
+                                papyr.div({ style: { display: 'flex', gap: '12px', alignItems: 'center', marginTop: '8px' } },
+                                    papyr.input('range', { class: 'custom-slider', min: '1', max: '10', ...papyr.model(waveFrequencyVal) }),
+                                    papyr.span({ style: { fontWeight: 'bold', color: '#10b981', minWidth: '32px', textAlign: 'right' } }, () => waveFrequencyVal.value)
+                                )
+                            ),
+                            // GDPR & WATT
+                            papyr.div('.control-group',
+                                papyr.span('.badge', { style: { background: 'rgba(16,185,129,0.1)', borderColor: 'rgba(16,185,129,0.3)', color: '#34d399' } }, "Privacy Secure"),
+                                papyr.label('.control-label', { style: { marginTop: '8px' } }, "GDPR Storage Consent"),
+                                papyr.div({ style: { display: 'flex', gap: '12px', marginTop: '8px', marginBottom: '12px' } },
+                                    papyr.button('.studio-btn', { style: { background: '#10b981', padding: '8px 14px' }, onclick: () => { papyr.security.setConsent(true); localStorage.setItem('_ga', 'GA1.2.987216'); wattConsent.value = true; } }, "Grant"),
+                                    papyr.button('.studio-btn', { style: { background: '#f43f5e', padding: '8px 14px' }, onclick: () => { papyr.security.setConsent(false); localStorage.setItem('_ga', 'blocked'); wattConsent.value = false; } }, "Deny")
+                                ),
+                                papyr.div({ style: { marginTop: '8px', fontSize: '0.85rem' } }, () => wattConsent.value ? papyr.span({ style: { color: '#10b981' } }, "Status: Granted") : papyr.span({ style: { color: '#f43f5e' } }, "Status: Blocked")),
+                                papyr.div({ style: { marginTop: '16px', display: 'flex', gap: '8px' } },
+                                    papyr.button('.studio-btn', { style: { background: 'rgba(99,102,241,0.1)', fontSize: '0.75rem', flex: 1 }, onclick: () => { if (navigator.geolocation) navigator.geolocation.getCurrentPosition(pos => alert(`Lat:${pos.coords.latitude}`), err => alert(err.message)); else alert("no geo"); } }, "📍 Geolocation"),
+                                    papyr.button('.studio-btn', { style: { background: 'rgba(99,102,241,0.1)', fontSize: '0.75rem', flex: 1 }, onclick: () => { navigator.mediaDevices?.getUserMedia({ audio: true, video: true }).then(() => alert("granted")).catch(e => alert(e.message)); } }, "📹 Camera/Mic")
+                                )
+                            ),
+                            papyr.hr({ style: { margin: '12px 0' } }),
+                            // CRUD Task Manager
+                            papyr.div('.control-group',
+                                papyr.span('.badge', { style: { background: 'rgba(99,102,241,0.1)' } }, "CRUD Store"),
+                                papyr.div({ style: { display: 'flex', gap: '8px', marginBottom: '16px' } },
+                                    papyr.input('text', { class: 'studio-input', placeholder: 'Add new persistent task...', onMounted: (el) => papyr.bind(el, todoInputVal) }),
+                                    papyr.button('.studio-btn', { onclick: handleAddTodo }, "+")
+                                ),
+                                papyr.div({ style: { display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '160px', overflowY: 'auto' } },
+                                    () => todosList.value.map(item => papyr.div({ style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: 'rgba(255,255,255,0.02)', borderRadius: '8px' } },
+                                        papyr.div({ style: { display: 'flex', alignItems: 'center', gap: '8px' } },
+                                            papyr.input('checkbox', { checked: item.done, onclick: () => handleToggleTodo(item.id) }),
+                                            papyr.span(item.title, { style: { textDecoration: item.done ? 'line-through' : 'none', color: item.done ? 'var(--text-muted)' : '#f8fafc', fontSize: '0.85rem' } })
+                                        ),
+                                        papyr.button({ style: { background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer' }, onclick: () => handleDeleteTodo(item.id) }, "✕")
+                                    ))
+                                )
+                            ),
+                            // Legacy
+                            papyr.div('.control-group',
+                                papyr.div({ style: { borderTop: '1px dashed rgba(255,255,255,0.08)', paddingTop: '16px' } },
+                                    papyr.span('.legacy-badge', "🔧 Legacy Renovations"),
+                                    papyr.div('.legacy-box',
+                                        papyr.input({ id: 'legacy-input-dom', class: 'legacy-input', value: 'Vanilla JS legacy value' }),
+                                        papyr.div({ style: { display: 'flex', justifyContent: 'space-between', marginTop: '8px' } },
+                                            papyr.span({ style: { fontSize: '0.75rem', color: 'var(--text-muted)' } }, "Reactive Output:"),
+                                            papyr.span({ id: 'legacy-display-dom', style: { fontSize: '0.85rem', color: '#fca5a5', fontWeight: 'bold' } }, "Vanilla JS legacy value")
+                                        )
+                                    )
+                                )
+                            )
+                        ),
+                        // RIGHT COLUMN
+                        papyr.main({ style: { display: 'flex', flexDirection: 'column', gap: '32px' } },
+                            papyr.layout.grid({ cols: papyr.computed(() => windowWidthVal.value < 1200 ? '1fr' : '1fr 1fr'), gap: '24px' },
+                                papyr.section('.glass-panel', papyr.span('.badge', { style: { background: 'rgba(16,185,129,0.1)' } }, "STEM Grapher"), papyr.div('#science-plotter-container', { style: { minHeight: '200px' } })),
+                                papyr.section('.glass-panel', papyr.span('.badge', "Visual Charts"), papyr.div('#chart-container', { style: { minHeight: '200px' } }))
+                            ),
+                            // 3D Studio
+                            papyr.section('.glass-panel', { style: { display: 'flex', flexDirection: 'column', gap: '20px' } },
+                                papyr.span('.badge', { style: { background: 'rgba(168,85,247,0.1)' } }, "WebGL 3D Studio"),
+                                papyr.div({ style: { display: 'flex', gap: '24px', flexWrap: 'wrap' } },
+                                    papyr.div({ style: { flex: 1, minWidth: '250px', display: 'flex', flexDirection: 'column', gap: '16px' } },
+                                        papyr.div('.control-group', papyr.label('.control-label', "Cube Size"), papyr.input('range', { class: 'custom-slider', min: '0.5', max: '2.5', step: '0.1', ...papyr.model(cubeSizeVal) }), papyr.span(() => cubeSizeVal.value.toFixed(1))),
+                                        papyr.div('.control-group', papyr.label('.control-label', "Sphere Radius"), papyr.input('range', { class: 'custom-slider', min: '0.4', max: '2.0', step: '0.1', ...papyr.model(sphereRadiusVal) }), papyr.span(() => sphereRadiusVal.value.toFixed(1))),
+                                        papyr.div('.control-group', papyr.label('.control-label', "Torus Spin Speed"), papyr.input('range', { class: 'custom-slider', min: '0.005', max: '0.08', step: '0.005', ...papyr.model(torusSpinVal) }), papyr.span(() => torusSpinVal.value.toFixed(3))),
+                                        papyr.div('.control-group', papyr.label('.control-label', "Torus Color"), papyr.input('color', { ...papyr.model(torusColorVal) })),
+                                        papyr.div('.control-group', papyr.input('checkbox', { id: 'gravityCheck', onMounted: el => papyr.bind(el, gravityActiveVal) }), papyr.label({ for: 'gravityCheck', style: { color: '#fb7185' } }, "Activate Gravity"))
+                                    ),
+                                    papyr.div('#studio-3d-container', { style: { width: '100%', maxWidth: '450px', height: '300px', borderRadius: '12px', overflow: 'hidden', background: '#04060d' } })
+                                )
+                            ),
+                            // Physics
+                            papyr.section('.glass-panel', papyr.span('.badge', { style: { background: 'rgba(244,63,94,0.1)' } }, "2D Verlet Physics"), papyr.div('#physics-sandbox', { style: { width: '100%', height: '350px' } })),
+                            // ML Perceptron
+                            papyr.section('.glass-panel',
+                                papyr.span('.badge', { style: { background: 'rgba(168,85,247,0.1)' } }, "Statistical ML Perceptron"),
+                                papyr.div({ style: { display: 'flex', gap: '24px', flexWrap: 'wrap' } },
+                                    papyr.div(papyr.canvas({ id: 'ml-canvas-fixed', style: { background: '#04060d', borderRadius: '12px', cursor: 'crosshair' }, width: 300, height: 300, onMounted: initMLBoard })),
+                                    papyr.div({ style: { flex: 1 } },
+                                        papyr.ul({ style: { fontSize: '0.85rem' } },
+                                            papyr.li("Data Points: ", papyr.span({ style: { color: '#fff' } }, () => perceptronCount.value)),
+                                            papyr.li("Weights: ", papyr.span({ style: { fontFamily: 'monospace' } }, () => perceptronWeights.value)),
+                                            papyr.li("Bias: ", papyr.span({ style: { fontFamily: 'monospace' } }, () => perceptronBias.value))
+                                        ),
+                                        papyr.div({ style: { display: 'flex', gap: '8px', marginTop: '16px' } },
+                                            papyr.button('#btn-ml-train-fixed', { class: 'studio-btn', style: { background: '#a855f7' } }, "Train (50 Epochs)"),
+                                            papyr.button('#btn-ml-clear-fixed', { class: 'studio-btn', style: { background: 'rgba(255,255,255,0.05)' } }, "Clear Board")
+                                        )
+                                    )
+                                )
+                            ),
+                            papyr.section('.glass-panel', papyr.h3("🎓 Code Blueprint"), papyr.div('.snippet-box', `// 100% Papyr declarative rendering\nconst App = papyr.div(...);\npapyr.mount('#app', App);`))
+                        )
+                    )
+                );
+
+                papyr.mount('#app', App);
+
+                // POST-MOUNT: external graph/chart/physics engine instantiation
+                const scienceContainer = document.getElementById('science-plotter-container');
+                if (scienceContainer && papyr.science && papyr.science.graph) {
+                    const dynamicGraph = papyr.science.graph({ equation: (x) => Math.sin(x * (waveFrequencyVal.value / 3)), range: [-8, 8, -2, 2], color: '#10b981' });
+                    scienceContainer.appendChild(dynamicGraph);
+                    waveFrequencyVal.subscribe((newFreq) => {
+                        const canvas = dynamicGraph.querySelector('canvas');
+                        if (canvas) papyr.science.graph(canvas, { equation: (x) => Math.sin(x * (newFreq / 3)), range: [-8, 8, -2, 2], color: '#10b981' });
+                    });
+                }
+
+                const chartContainer = document.getElementById('chart-container');
+                if (chartContainer && papyr.chart) {
+                    const dynamicChart = papyr.chart({ type: 'bar', data: papyr.computed(() => [{ label: 'A', value: chartDataVal.value }, { label: 'B', value: Math.abs(100 - chartDataVal.value) }, { label: 'C', value: Math.round(chartDataVal.value * 0.7) }, { label: 'D', value: Math.round(chartDataVal.value * 1.3) }]), colors: ['#6366f1', '#14b8a6', '#f43f5e', '#a855f7'] });
+                    chartContainer.appendChild(dynamicChart);
+                }
+
+                const physicsContainer = document.getElementById('physics-sandbox');
+                if (physicsContainer && papyr.physics && papyr.physics.world) {
+                    const physicalWorld = papyr.physics.world({ gravity: 0.6, friction: 0.98 });
+                    physicsContainer.appendChild(physicalWorld);
+                }
+
+                const studioContainer = document.getElementById('studio-3d-container');
+                if (studioContainer && papyr['3d'] && papyr['3d'].scene) {
+                    const studioScene = papyr['3d'].scene({ environment: 'cyberpunk', gravityActive: gravityActiveVal, objects: [papyr['3d'].cube({ size: cubeSizeVal, color: '#6366f1', position: [-1.5, 0, 0] }), papyr['3d'].sphere({ radius: sphereRadiusVal, color: '#f43f5e', position: [1.5, 0, 0] }), papyr['3d'].torus({ radius: 0.6, tube: 0.15, color: torusColorVal, position: [0, 0, 0.5], spin: [() => torusSpinVal.value * 0.5, () => torusSpinVal.value, () => torusSpinVal.value * 0.7] })] });
+                    studioContainer.appendChild(studioScene);
+                }
+
+                // Legacy binding
+                const legacyInputDom = document.getElementById('legacy-input-dom');
+                const legacyDisplayDom = document.getElementById('legacy-display-dom');
+                if (legacyInputDom) papyr.bind(legacyInputDom, legacyInputVal);
+                if (legacyDisplayDom) papyr.watch(legacyInputVal, val => { if (legacyDisplayDom) legacyDisplayDom.textContent = val; });
+
+                // initial draw if canvas was mounted later
+                setTimeout(() => { if (mlCanvasElement) drawMLBoard(); }, 100);
+            });
+        })();
+    </script>
+</body>
+
+</html>

@@ -1,6 +1,6 @@
 /**
  * PAPYR STATIC SITE LIBRARY - Decoupled Plugins Bundle
- * v3.1.2 - Official Capability Modules
+ * v3.1.3 - Official Capability Modules
  * Released under MIT License.
  */
 
@@ -1513,18 +1513,28 @@
         const step = () => {
             if (cancelled) return;
             let done = true;
-            Object.entries(anims).forEach(([prop, anim]) => {
-                let force = -tension * (anim.current - anim.target) - friction * anim.velocity;
-                let acceleration = force / mass;
-                anim.velocity += acceleration * 0.016; // dt = 16ms
-                anim.current += anim.velocity * 0.016;
 
-                if (Math.abs(anim.velocity) > 0.01 || Math.abs(anim.current - anim.target) > 0.01) {
-                    done = false;
-                } else {
-                    anim.current = anim.target;
-                }
-            });
+            // Run 4 sub-steps per frame to ensure integration stability at high tension / low friction
+            const substeps = 4;
+            const dt = 0.016 / substeps;
+
+            for (let i = 0; i < substeps; i++) {
+                done = true;
+                Object.entries(anims).forEach(([prop, anim]) => {
+                    let force = -tension * (anim.current - anim.target) - friction * anim.velocity;
+                    let acceleration = force / mass;
+                    anim.velocity += acceleration * dt;
+                    anim.current += anim.velocity * dt;
+
+                    if (Math.abs(anim.velocity) > 0.005 || Math.abs(anim.current - anim.target) > 0.005) {
+                        done = false;
+                    } else {
+                        anim.current = anim.target;
+                        anim.velocity = 0;
+                    }
+                });
+                if (done) break;
+            }
 
             // Rebuild the transform string to apply x, y, and scale together
             let transformParts = [];
@@ -1577,18 +1587,43 @@
         const { onSwipeLeft, onSwipeRight, onDrag, onRelease } = options;
         let startX = 0, startY = 0, currentX = 0, currentY = 0;
         let isDragging = false;
+        let dragStartX = 0, dragStartY = 0;
 
         const start = (clientX, clientY) => {
+            let curX = 0;
+            let curY = 0;
+            const transformStr = el.style.transform || '';
+            const translateMatch = transformStr.match(/translate\(([^,]+),\s*([^)]+)\)/) || 
+                                   transformStr.match(/translate3d\(([^,]+),\s*([^,]+)/);
+            if (translateMatch) {
+                curX = parseFloat(translateMatch[1]) || 0;
+                curY = parseFloat(translateMatch[2]) || 0;
+            } else {
+                const translateXMatch = transformStr.match(/translateX\(([^)]+)\)/);
+                if (translateXMatch) curX = parseFloat(translateXMatch[1]) || 0;
+                const translateYMatch = transformStr.match(/translateY\(([^)]+)\)/);
+                if (translateYMatch) curY = parseFloat(translateYMatch[1]) || 0;
+            }
+
+            dragStartX = curX;
+            dragStartY = curY;
             startX = clientX;
             startY = clientY;
             isDragging = true;
             el.style.transition = 'none';
+
+            if (el._springCancel) {
+                el._springCancel();
+            }
+
+            window.addEventListener('mousemove', onMouseMove);
+            window.addEventListener('mouseup', onMouseUp);
         };
 
         const move = (clientX, clientY) => {
             if (!isDragging) return;
-            currentX = clientX - startX;
-            currentY = clientY - startY;
+            currentX = dragStartX + (clientX - startX);
+            currentY = dragStartY + (clientY - startY);
             if (onDrag) onDrag(currentX, currentY, el);
             else {
                 el.style.transform = `translate(${currentX}px, ${currentY}px)`;
@@ -1598,6 +1633,9 @@
         const end = () => {
             if (!isDragging) return;
             isDragging = false;
+
+            window.removeEventListener('mousemove', onMouseMove);
+            window.removeEventListener('mouseup', onMouseUp);
 
             if (onRelease) {
                 onRelease(currentX, currentY, el);
@@ -1615,13 +1653,32 @@
             currentY = 0;
         };
 
-        el.addEventListener('mousedown', (e) => start(e.clientX, e.clientY));
-        window.addEventListener('mousemove', (e) => move(e.clientX, e.clientY));
-        window.addEventListener('mouseup', end);
+        const onMouseMove = (e) => move(e.clientX, e.clientY);
+        const onMouseUp = () => end();
 
-        el.addEventListener('touchstart', (e) => start(e.touches[0].clientX, e.touches[0].clientY));
-        el.addEventListener('touchmove', (e) => move(e.touches[0].clientX, e.touches[0].clientY));
-        el.addEventListener('touchend', end);
+        el.addEventListener('mousedown', (e) => {
+            if (e.button !== 0) return;
+            start(e.clientX, e.clientY);
+        });
+
+        const onTouchMove = (e) => {
+            if (e.touches.length > 0) {
+                move(e.touches[0].clientX, e.touches[0].clientY);
+            }
+        };
+        const onTouchEnd = () => {
+            end();
+            window.removeEventListener('touchmove', onTouchMove);
+            window.removeEventListener('touchend', onTouchEnd);
+        };
+
+        el.addEventListener('touchstart', (e) => {
+            if (e.touches.length > 0) {
+                start(e.touches[0].clientX, e.touches[0].clientY);
+                window.addEventListener('touchmove', onTouchMove, { passive: true });
+                window.addEventListener('touchend', onTouchEnd, { passive: true });
+            }
+        });
 
         return el;
     };
@@ -1649,13 +1706,34 @@
             let isDragging = false;
             let animationFrame;
 
+            // Cache measurements to prevent layout thrashing
+            let elHeight = 50;
+            let parentHeight = window.innerHeight;
+
+            const recacheHeights = () => {
+                elHeight = el.offsetHeight || 50;
+                parentHeight = el.parentElement ? el.parentElement.clientHeight : window.innerHeight;
+            };
+
+            window.addEventListener('resize', recacheHeights);
+
+            // Cleanup resize listener if element is detached
+            if (typeof MutationObserver !== 'undefined' && typeof document !== 'undefined') {
+                const observer = new MutationObserver(() => {
+                    if (!document.body.contains(el)) {
+                        window.removeEventListener('resize', recacheHeights);
+                        observer.disconnect();
+                    }
+                });
+                observer.observe(document.body, { childList: true, subtree: true });
+            }
+
             const update = () => {
                 if (!isDragging) {
                     vy += gravity;
                     y += vy;
 
-                    let parentHeight = el.parentElement ? el.parentElement.clientHeight : window.innerHeight;
-                    let floor = parentHeight - el.offsetHeight;
+                    let floor = parentHeight - elHeight;
 
                     if (y > floor) {
                         y = floor;
@@ -1672,6 +1750,7 @@
             el.addEventListener('mousedown', () => {
                 isDragging = true;
                 el.style.cursor = 'grabbing';
+                recacheHeights();
             });
             window.addEventListener('mouseup', () => {
                 if (isDragging) {
@@ -1690,6 +1769,7 @@
             setTimeout(() => {
                 let initialBounds = el.getBoundingClientRect();
                 y = initialBounds.top || 0;
+                recacheHeights();
                 update();
             }, 50);
 
@@ -3515,6 +3595,121 @@
                     resolve(false);
                 });
             });
+        },
+
+        triggerTrackingPrompt(trackingInfo, onAllow, onDeny) {
+            if (typeof document === 'undefined') {
+                onDeny(false);
+                return;
+            }
+
+            const isScenario1 = trackingInfo.optOut === true;
+            
+            const title = `🛡️ Third-Party Tracker Detected`;
+            const message = `The application is trying to connect to: **${trackingInfo.name}** (${trackingInfo.url.substring(0, 50)}${trackingInfo.url.length > 50 ? '...' : ''}).`;
+            const purposeText = `Purpose: ${trackingInfo.purpose}.`;
+            const warningText = isScenario1 
+                ? "This provider may track your activity."
+                : "This provider may track activity.";
+
+            const optOutBtnText = "Ask App Not to Track";
+            const cancelBtnText = "Cancel";
+            const continueBtnText = "Continue";
+
+            const wattModal = papyr.div('.papyr-card.papyr-watt-box', {
+                role: 'dialog',
+                'aria-modal': 'true',
+                style: `
+                    position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+                    z-index: 99999; max-width: 420px; width: 90%;
+                    background: rgba(15, 23, 42, 0.9);
+                    backdrop-filter: blur(20px);
+                    -webkit-backdrop-filter: blur(20px);
+                    border: 1px solid ${this.config.branding.primaryColor}33;
+                    border-radius: 24px;
+                    padding: 28px;
+                    box-shadow: 0 30px 60px rgba(0,0,0,0.5);
+                    box-sizing: border-box;
+                    color: #fff;
+                    font-family: inherit;
+                `
+            },
+                papyr.h3(title, { style: "font-size: 20px; margin-bottom: 12px; font-weight: 700; color: #fff;" }),
+                papyr.p(message, { style: "color: #cbd5e1; font-size: 0.95rem; line-height: 1.5; margin-bottom: 8px;" }),
+                papyr.p(purposeText, { style: "color: #94a3b8; font-size: 0.85rem; margin-bottom: 16px; font-style: italic;" }),
+                papyr.p(warningText, { style: "color: #f43f5e; font-weight: bold; font-size: 0.95rem; margin-bottom: 24px;" }),
+
+                papyr.flex.row({ style: "justify-content: flex-end; gap: 12px;" },
+                    papyr.button(isScenario1 ? optOutBtnText : cancelBtnText, {
+                        style: "background: rgba(239, 68, 68, 0.1); color: #ef4444; border: 1px solid rgba(239,68,68,0.25); padding: 10px 18px; border-radius: 12px; cursor: pointer; font-family: inherit;",
+                        onclick: () => { 
+                            wattModal.remove(); 
+                            onDeny(isScenario1); 
+                        }
+                    }),
+                    papyr.button(continueBtnText, {
+                        style: `background: ${this.config.branding.primaryColor}; color: #fff; border: none; padding: 10px 18px; border-radius: 12px; cursor: pointer; font-weight: bold; font-family: inherit;`,
+                        onclick: () => { 
+                            wattModal.remove(); 
+                            onAllow(); 
+                        }
+                    })
+                )
+            );
+
+            document.body.appendChild(wattModal);
+        },
+
+        compliance: {
+            getGDPRNotice() {
+                return "Under the General Data Privacy Regulation (GDPR), users residing in the European Union have the right to access, rectify, port, and erase their personal data. This application acts as a Data Controller. By granting permission, you consent to the processing of specified parameters.";
+            },
+            getCCPANotice() {
+                return "Pursuant to the California Consumer Privacy Act (CCPA), California residents have the right to request disclosure of personal data collected, opt-out of the sale of personal information, and request deletion of personal information.";
+            },
+            getPDANotice() {
+                return "In compliance with the Philippine Data Privacy Act of 2012 (R.A. 10173), this app ensures standard security controls for protecting personal and sensitive information processed through its system.";
+            },
+            renderCookieConsent(options = {}) {
+                if (typeof document === 'undefined') return;
+                const {
+                    message = "We use cookies to enhance your experience and support compliance with privacy acts.",
+                    link = "#",
+                    linkText = "Privacy Policy",
+                    onAccept = () => {}
+                } = options;
+                
+                if (localStorage.getItem("papyr_cookie_consent") === "true") return;
+
+                const consentBanner = papyr.div('.watt-cookie-consent', {
+                    style: `
+                        position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+                        z-index: 99998; max-width: 600px; width: 90%;
+                        background: rgba(30, 41, 59, 0.95);
+                        backdrop-filter: blur(10px);
+                        border: 1px solid rgba(255,255,255,0.1);
+                        border-radius: 16px;
+                        padding: 16px 24px;
+                        box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+                        display: flex; justify-content: space-between; align-items: center; gap: 16px;
+                        color: #fff; font-family: inherit; font-size: 0.9rem;
+                    `
+                },
+                    papyr.div({ style: "flex-grow: 1;" },
+                        papyr.span(message),
+                        papyr.a(` ${linkText}`, { href: link, target: "_blank", style: "color: #6366f1; text-decoration: underline; margin-left: 8px;" })
+                    ),
+                    papyr.button("Accept", {
+                        style: "background: #6366f1; color: #fff; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer; font-weight: bold;",
+                        onclick: () => {
+                            localStorage.setItem("papyr_cookie_consent", "true");
+                            consentBanner.remove();
+                            onAccept();
+                        }
+                    })
+                );
+                document.body.appendChild(consentBanner);
+            }
         }
     };
 
@@ -3530,6 +3725,771 @@
         delete papyr._initialPrivacy;
     }
 })();
+
+
+// --- MODULE: plugins/seo.js ---
+/**
+ * PAPYR SEO TOOLKIT (papyr-seo)
+ * Isomorphic SEO metadata engine for titles, Open Graph, Twitter Cards,
+ * Schema.org JSON-LD, canonical URLs, sitemaps, robots.txt, and RSS feeds.
+ * Works during SSR (generates HTML strings) and on client (updates document.head).
+ * Part of the PSSR (Papyrus Server Side Rendering) architecture.
+ */
+(function (window) {
+    if (!window.papyr) {
+        console.warn("Papyr core not detected. SEO Toolkit requires papyr core to run.");
+        return;
+    }
+
+    const papyr = window.papyr;
+
+    // ─── Helpers ────────────────────────────────────────────────────────────────
+
+    const escapeHtml = (str) => String(str == null ? '' : str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+
+    // ─── Internal State ──────────────────────────────────────────────────────────
+
+    const _state = {
+        /** @type {Array<Object>} */
+        meta: []
+    };
+
+    function _pushMeta(item) {
+        _state.meta.push(item);
+    }
+
+    function _applyToDom() {
+        if (typeof document === 'undefined') return;
+
+        _state.meta.forEach(item => {
+            if (item.type === 'title') {
+                document.title = item.content;
+                return;
+            }
+
+            if (item.type === 'meta-name') {
+                let el = document.querySelector(`meta[name="${item.name}"]`);
+                if (!el) {
+                    el = document.createElement('meta');
+                    el.setAttribute('name', item.name);
+                    document.head.appendChild(el);
+                }
+                el.setAttribute('content', item.content);
+                return;
+            }
+
+            if (item.type === 'meta-property') {
+                let el = document.querySelector(`meta[property="${item.property}"]`);
+                if (!el) {
+                    el = document.createElement('meta');
+                    el.setAttribute('property', item.property);
+                    document.head.appendChild(el);
+                }
+                el.setAttribute('content', item.content);
+                return;
+            }
+
+            if (item.type === 'link') {
+                let el = document.querySelector(`link[rel="${item.rel}"]`);
+                if (!el) {
+                    el = document.createElement('link');
+                    el.setAttribute('rel', item.rel);
+                    document.head.appendChild(el);
+                }
+                el.setAttribute('href', item.href);
+                return;
+            }
+
+            if (item.type === 'jsonld') {
+                let el = document.querySelector('script[data-papyr-schema]');
+                if (!el) {
+                    el = document.createElement('script');
+                    el.setAttribute('type', 'application/ld+json');
+                    el.setAttribute('data-papyr-schema', 'true');
+                    document.head.appendChild(el);
+                }
+                el.textContent = item.content;
+                return;
+            }
+        });
+    }
+
+    // ─── SEO Object ─────────────────────────────────────────────────────────────
+
+    const PapyrSEO = {
+
+        /**
+         * Set page SEO metadata. Accepts a flat config object with all common fields.
+         *
+         * @param {Object} options
+         * @param {string} [options.title] - Page title
+         * @param {string} [options.description] - Meta description
+         * @param {string} [options.keywords] - Meta keywords (string or array)
+         * @param {string} [options.canonical] - Canonical URL
+         * @param {string} [options.robots] - Robots directive (e.g. "index, follow")
+         * @param {string} [options.author] - Author meta tag
+         * @param {Object} [options.og] - Open Graph options (passed to papyr.seo.og)
+         * @param {Object} [options.twitter] - Twitter Card options (passed to papyr.seo.twitter)
+         * @param {Object|Array} [options.schema] - Schema.org JSON-LD data
+         * @returns {PapyrSEO} Chainable
+         *
+         * @example
+         * papyr.seo({
+         *   title: "My Blog",
+         *   description: "The latest tech news",
+         *   canonical: "https://example.com/blog",
+         *   og: { image: "https://example.com/og.jpg" },
+         *   twitter: { card: "summary_large_image" }
+         * });
+         */
+        set(options = {}) {
+            // Reset state for new page
+            _state.meta = [];
+
+            if (options.title) {
+                _pushMeta({ type: 'title', content: options.title });
+            }
+
+            if (options.description) {
+                _pushMeta({ type: 'meta-name', name: 'description', content: options.description });
+            }
+
+            if (options.keywords) {
+                const kw = Array.isArray(options.keywords)
+                    ? options.keywords.join(', ')
+                    : options.keywords;
+                _pushMeta({ type: 'meta-name', name: 'keywords', content: kw });
+            }
+
+            if (options.author) {
+                _pushMeta({ type: 'meta-name', name: 'author', content: options.author });
+            }
+
+            if (options.robots) {
+                _pushMeta({ type: 'meta-name', name: 'robots', content: options.robots });
+            }
+
+            if (options.canonical) {
+                _pushMeta({ type: 'link', rel: 'canonical', href: options.canonical });
+            }
+
+            if (options.og) {
+                this.og(options.og);
+            }
+
+            if (options.twitter) {
+                this.twitter(options.twitter);
+            }
+
+            if (options.schema) {
+                this.schema(options.schema);
+            }
+
+            if (papyr.isBrowser && papyr.isBrowser()) {
+                _applyToDom();
+            }
+
+            return this;
+        },
+
+        /**
+         * Set canonical URL.
+         * @param {string} url
+         * @returns {PapyrSEO} Chainable
+         */
+        canonical(url) {
+            _pushMeta({ type: 'link', rel: 'canonical', href: url });
+            if (papyr.isBrowser && papyr.isBrowser()) {
+                _applyToDom();
+            }
+            return this;
+        },
+
+        /**
+         * Set Open Graph metadata.
+         * @param {Object} options
+         * @param {string} [options.title] - og:title
+         * @param {string} [options.description] - og:description
+         * @param {string} [options.image] - og:image URL
+         * @param {string} [options.image_alt] - og:image:alt
+         * @param {string} [options.image_width] - og:image:width
+         * @param {string} [options.image_height] - og:image:height
+         * @param {string} [options.url] - og:url
+         * @param {string} [options.type] - og:type (default: 'website')
+         * @param {string} [options.site_name] - og:site_name
+         * @param {string} [options.locale] - og:locale
+         * @returns {PapyrSEO} Chainable
+         */
+        og(options = {}) {
+            const ogMap = {
+                title: 'og:title',
+                description: 'og:description',
+                image: 'og:image',
+                image_alt: 'og:image:alt',
+                image_width: 'og:image:width',
+                image_height: 'og:image:height',
+                url: 'og:url',
+                type: 'og:type',
+                site_name: 'og:site_name',
+                locale: 'og:locale',
+                video: 'og:video',
+                audio: 'og:audio'
+            };
+
+            // Default type
+            if (!options.type) options.type = 'website';
+
+            Object.entries(options).forEach(([key, value]) => {
+                if (value != null && ogMap[key]) {
+                    _pushMeta({ type: 'meta-property', property: ogMap[key], content: String(value) });
+                }
+            });
+
+            if (papyr.isBrowser && papyr.isBrowser()) {
+                _applyToDom();
+            }
+            return this;
+        },
+
+        /**
+         * Set Twitter Card metadata.
+         * @param {Object} options
+         * @param {string} [options.card] - Card type: 'summary' | 'summary_large_image' | 'app' | 'player'
+         * @param {string} [options.title] - twitter:title
+         * @param {string} [options.description] - twitter:description
+         * @param {string} [options.image] - twitter:image URL
+         * @param {string} [options.image_alt] - twitter:image:alt
+         * @param {string} [options.site] - @username of website (e.g. "@papyrjs")
+         * @param {string} [options.creator] - @username of content creator
+         * @returns {PapyrSEO} Chainable
+         */
+        twitter(options = {}) {
+            const twitterMap = {
+                card: 'twitter:card',
+                title: 'twitter:title',
+                description: 'twitter:description',
+                image: 'twitter:image',
+                image_alt: 'twitter:image:alt',
+                site: 'twitter:site',
+                creator: 'twitter:creator',
+                app_id_iphone: 'twitter:app:id:iphone',
+                app_id_googleplay: 'twitter:app:id:googleplay'
+            };
+
+            if (!options.card) options.card = 'summary';
+
+            Object.entries(options).forEach(([key, value]) => {
+                if (value != null && twitterMap[key]) {
+                    _pushMeta({ type: 'meta-name', name: twitterMap[key], content: String(value) });
+                }
+            });
+
+            if (papyr.isBrowser && papyr.isBrowser()) {
+                _applyToDom();
+            }
+            return this;
+        },
+
+        /**
+         * Inject Schema.org JSON-LD structured data.
+         * @param {Object|Array|string} data - Schema.org JSON-LD object, array, or pre-stringified JSON
+         * @returns {PapyrSEO} Chainable
+         *
+         * @example
+         * papyr.seo.schema({
+         *   "@context": "https://schema.org",
+         *   "@type": "BlogPosting",
+         *   "headline": "My Article",
+         *   "author": { "@type": "Person", "name": "Eldrex Bula" }
+         * });
+         */
+        schema(data) {
+            const json = typeof data === 'string'
+                ? data
+                : JSON.stringify(data, null, 2);
+            _pushMeta({ type: 'jsonld', content: json });
+
+            if (papyr.isBrowser && papyr.isBrowser() && typeof document !== 'undefined') {
+                let el = document.querySelector('script[data-papyr-schema]');
+                if (!el) {
+                    el = document.createElement('script');
+                    el.setAttribute('type', 'application/ld+json');
+                    el.setAttribute('data-papyr-schema', 'true');
+                    document.head.appendChild(el);
+                }
+                el.textContent = json;
+            }
+            return this;
+        },
+
+        /**
+         * Render all accumulated metadata as an HTML string (for SSR head injection).
+         * @returns {string} HTML string of all head tags
+         */
+        renderHead() {
+            return _state.meta.map(item => {
+                if (item.type === 'title') {
+                    return `<title>${escapeHtml(item.content)}</title>`;
+                }
+                if (item.type === 'meta-name') {
+                    return `<meta name="${escapeHtml(item.name)}" content="${escapeHtml(item.content)}">`;
+                }
+                if (item.type === 'meta-property') {
+                    return `<meta property="${escapeHtml(item.property)}" content="${escapeHtml(item.content)}">`;
+                }
+                if (item.type === 'link') {
+                    return `<link rel="${escapeHtml(item.rel)}" href="${escapeHtml(item.href)}">`;
+                }
+                if (item.type === 'jsonld') {
+                    return `<script type="application/ld+json">${item.content}</script>`;
+                }
+                return '';
+            }).join('\n  ');
+        },
+
+        /** Internal: used by papyr.edge streaming to flush head immediately */
+        _flushHead() {
+            return this.renderHead();
+        },
+
+        // ─── Static Site Tools ─────────────────────────────────────────────────
+
+        /**
+         * Generate a Sitemap XML string.
+         * @param {Array<string|Object>} routes - Route paths or route objects
+         * @param {Object} [options]
+         * @param {string} [options.baseUrl='https://example.com'] - Base URL prefix
+         * @param {string} [options.defaultChangefreq='weekly'] - Default changefreq
+         * @param {string} [options.defaultPriority='0.8'] - Default priority
+         * @returns {string} Sitemap XML string
+         *
+         * @example
+         * const xml = papyr.seo.sitemap([
+         *   { path: '/', priority: '1.0', changefreq: 'daily' },
+         *   { path: '/about', priority: '0.7' },
+         *   '/contact'
+         * ], { baseUrl: 'https://example.com' });
+         */
+        sitemap(routes = [], options = {}) {
+            const {
+                baseUrl = 'https://example.com',
+                defaultChangefreq = 'weekly',
+                defaultPriority = '0.8'
+            } = options;
+
+            const urlEntries = routes.map(route => {
+                const r = typeof route === 'string' ? { path: route } : route;
+                const loc = escapeHtml((baseUrl + r.path).replace(/\/+$/, '') || baseUrl);
+                const changefreq = r.changefreq || defaultChangefreq;
+                const priority = r.priority || defaultPriority;
+                const lastmod = r.lastmod ? `\n    <lastmod>${r.lastmod}</lastmod>` : '';
+
+                return `  <url>
+    <loc>${loc}</loc>
+    <changefreq>${changefreq}</changefreq>
+    <priority>${priority}</priority>${lastmod}
+  </url>`;
+            }).join('\n');
+
+            return `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+${urlEntries}
+</urlset>`;
+        },
+
+        /**
+         * Generate a robots.txt string.
+         * @param {Object} rules
+         * @param {string|string[]} [rules.userAgent='*'] - User-agent(s)
+         * @param {string|string[]} [rules.allow=['/']] - Allow directives
+         * @param {string|string[]} [rules.disallow=[]] - Disallow directives
+         * @param {string} [rules.sitemap] - Sitemap URL
+         * @param {number} [rules.crawlDelay] - Crawl-delay in seconds
+         * @returns {string} robots.txt content
+         *
+         * @example
+         * const txt = papyr.seo.robots({
+         *   allow: ['/'],
+         *   disallow: ['/admin', '/private'],
+         *   sitemap: 'https://example.com/sitemap.xml'
+         * });
+         */
+        robots(rules = {}) {
+            const {
+                userAgent = '*',
+                allow = ['/'],
+                disallow = [],
+                sitemap = null,
+                crawlDelay = null
+            } = rules;
+
+            const agents = Array.isArray(userAgent) ? userAgent : [userAgent];
+            const allows = Array.isArray(allow) ? allow : (allow ? [allow] : []);
+            const disallows = Array.isArray(disallow) ? disallow : (disallow ? [disallow] : []);
+
+            let txt = '';
+            agents.forEach(agent => {
+                txt += `User-agent: ${agent}\n`;
+                allows.forEach(path => { if (path) txt += `Allow: ${path}\n`; });
+                disallows.forEach(path => { if (path) txt += `Disallow: ${path}\n`; });
+                if (crawlDelay != null) txt += `Crawl-delay: ${crawlDelay}\n`;
+                txt += '\n';
+            });
+
+            if (sitemap) txt += `Sitemap: ${sitemap}\n`;
+            return txt;
+        },
+
+        /**
+         * Generate an RSS 2.0 feed XML string.
+         * @param {Object} channelOptions - Feed channel metadata
+         * @param {string} channelOptions.title - Feed title
+         * @param {string} channelOptions.link - Feed URL
+         * @param {string} [channelOptions.description] - Feed description
+         * @param {string} [channelOptions.language='en-us'] - Language
+         * @param {string} [channelOptions.copyright] - Copyright notice
+         * @param {Array<Object>} [items=[]] - Feed items
+         * @param {string} items[].title - Item title
+         * @param {string} items[].link - Item URL
+         * @param {string} [items[].description] - Item description/excerpt
+         * @param {string} [items[].pubDate] - Publication date (RFC 822)
+         * @param {string} [items[].guid] - Unique identifier
+         * @param {string} [items[].author] - Author email or name
+         * @returns {string} RSS XML string
+         *
+         * @example
+         * const feed = papyr.seo.rss({
+         *   title: 'My Blog',
+         *   link: 'https://example.com',
+         *   description: 'Latest posts'
+         * }, posts.map(p => ({
+         *   title: p.title,
+         *   link: `https://example.com/blog/${p.slug}`,
+         *   description: p.excerpt,
+         *   pubDate: new Date(p.date).toUTCString()
+         * })));
+         */
+        rss(channelOptions = {}, items = []) {
+            const {
+                title = 'Feed',
+                description = '',
+                link = 'https://example.com',
+                language = 'en-us',
+                copyright = `Copyright ${new Date().getFullYear()}`
+            } = channelOptions;
+
+            const itemsXml = items.map(item => {
+                return `    <item>
+      <title>${escapeHtml(item.title || '')}</title>
+      <link>${escapeHtml(item.link || '')}</link>
+      <description>${escapeHtml(item.description || '')}</description>
+      <pubDate>${item.pubDate || new Date().toUTCString()}</pubDate>${
+    item.guid ? `\n      <guid isPermaLink="false">${escapeHtml(item.guid)}</guid>` : ''
+}${
+    item.author ? `\n      <author>${escapeHtml(item.author)}</author>` : ''
+}
+    </item>`;
+            }).join('\n');
+
+            return `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>${escapeHtml(title)}</title>
+    <link>${escapeHtml(link)}</link>
+    <description>${escapeHtml(description)}</description>
+    <language>${language}</language>
+    <copyright>${escapeHtml(copyright)}</copyright>
+    <atom:link href="${escapeHtml(link)}/rss.xml" rel="self" type="application/rss+xml"/>
+${itemsXml}
+  </channel>
+</rss>`;
+        }
+    };
+
+    // ─── Bind and Export ─────────────────────────────────────────────────────────
+
+    /**
+     * Main SEO entry point: papyr.seo(options)
+     * Also exposes sub-methods for granular control.
+     */
+    const seoFn = (options) => PapyrSEO.set(options);
+    seoFn.set = PapyrSEO.set.bind(PapyrSEO);
+    seoFn.canonical = PapyrSEO.canonical.bind(PapyrSEO);
+    seoFn.og = PapyrSEO.og.bind(PapyrSEO);
+    seoFn.twitter = PapyrSEO.twitter.bind(PapyrSEO);
+    seoFn.schema = PapyrSEO.schema.bind(PapyrSEO);
+    seoFn.sitemap = PapyrSEO.sitemap.bind(PapyrSEO);
+    seoFn.robots = PapyrSEO.robots.bind(PapyrSEO);
+    seoFn.rss = PapyrSEO.rss.bind(PapyrSEO);
+    seoFn.renderHead = PapyrSEO.renderHead.bind(PapyrSEO);
+    seoFn._flushHead = PapyrSEO._flushHead.bind(PapyrSEO);
+
+    papyr.seo = seoFn;
+
+})(typeof window !== 'undefined' ? window : this);
+
+
+// --- MODULE: plugins/game.js ---
+/**
+ * PAPYR GAME SDK (papyr-game-sdk)
+ * Unified, high-performance, and lightweight gaming infrastructure.
+ * Provides out-of-the-box adapters for Canvas, WebGL, WebGPU, Physics systems, Asset loaders, and Inputs.
+ * v3.1.3 - Foundation Strengthening Release
+ */
+(function (window) {
+    if (!window.papyr) {
+        console.warn("Papyr core not detected. Game SDK requires papyr core to run.");
+        return;
+    }
+
+    const papyr = window.papyr;
+
+    const GameSDK = {
+        // 1. Responsive Canvas Generator
+        canvas(options = {}) {
+            const { width = 600, height = 400, onInit = null } = options;
+            const container = papyr.div('.papyr-game-container', {
+                style: {
+                    position: 'relative',
+                    width: typeof width === 'number' ? `${width}px` : width,
+                    height: typeof height === 'number' ? `${height}px` : height,
+                    background: '#020205',
+                    borderRadius: '16px',
+                    overflow: 'hidden',
+                    border: '1px solid rgba(255,255,255,0.06)'
+                }
+            });
+            const cv = document.createElement('canvas');
+            cv.width = parseInt(width);
+            cv.height = parseInt(height);
+            cv.style.display = 'block';
+            cv.style.width = '100%';
+            cv.style.height = '100%';
+            container.appendChild(cv);
+            
+            if (onInit) {
+                setTimeout(() => onInit(cv), 50);
+            }
+            return container;
+        },
+
+        // 2. High-Precision Game Loop
+        loop(cb) {
+            let active = true;
+            const step = () => {
+                if (!active) return;
+                cb();
+                requestAnimationFrame(step);
+            };
+            requestAnimationFrame(step);
+            return () => { active = false; };
+        },
+
+        // 3. Unified Input System
+        input(el) {
+            const keys = {};
+            const mouse = { x: 0, y: 0, isDown: false };
+            const touches = [];
+            
+            const onKeyDown = (e) => { keys[e.key] = true; };
+            const onKeyUp = (e) => { keys[e.key] = false; };
+            
+            const onMouseMove = (e) => {
+                const rect = (el || document.body).getBoundingClientRect();
+                mouse.x = e.clientX - rect.left;
+                mouse.y = e.clientY - rect.top;
+            };
+            const onMouseDown = () => { mouse.isDown = true; };
+            const onMouseUp = () => { mouse.isDown = false; };
+
+            const onTouchStart = (e) => {
+                mouse.isDown = true;
+                updateTouches(e);
+            };
+            const onTouchMove = (e) => { updateTouches(e); };
+            const onTouchEnd = (e) => {
+                mouse.isDown = e.touches.length > 0;
+                updateTouches(e);
+            };
+
+            const updateTouches = (e) => {
+                touches.length = 0;
+                const rect = (el || document.body).getBoundingClientRect();
+                for (let i = 0; i < e.touches.length; i++) {
+                    touches.push({
+                        id: e.touches[i].identifier,
+                        x: e.touches[i].clientX - rect.left,
+                        y: e.touches[i].clientY - rect.top
+                    });
+                }
+            };
+
+            const target = el || window;
+            const mouseTarget = el || window;
+            
+            window.addEventListener('keydown', onKeyDown);
+            window.addEventListener('keyup', onKeyUp);
+            mouseTarget.addEventListener('mousemove', onMouseMove);
+            mouseTarget.addEventListener('mousedown', onMouseDown);
+            mouseTarget.addEventListener('mouseup', onMouseUp);
+            mouseTarget.addEventListener('touchstart', onTouchStart, { passive: true });
+            mouseTarget.addEventListener('touchmove', onTouchMove, { passive: true });
+            mouseTarget.addEventListener('touchend', onTouchEnd, { passive: true });
+
+            return {
+                isDown(key) { return !!keys[key]; },
+                getMouse() { return { ...mouse }; },
+                getTouches() { return [...touches]; },
+                destroy() {
+                    window.removeEventListener('keydown', onKeyDown);
+                    window.removeEventListener('keyup', onKeyUp);
+                    mouseTarget.removeEventListener('mousemove', onMouseMove);
+                    mouseTarget.removeEventListener('mousedown', onMouseDown);
+                    mouseTarget.removeEventListener('mouseup', onMouseUp);
+                    mouseTarget.removeEventListener('touchstart', onTouchStart);
+                    mouseTarget.removeEventListener('touchmove', onTouchMove);
+                    mouseTarget.removeEventListener('touchend', onTouchEnd);
+                }
+            };
+        },
+
+        // 4. Asynchronous Asset Preloader
+        assets: {
+            async load(manifest) {
+                const loaded = {};
+                const promises = Object.entries(manifest).map(([key, src]) => {
+                    const ext = src.split('.').pop().toLowerCase();
+                    if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'].includes(ext)) {
+                        return new Promise((resolve, reject) => {
+                            const img = new Image();
+                            img.onload = () => {
+                                loaded[key] = img;
+                                resolve();
+                            };
+                            img.onerror = (e) => reject(new Error(`Failed to load image: ${src}`));
+                            img.src = src;
+                        });
+                    } else if (['mp3', 'wav', 'ogg', 'aac'].includes(ext)) {
+                        return new Promise((resolve, reject) => {
+                            const audio = new Audio();
+                            audio.oncanplaythrough = () => {
+                                loaded[key] = audio;
+                                resolve();
+                            };
+                            audio.onerror = (e) => reject(new Error(`Failed to load audio: ${src}`));
+                            audio.src = src;
+                            audio.load();
+                        });
+                    } else {
+                        return fetch(src)
+                            .then(res => {
+                                if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+                                return ext === 'json' ? res.json() : res.text();
+                            })
+                            .then(data => {
+                                loaded[key] = data;
+                            });
+                    }
+                });
+                await Promise.all(promises);
+                return loaded;
+            }
+        },
+
+        // 5. Adaptable Graphics & Physics Connectors
+        adapters: {
+            // WebGL Renderer bootstrap
+            webgl(canvas, options = {}) {
+                const gl = canvas.getContext('webgl', options) || canvas.getContext('experimental-webgl', options);
+                if (!gl) {
+                    console.error("WebGL context not supported.");
+                    return null;
+                }
+                return {
+                    gl,
+                    createShader(type, source) {
+                        const shader = gl.createShader(type);
+                        gl.shaderSource(shader, source);
+                        gl.compileShader(shader);
+                        if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+                            const info = gl.getShaderInfoLog(shader);
+                            gl.deleteShader(shader);
+                            throw new Error("WebGL shader compile error: " + info);
+                        }
+                        return shader;
+                    },
+                    createProgram(vsSource, fsSource) {
+                        const vs = this.createShader(gl.VERTEX_SHADER, vsSource);
+                        const fs = this.createShader(gl.FRAGMENT_SHADER, fsSource);
+                        const program = gl.createProgram();
+                        gl.attachShader(program, vs);
+                        gl.attachShader(program, fs);
+                        gl.linkProgram(program);
+                        if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+                            throw new Error("WebGL program link error: " + gl.getProgramInfoLog(program));
+                        }
+                        return program;
+                    }
+                };
+            },
+
+            // WebGPU context initiator
+            async webgpu(canvas) {
+                if (!navigator.gpu) {
+                    console.warn("WebGPU not supported on this browser.");
+                    return null;
+                }
+                const adapter = await navigator.gpu.requestAdapter();
+                if (!adapter) {
+                    console.warn("WebGPU adapter request failed.");
+                    return null;
+                }
+                const device = await adapter.requestDevice();
+                const context = canvas.getContext('webgpu');
+                const format = navigator.gpu.getPreferredCanvasFormat();
+                context.configure({ device, format, alphaMode: 'opaque' });
+                return { adapter, device, context, format };
+            },
+
+            // Unified Physics adapter mapper
+            physics(type = 'verlet', options = {}) {
+                if (type === 'verlet' && papyr.physics && typeof papyr.physics.world === 'function') {
+                    return papyr.physics.world(options);
+                }
+                console.log(`[GameSDK] Physics adapter initialized for type: ${type}`);
+                return null;
+            }
+        }
+    };
+
+    papyr.game = GameSDK;
+
+    const gamePlugin = {
+        name: 'papyr-game',
+        version: '3.1.3',
+        install(p) {
+            p.game = GameSDK;
+        }
+    };
+
+    // Auto-register on core if available
+    const targetPapyr = window.papyr || (typeof global !== 'undefined' && global.papyr);
+    if (targetPapyr) {
+        targetPapyr.use(gamePlugin);
+    }
+
+    if (typeof module !== 'undefined' && module.exports) {
+        module.exports = gamePlugin;
+    } else if (typeof exports !== 'undefined') {
+        exports.default = gamePlugin;
+    } else {
+        window.papyrGame = gamePlugin;
+    }
+})(typeof window !== 'undefined' ? window : this);
 
 
 // --- MODULE: plugins/layout.js ---
@@ -6380,65 +7340,6 @@
             return papyr(json.tag || 'div', ...args);
         }
     };
-
-    // ==========================================
-    // 6. PAPYR GAMING & ADAPTER PROTOCOL GATEWAY
-    // ==========================================
-    papyr.game = {
-        canvas(options = {}) {
-            const { width = 600, height = 400, onInit = null } = options;
-            const container = papyr.div('.papyr-game-container', {
-                style: {
-                    position: 'relative',
-                    width: typeof width === 'number' ? `${width}px` : width,
-                    height: typeof height === 'number' ? `${height}px` : height,
-                    background: '#020205',
-                    borderRadius: '16px',
-                    overflow: 'hidden',
-                    border: '1px solid rgba(255,255,255,0.06)'
-                }
-            });
-            const cv = document.createElement('canvas');
-            cv.width = parseInt(width);
-            cv.height = parseInt(height);
-            cv.style.display = 'block';
-            cv.style.width = '100%';
-            cv.style.height = '100%';
-            container.appendChild(cv);
-            
-            if (onInit) {
-                setTimeout(() => onInit(cv), 50);
-            }
-            return container;
-        },
-        loop(cb) {
-            let active = true;
-            const step = () => {
-                if (!active) return;
-                cb();
-                requestAnimationFrame(step);
-            };
-            requestAnimationFrame(step);
-            return () => { active = false; };
-        },
-        input(el) {
-            const keys = {};
-            const onKeyDown = (e) => { keys[e.key] = true; };
-            const onKeyUp = (e) => { keys[e.key] = false; };
-            const target = el || window;
-            target.addEventListener('keydown', onKeyDown);
-            target.addEventListener('keyup', onKeyUp);
-            return {
-                isDown(key) { return !!keys[key]; },
-                destroy() {
-                    target.removeEventListener('keydown', onKeyDown);
-                    target.removeEventListener('keyup', onKeyUp);
-                }
-            };
-        }
-    };
-
-
 
     // Override use to support dynamic runtime loads
     const originalUse = papyr.use;

@@ -172,13 +172,118 @@ let decrypted = await papyr.storage.secureGetAsync("session_token", "user-passph
 
 ---
 
-## 6. Recommended Content Security Policy (CSP)
-
-Implement defense-in-depth by configuring a strict CSP header:
-
 ```html
 <meta http-equiv="Content-Security-Policy" 
       content="default-src 'self'; 
                script-src 'self' https://papyrus-js.vercel.app; 
                style-src 'self' 'unsafe-inline';">
 ```
+
+---
+
+## 7. WATT SDK — Privacy-Aware UI (New in 3.1.3)
+
+The **WATT SDK** (`papyr.watt.sdk`) lets developers build privacy experiences on top of WATT's enforcement layer without modifying its protected internals.
+
+### WATT Operating Modes
+
+Configure via `papyr.config('watt', { mode })`:
+
+| Mode | Behavior |
+|------|----------|
+| `'default'` | Standard enforcement — APIs prompted, tracking sandboxed |
+| `'strict'` | All hardware APIs auto-denied, maximum privacy |
+| `'none'` | Full WATT disable — developer's complete responsibility |
+
+### Permission Flows
+
+```js
+papyr.watt.sdk.flow({
+    name: 'camera-access',
+    apis: ['camera'],
+    onGranted: () => startCamera(),
+    onDenied: () => showAlternativeUI()
+});
+```
+
+### Consent Management (GDPR/CCPA)
+
+```js
+papyr.watt.sdk.consent({
+    categories: ['analytics', 'marketing'],
+    storageKey: 'my-app-consent',
+    onConsentChange: (granted) => {
+        if (granted.includes('analytics')) initGA();
+    }
+});
+```
+
+### Monitoring (Read-Only)
+
+```js
+papyr.watt.sdk.monitor.on('intercept', ({ api, policy, blocked }) => {
+    console.log(`[WATT] ${api}: ${policy}, blocked=${blocked}`);
+});
+```
+
+### Third-Party Disclosure Registry
+
+Register known services to prevent `papyr.trust.undisclosed()` violations:
+
+```js
+papyr.watt.sdk.disclose({
+    name: 'Stripe',
+    domain: 'stripe.com',
+    type: 'payment',
+    dataCollected: ['payment_intent'],
+    privacyUrl: 'https://stripe.com/privacy'
+});
+```
+
+---
+
+## 8. Trust Boundaries (New in 3.1.3)
+
+The Trust Boundaries model formally documents **who controls what** in the Papyrus execution environment. This prevents security theater — where a framework claims responsibility it cannot enforce.
+
+| Zone | Owner | Papyrus Guarantees |
+|------|-------|-------------------|
+| Zone 1 | Framework Core | WATT enforcement, security kernel, scheduler, PSSR integrity |
+| Zone 2 | Plugin Layer | Additive-only access; cannot override Zone 1 |
+| Zone 3 | Third-Party | Monitored by WATT, not controlled |
+| Zone 4 | Developer | Business logic, auth, data validation, infrastructure |
+
+### Runtime Audit
+
+```js
+const result = papyr.trust.audit();
+// { passed: true, violations: [], warnings: [] }
+
+// Violation codes:
+// 'WATT_DISABLED'         — papyr.config('watt', { mode: 'none' }) active
+// 'UNDISCLOSED_SERVICES'  — Third-party origins detected without disclose()
+```
+
+### CI/CD Trust Audit
+
+Use `papyr-trust.js` (no rendering engine) for automated pipeline checks:
+
+```js
+const { trust } = require('./public/papyr-trust.js');
+const result = trust.audit();
+if (!result.passed) process.exit(1);
+```
+
+### Developer Responsibility Boundaries
+
+The following are **always developer-owned** and outside Papyrus control:
+
+- Authentication & authorization (sessions, tokens, roles)
+- API key security (never expose in client bundles)
+- GDPR/CCPA/COPPA compliance obligations
+- Third-party plugin security auditing
+- Infrastructure TLS and hosting security
+- AI prompt safety and content filtering
+
+> For full details see [Trust Boundaries documentation](./trust-boundaries.md).
+

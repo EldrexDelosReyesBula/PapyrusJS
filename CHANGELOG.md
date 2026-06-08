@@ -4,6 +4,54 @@ All notable changes to **Papyr.js** will be documented in this file.
 
 ---
 
+## [3.1.3] — Foundation Strengthening Release — 2026-06-08
+
+> **Philosophy:** Powerful by default. Flexible by design. Transparent by architecture.
+
+This release adds zero new end-user features. It adds the formal **control surface, SDK maturity layer, and trust architecture** that the growing Papyrus ecosystem required before expanding further.
+
+### Core Architecture
+
+* **Unified Configuration Engine (`papyr.config`):** Single declarative entry-point for all runtime configuration. Domain-based (`rendering`, `animation`, `layout`, `design`, `watt`, `ssr`). Supports `.get()`, `.getAll()`, `.reset()`, `.on('change')`, and snapshot/restore via `papyr.sdk.config`. WATT modes `'default'`, `'strict'`, and `'none'` (full disable, developer responsibility) applied as side-effects.
+* **Imperative Runtime Controls (`papyr.controls`):** Namespaced live-control surface with six domains — `rendering`, `animation`, `layout`, `design`, `watt`, `scheduler`. Methods include `setPriority()`, `setTargetFps()`, `setTheme()`, `setTokens()`, `disableAll()` (accessibility), `enableGPU()`, `pause()`, `resume()`, `setPowerMode()`, `setPolicy()`.
+
+### Security & Privacy
+
+* **Trust Boundaries API (`papyr.trust`):** 4-zone trust model formally documented and runtime-auditable. Zone 1 (Framework Core), Zone 2 (Plugins), Zone 3 (Third-Party, monitored via WATT), Zone 4 (Developer responsibility). API: `report()`, `audit()`, `owns()`, `zone()`, `undisclosed()`, `disclose()`. Violations include `WATT_DISABLED` and `UNDISCLOSED_SERVICES` codes. Trust audit also usable in CI/CD via standalone `papyr-trust.js`.
+* **Access Tier System (`papyr.access`):** Advisory 3-tier namespace classification — Full, Restricted, Protected. `tier()`, `isAccessible()`, `validateScope()`, `seal()`. Never blocks execution; emits `console.warn` (restricted) or `console.error` (protected).
+
+### SDK Maturity
+
+* **WATT SDK (`papyr.watt.sdk`):** Developer SDK for building privacy-aware experiences without touching WATT's protected enforcement core. `flow()` permission flows, `consent()` GDPR/CCPA banners (localStorage-persisted), `notice()` privacy notices, `dialog()` transparency prompts, `monitor` read-only event stream, `disclose()` third-party service registry.
+* **PSSR SDK (`papyr.pssr.sdk`):** Advanced rendering strategy SDK. `strategy()` per-route mode builder (SSR/SSG/CSR/ISR), `islands()` lazy IntersectionObserver hydration, `meta.pipe()` composable SEO metadata pipeline, `edge()` Cloudflare/Deno/Bun runtime config, `build.prerender()` concurrent SSG.
+* **SDK Extensions (`papyr.sdk`):** Plugin validator (`sdk.plugin.validate()`), adapter registry (`sdk.adapter.register/get/list/unregister`), config snapshot/restore (`sdk.config.snapshot/restore/summary`), controls introspection (`sdk.controls.list()`).
+
+### Freeform Freedom
+
+* **Framework Interoperability Layer (`papyr.freeform`):** `detect()` active frameworks (React, Vue, Angular, Svelte, Next, Nuxt, Tailwind, Bootstrap, Material), `use([...])` selective subsystem activation, `vanilla()` mode (prevents auto-init; all APIs remain available), `vue(app)` Vue 3 bridge with `useSignal`/`useComputed`, `react()` React hooks bridge.
+
+### Build System
+
+* New standalone bundles: `papyr-watt.js` / `papyr-watt.esm.js`, `papyr-pssr.js` / `papyr-pssr.esm.js`, `papyr-trust.js`
+* New monorepo packages: `@eldrex/papyr-watt`, `@eldrex/papyr-pssr`
+* 6 new core modules added to all bundle compilation paths
+
+### Documentation (7 new files)
+
+* `docs/configuration.md` — full config domain reference
+* `docs/controls.md` — controls API reference
+* `docs/access.md` — 3-tier access tier guide
+* `docs/freeform.md` — freeform freedom & framework bridges
+* `docs/watt-sdk.md` — WATT SDK developer guide
+* `docs/pssr-sdk.md` — PSSR SDK developer guide
+* `docs/trust-boundaries.md` — 4-zone trust model reference
+
+### Verification
+
+* `public/tests/verify-build.js` expanded from ~115 to **150+ assertions** across 24 test sections.
+
+---
+
 ## [3.1.2] - 2026-06-05
 
 ### Added

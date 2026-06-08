@@ -1,6 +1,6 @@
 {
   "name": "@eldrex/papyr-3d",
-  "version": "3.1.2",
+  "version": "3.1.3",
   "description": "3D and immersive scene graphics system for Papyr.js",
   "main": "dist/papyr-3d.js",
   "module": "dist/papyr-3d.esm.js",
@@ -21,6 +21,22 @@
     "immersive",
     "papyr"
   ],
-  "author": "Eldrex Bula & Papyr Contributors",
-  "license": "MIT"
+  "author": {
+    "name": "Eldrex Delos Reyes Bula",
+    "url": "https://github.com/EldrexDelosReyesBula/PapyrusJS"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/EldrexDelosReyesBula/PapyrusJS.git",
+    "directory": "packages/3d"
+  },
+  "bugs": {
+    "url": "https://github.com/EldrexDelosReyesBula/PapyrusJS/issues"
+  },
+  "homepage": "https://papyrus-js.vercel.app/",
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org"
+  }
 }

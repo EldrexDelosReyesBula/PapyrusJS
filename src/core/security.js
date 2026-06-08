@@ -24,7 +24,12 @@
             camera: 'prompt',
             microphone: 'prompt',
             location: 'prompt',
-            storage: 'allow'
+            storage: 'allow',
+            notifications: 'prompt',
+            clipboard: 'prompt',
+            bluetooth: 'prompt',
+            usb: 'prompt',
+            sensors: 'prompt'
         };
 
         function securityConfig(config) {
@@ -400,7 +405,103 @@
             }
         });
 
-        // 1. Geolocation Access Interception
+        // ─── WATT + SSR Integration ───────────────────────────────────────────────
+        // When running in a server environment (SSR), all hardware APIs are automatically
+        // set to 'deny'. These APIs are client-only and must never be called during SSR.
+        // After hydration on the client, policies revert to configured 'prompt' defaults.
+
+        /**
+         * List of APIs that are strictly client-only and must be blocked during SSR.
+         * Developers can reference this list to understand what WATT auto-blocks server-side.
+         */
+        securityConfig.clientOnlyApis = [
+            'camera',
+            'microphone',
+            'location',
+            'notifications',
+            'bluetooth',
+            'usb',
+            'sensors',
+            'clipboard'
+        ];
+
+        /** Internal record of SSR-blocked APIs and their reasons */
+        const _ssrBlockLog = [];
+
+        /**
+         * Apply SSR mode: auto-denies all hardware/browser APIs.
+         * Called automatically when isServer() is true at initialization.
+         * @private
+         */
+        function _applySSRPolicies() {
+            securityConfig.clientOnlyApis.forEach(api => {
+                const prev = policies[api];
+                policies[api] = 'deny';
+                _ssrBlockLog.push({
+                    api,
+                    previousPolicy: prev,
+                    reason: 'SSR mode: client-only API auto-blocked by WATT',
+                    timestamp: new Date().toISOString()
+                });
+            });
+            console.log('[WATT + SSR] Server-side mode detected. All hardware APIs set to "deny". WATT will restore policies post-hydration.');
+        }
+
+        /**
+         * Returns a report of all APIs blocked during SSR by WATT.
+         * Useful for debugging and auditing SSR policy compliance.
+         *
+         * @returns {{ ssrMode: boolean, blockedApis: Array<{ api, previousPolicy, reason, timestamp }> }}
+         *
+         * @example
+         * if (papyr.isServer()) {
+         *   console.log(papyr.security.getSSRReport());
+         * }
+         */
+        securityConfig.getSSRReport = function() {
+            return {
+                ssrMode: papyr.isServer ? papyr.isServer() : false,
+                currentPolicies: { ...policies },
+                blockedApis: [..._ssrBlockLog]
+            };
+        };
+
+        /**
+         * Signals that client-side hydration is complete.
+         * Restores hardware API policies from 'deny' back to 'prompt' defaults.
+         * Call this after papyr.hydrate() or papyr.pssr.hydrate() completes.
+         *
+         * @example
+         * papyr.pssr.hydrate('#app');
+         * papyr.security.onHydrated();
+         */
+        securityConfig.onHydrated = function() {
+            if (papyr.isServer && papyr.isServer()) return; // No-op on server
+
+            // Restore client-side policies: previously 'deny' (from SSR mode) → 'prompt'
+            _ssrBlockLog.forEach(({ api, previousPolicy }) => {
+                if (policies[api] === 'deny' && previousPolicy !== 'deny') {
+                    policies[api] = previousPolicy || 'prompt';
+                }
+            });
+
+            console.log('[WATT + Hydration] Client hydration complete. Hardware API policies restored to prompt mode.');
+
+            // Flush any pending routeModes registered before PSSR initialized
+            if (papyr._pendingRouteModes && papyr.pssr && typeof papyr.pssr.setRouteMode === 'function') {
+                papyr._pendingRouteModes.forEach(({ path, mode }) => {
+                    papyr.pssr.setRouteMode(path, mode);
+                });
+                papyr._pendingRouteModes = [];
+            }
+        };
+
+        // Auto-apply SSR policies if running server-side
+        if (papyr.isServer && papyr.isServer()) {
+            _applySSRPolicies();
+        }
+
+
         if (typeof navigator !== 'undefined' && navigator.geolocation) {
             const geo = navigator.geolocation;
             const originalGetCurrentPosition = geo.getCurrentPosition;
@@ -492,6 +593,357 @@
                     }
                 });
             };
+        }
+
+        // 3. Notification API Interception
+        if (typeof window !== 'undefined' && window.Notification) {
+            const OriginalNotification = window.Notification;
+            const originalRequestPermission = OriginalNotification.requestPermission;
+            const handler = {
+                construct(target, args) {
+                    const policy = policies.notifications;
+                    if (policy === 'deny') {
+                        console.warn("Notification blocked by Papyr security policy.");
+                        return {};
+                    }
+                    if (policy === 'allow' || target.permission === 'granted') {
+                        return new target(...args);
+                    }
+                    // For prompt
+                    if (papyr.watt && typeof papyr.watt.triggerWattPrompt === 'function') {
+                        papyr.watt.triggerWattPrompt("Notifications", () => {
+                            originalRequestPermission.call(target).then(perm => {
+                                if (perm === 'granted') {
+                                    new target(...args);
+                                }
+                            });
+                        }, () => {});
+                    } else {
+                        return new target(...args);
+                    }
+                    return {};
+                },
+                get(target, prop) {
+                    if (prop === 'requestPermission') {
+                        return function(callback) {
+                            const policy = policies.notifications;
+                            if (policy === 'deny') {
+                                if (callback) callback('denied');
+                                return Promise.resolve('denied');
+                            }
+                            if (policy === 'allow') {
+                                return originalRequestPermission.call(target, callback);
+                            }
+                            return new Promise((resolve) => {
+                                if (papyr.watt && typeof papyr.watt.triggerWattPrompt === 'function') {
+                                    papyr.watt.triggerWattPrompt("Notifications", () => {
+                                        originalRequestPermission.call(target)
+                                            .then(perm => {
+                                                if (callback) callback(perm);
+                                                resolve(perm);
+                                            })
+                                            .catch(() => {
+                                                if (callback) callback('default');
+                                                resolve('default');
+                                            });
+                                    }, () => {
+                                        if (callback) callback('denied');
+                                        resolve('denied');
+                                    });
+                                } else {
+                                    originalRequestPermission.call(target).then(perm => {
+                                        if (callback) callback(perm);
+                                        resolve(perm);
+                                    });
+                                }
+                            });
+                        };
+                    }
+                    return Reflect.get(target, prop);
+                }
+            };
+            window.Notification = new Proxy(OriginalNotification, handler);
+        }
+
+        // 4. Clipboard API Interception
+        if (typeof navigator !== 'undefined' && navigator.clipboard) {
+            const originalReadText = navigator.clipboard.readText;
+            const originalWriteText = navigator.clipboard.writeText;
+            
+            navigator.clipboard.readText = function() {
+                const policy = policies.clipboard;
+                if (policy === 'deny') {
+                    return Promise.reject(new DOMException("Clipboard read denied by Papyr security policy.", "NotAllowedError"));
+                }
+                if (policy === 'allow') {
+                    return originalReadText.call(navigator.clipboard);
+                }
+                return new Promise((resolve, reject) => {
+                    if (papyr.watt && typeof papyr.watt.triggerWattPrompt === 'function') {
+                        papyr.watt.triggerWattPrompt("Clipboard Read", () => {
+                            originalReadText.call(navigator.clipboard).then(resolve).catch(reject);
+                        }, () => {
+                            reject(new DOMException("Clipboard read denied by user through WATT.", "NotAllowedError"));
+                        });
+                    } else {
+                        originalReadText.call(navigator.clipboard).then(resolve).catch(reject);
+                    }
+                });
+            };
+
+            navigator.clipboard.writeText = function(text) {
+                const policy = policies.clipboard;
+                if (policy === 'deny') {
+                    return Promise.reject(new DOMException("Clipboard write denied by Papyr security policy.", "NotAllowedError"));
+                }
+                if (policy === 'allow') {
+                    return originalWriteText.call(navigator.clipboard, text);
+                }
+                return new Promise((resolve, reject) => {
+                    if (papyr.watt && typeof papyr.watt.triggerWattPrompt === 'function') {
+                        papyr.watt.triggerWattPrompt("Clipboard Write", () => {
+                            originalWriteText.call(navigator.clipboard, text).then(resolve).catch(reject);
+                        }, () => {
+                            reject(new DOMException("Clipboard write denied by user through WATT.", "NotAllowedError"));
+                        });
+                    } else {
+                        originalWriteText.call(navigator.clipboard, text).then(resolve).catch(reject);
+                    }
+                });
+            };
+        }
+
+        // 5. Bluetooth API Interception
+        if (typeof navigator !== 'undefined' && navigator.bluetooth) {
+            const originalRequestDevice = navigator.bluetooth.requestDevice;
+            navigator.bluetooth.requestDevice = function(options) {
+                const policy = policies.bluetooth;
+                if (policy === 'deny') {
+                    return Promise.reject(new DOMException("Bluetooth access denied by Papyr security policy.", "NotAllowedError"));
+                }
+                if (policy === 'allow') {
+                    return originalRequestDevice.call(navigator.bluetooth, options);
+                }
+                return new Promise((resolve, reject) => {
+                    if (papyr.watt && typeof papyr.watt.triggerWattPrompt === 'function') {
+                        papyr.watt.triggerWattPrompt("Bluetooth Access", () => {
+                            originalRequestDevice.call(navigator.bluetooth, options).then(resolve).catch(reject);
+                        }, () => {
+                            reject(new DOMException("Bluetooth access denied by user through WATT.", "NotAllowedError"));
+                        });
+                    } else {
+                        originalRequestDevice.call(navigator.bluetooth, options).then(resolve).catch(reject);
+                    }
+                });
+            };
+        }
+
+        // 6. USB API Interception
+        if (typeof navigator !== 'undefined' && navigator.usb) {
+            const originalRequestDevice = navigator.usb.requestDevice;
+            navigator.usb.requestDevice = function(options) {
+                const policy = policies.usb;
+                if (policy === 'deny') {
+                    return Promise.reject(new DOMException("USB access denied by Papyr security policy.", "NotAllowedError"));
+                }
+                if (policy === 'allow') {
+                    return originalRequestDevice.call(navigator.usb, options);
+                }
+                return new Promise((resolve, reject) => {
+                    if (papyr.watt && typeof papyr.watt.triggerWattPrompt === 'function') {
+                        papyr.watt.triggerWattPrompt("USB Access", () => {
+                            originalRequestDevice.call(navigator.usb, options).then(resolve).catch(reject);
+                        }, () => {
+                            reject(new DOMException("USB access denied by user through WATT.", "NotAllowedError"));
+                        });
+                    } else {
+                        originalRequestDevice.call(navigator.usb, options).then(resolve).catch(reject);
+                    }
+                });
+            };
+        }
+
+        // 7. Sensor API Interception
+        if (typeof window !== 'undefined') {
+            const interceptPermission = (obj, prop, name) => {
+                if (obj && typeof obj[prop] === 'function') {
+                    const original = obj[prop];
+                    obj[prop] = function(...args) {
+                        const policy = policies.sensors;
+                        if (policy === 'deny') {
+                            return Promise.resolve('denied');
+                        }
+                        if (policy === 'allow') {
+                            return original.apply(this, args);
+                        }
+                        return new Promise((resolve, reject) => {
+                            if (papyr.watt && typeof papyr.watt.triggerWattPrompt === 'function') {
+                                papyr.watt.triggerWattPrompt(name, () => {
+                                    original.apply(this, args).then(resolve).catch(reject);
+                                }, () => {
+                                    resolve('denied');
+                                });
+                            } else {
+                                original.apply(this, args).then(resolve).catch(reject);
+                            }
+                        });
+                    };
+                }
+            };
+            
+            if (window.DeviceOrientationEvent) {
+                interceptPermission(window.DeviceOrientationEvent, 'requestPermission', "Motion Sensors");
+            }
+            if (window.DeviceMotionEvent) {
+                interceptPermission(window.DeviceMotionEvent, 'requestPermission', "Motion Sensors");
+            }
+
+            const sensorsList = ['Accelerometer', 'Gyroscope', 'Magnetometer', 'AmbientLightSensor'];
+            sensorsList.forEach(sensorName => {
+                if (window[sensorName]) {
+                    const OriginalSensor = window[sensorName];
+                    const handler = {
+                        construct(target, args) {
+                            const policy = policies.sensors;
+                            if (policy === 'deny') {
+                                throw new DOMException(`${sensorName} blocked by Papyr security policy.`, "SecurityError");
+                            }
+                            if (policy === 'allow') {
+                                return new target(...args);
+                            }
+                            const instance = new target(...args);
+                            const originalStart = instance.start;
+                            instance.start = function() {
+                                return new Promise((resolve, reject) => {
+                                    if (papyr.watt && typeof papyr.watt.triggerWattPrompt === 'function') {
+                                        papyr.watt.triggerWattPrompt(`${sensorName} Access`, () => {
+                                            try {
+                                                originalStart.call(instance);
+                                                resolve();
+                                            } catch (err) { reject(err); }
+                                        }, () => {
+                                            reject(new DOMException("Sensor access denied by user through WATT.", "NotAllowedError"));
+                                        });
+                                    } else {
+                                        try {
+                                            originalStart.call(instance);
+                                            resolve();
+                                        } catch (err) { reject(err); }
+                                    }
+                                });
+                            };
+                            return instance;
+                        }
+                    };
+                    window[sensorName] = new Proxy(OriginalSensor, handler);
+                }
+            });
+        }
+
+        // 8. Network Request Interception (fetch and XMLHttpRequest)
+        if (typeof window !== 'undefined') {
+            const originalFetch = window.fetch;
+            
+            const trackingProviders = {
+                'google-analytics.com': { name: 'Google Analytics', purpose: 'visitor tracking & site analytics', optOut: true },
+                'google-analytics': { name: 'Google Analytics', purpose: 'visitor tracking & site analytics', optOut: true },
+                'doubleclick.net': { name: 'DoubleClick', purpose: 'personalized advertising', optOut: true },
+                'facebook.net': { name: 'Meta Pixel', purpose: 'conversion tracking & ads targeting', optOut: true },
+                'fbevents.js': { name: 'Meta Pixel', purpose: 'conversion tracking & ads targeting', optOut: true },
+                'mixpanel.com': { name: 'Mixpanel', purpose: 'user behavior analytics', optOut: true },
+                'segment.io': { name: 'Segment', purpose: 'customer data platform mapping', optOut: true },
+                'segment.com': { name: 'Segment', purpose: 'customer data platform mapping', optOut: true }
+            };
+
+            const detectTrackingInfo = (url) => {
+                if (!url || typeof url !== 'string') return null;
+                const lowerUrl = url.toLowerCase();
+                for (const [key, provider] of Object.entries(trackingProviders)) {
+                    if (lowerUrl.includes(key)) {
+                        return { ...provider, url };
+                    }
+                }
+                return null;
+            };
+
+            window.fetch = function(input, init) {
+                const url = typeof input === 'string' ? input : (input && input.url ? input.url : '');
+                const trackingInfo = detectTrackingInfo(url);
+                
+                if (trackingInfo && papyr.security && papyr.security.currentTier !== 'none') {
+                    if (papyr.security.hasConsent) {
+                        return originalFetch.apply(this, arguments);
+                    }
+                    
+                    return new Promise((resolve, reject) => {
+                        if (papyr.watt && typeof papyr.watt.triggerTrackingPrompt === 'function') {
+                            papyr.watt.triggerTrackingPrompt(trackingInfo, () => {
+                                resolve(originalFetch.apply(this, arguments));
+                            }, (optOutSelected) => {
+                                if (optOutSelected && trackingInfo.optOut) {
+                                    if (trackingInfo.name === 'Google Analytics') {
+                                        window['ga-disable-UA-*'] = true;
+                                        window['ga-disable-G-*'] = true;
+                                    }
+                                }
+                                reject(new TypeError("Request blocked by user tracking preferences through WATT."));
+                            });
+                        } else {
+                            if (papyr.security.currentTier === 'high') {
+                                reject(new TypeError("Request blocked by high-privacy security policy."));
+                            } else {
+                                resolve(originalFetch.apply(this, arguments));
+                            }
+                        }
+                    });
+                }
+                
+                return originalFetch.apply(this, arguments);
+            };
+
+            const OriginalXHR = window.XMLHttpRequest;
+            window.XMLHttpRequest = function() {
+                const xhr = new OriginalXHR();
+                const originalOpen = xhr.open;
+                const originalSend = xhr.send;
+                let isTrackingRequest = false;
+                let trackingInfo = null;
+
+                xhr.open = function(method, url, ...rest) {
+                    trackingInfo = detectTrackingInfo(url);
+                    if (trackingInfo && papyr.security && papyr.security.currentTier !== 'none' && !papyr.security.hasConsent) {
+                        isTrackingRequest = true;
+                    }
+                    return originalOpen.apply(this, arguments);
+                };
+
+                xhr.send = function(body) {
+                    if (isTrackingRequest) {
+                        if (papyr.watt && typeof papyr.watt.triggerTrackingPrompt === 'function') {
+                            papyr.watt.triggerTrackingPrompt(trackingInfo, () => {
+                                originalSend.call(xhr, body);
+                            }, (optOutSelected) => {
+                                if (optOutSelected && trackingInfo.optOut) {
+                                    if (trackingInfo.name === 'Google Analytics') {
+                                        window['ga-disable-UA-*'] = true;
+                                        window['ga-disable-G-*'] = true;
+                                    }
+                                }
+                                xhr.dispatchEvent(new Event('error'));
+                            });
+                            return;
+                        } else if (papyr.security && papyr.security.currentTier === 'high') {
+                            xhr.dispatchEvent(new Event('error'));
+                            return;
+                        }
+                    }
+                    return originalSend.apply(this, arguments);
+                };
+
+                return xhr;
+            };
+            window.XMLHttpRequest.prototype = OriginalXHR.prototype;
+            Object.assign(window.XMLHttpRequest, OriginalXHR);
         }
 
         papyr.security = securityConfig;

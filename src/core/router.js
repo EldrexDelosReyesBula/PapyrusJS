@@ -143,7 +143,7 @@ coreInitializers.push((papyr) => {
         }
     };
 
-    papyr.page = (path, componentFn) => {
+    papyr.page = (path, componentFn, options = {}) => {
         if (typeof path === 'undefined') {
             return papyr.pageRouter();
         }
@@ -155,6 +155,17 @@ coreInitializers.push((papyr) => {
             keys: (cleanPath.match(/:\w+/g) || []).map(k => k.slice(1)),
             componentFn
         });
+
+        // Register rendering mode in PSSR registry if provided
+        if (options && options.mode) {
+            if (papyr.pssr && typeof papyr.pssr.setRouteMode === 'function') {
+                papyr.pssr.setRouteMode(cleanPath, options.mode);
+            } else {
+                // Queue for registration once PSSR is initialized
+                if (!papyr._pendingRouteModes) papyr._pendingRouteModes = [];
+                papyr._pendingRouteModes.push({ path: cleanPath, mode: options.mode });
+            }
+        }
 
         if (typeof window !== 'undefined' && pageRoutes.length > 0 && !currentPageView.value) {
             setTimeout(matchPageRoute, 10);

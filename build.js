@@ -22,6 +22,8 @@ const coreFiles = [
     'core/api.js',
     'core/debug.js',
     'core/ssr.js',
+    'core/edge.js',
+    'core/isr.js',
     'core/scheduler.js',
     'core/style.js',
     'core/layout.js',
@@ -29,7 +31,13 @@ const coreFiles = [
     'core/renovate.js',
     'core/gateway.js',
     'core/sdk.js',
-    'core/virtualization.js'
+    'core/virtualization.js',
+    'core/config.js',
+    'core/trust.js',
+    'core/access.js',
+    'core/watt-sdk.js',
+    'core/pssr-sdk.js',
+    'core/freeform.js'
 ];
 const pluginFiles = [
     'plugins/official.js',
@@ -43,6 +51,8 @@ const pluginFiles = [
     'plugins/particles.js',
     'plugins/ui-components.js',
     'plugins/watt.js',
+    'plugins/seo.js',
+    'plugins/game.js',
     'plugins/layout.js',
     'plugins/shapes.js',
     'plugins/immersive.js',
@@ -74,7 +84,7 @@ try {
     // 2. Build papyr.js (Core Browser IIFE Bundle)
     const paperCode = `/**
  * PAPYR STATIC SITE LIBRARY - Core Bundle
- * v3.1.2 - Agile Modular Architecture (Reactivity, Hash SPA Router, Math Logic, Persistent CRUD Store)
+ * v3.1.3 - Agile Modular Architecture (Reactivity, Hash SPA Router, Math Logic, Persistent CRUD Store)
  * Released under MIT License.
  */
 
@@ -122,7 +132,7 @@ ${coreContents}
     // 5. Build papyr-complete.js (Complete Showcase Browser IIFE Bundle)
     const paperCompleteCode = `/**
  * PAPYR STATIC SITE LIBRARY - Complete Showcase Bundle
- * v3.1.2 - Core Reactivity, SPA Routing, Reactive Math Logic, Persistent Local CRUD Database, Responsive Widgets
+ * v3.1.3 - Core Reactivity, SPA Routing, Reactive Math Logic, Persistent Local CRUD Database, Responsive Widgets
  * Released under MIT License.
  */
 
@@ -169,7 +179,7 @@ ${stylesContent.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$/g, '\\$'
     // 6. Build papyr.esm.js (Core ES Module Bundle)
     const paperEsmCode = `/**
  * PAPYR STATIC SITE LIBRARY - Core Bundle (ESM)
- * v3.1.2 - Agile Modular Architecture (Reactivity, Hash SPA Router, Math Logic, Persistent CRUD Store)
+ * v3.1.3 - Agile Modular Architecture (Reactivity, Hash SPA Router, Math Logic, Persistent CRUD Store)
  * Released under MIT License.
  */
 
@@ -197,7 +207,7 @@ export default papyr;
     // 7. Build papyr-complete.esm.js (Complete Showcase ES Module Bundle)
     const paperCompleteEsmCode = `/**
  * PAPYR STATIC SITE LIBRARY - Complete Showcase Bundle (ESM)
- * v3.1.2 - Core Reactivity, SPA Routing, Reactive Math Logic, Persistent Local CRUD Database, Responsive Widgets
+ * v3.1.3 - Core Reactivity, SPA Routing, Reactive Math Logic, Persistent Local CRUD Database, Responsive Widgets
  * Released under MIT License.
  */
 
@@ -242,7 +252,7 @@ export default papyr;
     // 7b. Build papyr-plugins.js (Decoupled Plugins IIFE Bundle)
     const paperPluginsCode = `/**
  * PAPYR STATIC SITE LIBRARY - Decoupled Plugins Bundle
- * v3.1.2 - Official Capability Modules
+ * v3.1.3 - Official Capability Modules
  * Released under MIT License.
  */
 
@@ -282,7 +292,7 @@ ${pluginsContent}
 
     const paperUiCode = `/**
  * PAPYR STATIC SITE LIBRARY - UI & Layout Modular Bundle
- * v3.1.2 - Core Reactivity, SPA Routing, Layouts, Design Engine, and Premium UI Components
+ * v3.1.3 - Core Reactivity, SPA Routing, Layouts, Design Engine, and Premium UI Components
  * Released under MIT License.
  */
 
@@ -343,7 +353,7 @@ ${stylesContent.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$/g, '\\$'
 
     const paperAdvancedCode = `/**
  * PAPYR STATIC SITE LIBRARY - Advanced Engineering Modular Bundle
- * v3.1.2 - Core Reactivity, AI/ML Toolkits, 3D Immersive Graphics, 2D Verlet Physics, and PDF Exporter
+ * v3.1.3 - Core Reactivity, AI/ML Toolkits, 3D Immersive Graphics, 2D Verlet Physics, and PDF Exporter
  * Released under MIT License.
  */
 
@@ -386,7 +396,7 @@ ${advancedPluginsContent}
 
     const paperSsrCode = `/**
  * PAPYR STATIC SITE LIBRARY - Server-Side Rendering (SSR) Bundle
- * v3.1.2 - Zero-dependency Server-Side Renderer (SSR) & Express connector
+ * v3.1.3 - Zero-dependency Server-Side Renderer (SSR) & Express connector
  * Released under MIT License.
  */
 
@@ -420,7 +430,7 @@ ${ssrPluginsContent}
 
     const paperSsrEsmCode = `/**
  * PAPYR STATIC SITE LIBRARY - Server-Side Rendering (SSR) Bundle (ESM)
- * v3.1.2 - Zero-dependency Server-Side Renderer (SSR) & Express connector
+ * v3.1.3 - Zero-dependency Server-Side Renderer (SSR) & Express connector
  * Released under MIT License.
  */
 
@@ -450,6 +460,316 @@ export default papyr;
 `;
     fs.writeFileSync(path.join(publicDir, 'papyr-ssr.esm.js'), paperSsrEsmCode, 'utf8');
     console.log("✨ Compiled papyr-ssr.esm.js successfully!");
+
+    // 7g. Build Modular CDN Bundle: papyr-game.js
+    const gamePluginFiles = [
+        'plugins/game.js'
+    ];
+    const gamePluginsContent = gamePluginFiles.map(file => {
+        const filePath = path.join(srcDir, file);
+        return `// --- MODULE: ${file} ---\n` + fs.readFileSync(filePath, 'utf8') + '\n';
+    }).join('\n');
+
+    const paperGameCode = `/**
+ * PAPYR STATIC SITE LIBRARY - Game SDK Modular Bundle
+ * v3.1.3 - Core Reactivity, Canvas/WebGL/WebGPU Adapters, Physics, and Inputs
+ * Released under MIT License.
+ */
+
+(function(globalContext) {
+    let activeEffect = null;
+    let isDebug = false;
+
+${coreContents}
+
+    // Export isomorphic context BEFORE loading plugins
+    let papyrInstance = createPapyr();
+    if (typeof window !== 'undefined') {
+        window.papyr = papyrInstance;
+    } else if (typeof global !== 'undefined') {
+        global.papyr = papyrInstance;
+    }
+    const papyr = papyrInstance;
+
+${gamePluginsContent}
+
+    if (typeof module !== 'undefined' && module.exports) {
+        module.exports = papyrInstance;
+    } else if (typeof exports !== 'undefined') {
+        exports.papyr = papyrInstance;
+    }
+
+})(typeof window !== 'undefined' ? window : (typeof global !== 'undefined' ? global : this));
+`;
+    fs.writeFileSync(path.join(publicDir, 'papyr-game.js'), paperGameCode, 'utf8');
+    console.log("✨ Compiled papyr-game.js successfully!");
+
+    const paperGameEsmCode = `/**
+ * PAPYR STATIC SITE LIBRARY - Game SDK Modular Bundle (ESM)
+ * v3.1.3 - Core Reactivity, Canvas/WebGL/WebGPU Adapters, Physics, and Inputs
+ * Released under MIT License.
+ */
+
+let activeEffect = null;
+let isDebug = false;
+
+${coreContents}
+
+const papyr = createPapyr();
+if (typeof window !== 'undefined') {
+    window.papyr = papyr;
+}
+
+${gamePluginsContent}
+
+export { papyr, createPapyr };
+export const signal = papyr.signal;
+export const computed = papyr.computed;
+export const watch = papyr.watch;
+export const effect = papyr.effect;
+export const mount = papyr.mount;
+export const route = papyr.route;
+export const page = papyr.page;
+export const theme = papyr.theme;
+export const plugin = papyr.plugin;
+export default papyr;
+`;
+    fs.writeFileSync(path.join(publicDir, 'papyr-game.esm.js'), paperGameEsmCode, 'utf8');
+    console.log("✨ Compiled papyr-game.esm.js successfully!");
+
+    // 7h. Build Modular CDN Bundle: papyr-seo.js
+    const seoPluginFiles = [
+        'plugins/seo.js'
+    ];
+    const seoPluginsContent = seoPluginFiles.map(file => {
+        const filePath = path.join(srcDir, file);
+        return `// --- MODULE: ${file} ---\n` + fs.readFileSync(filePath, 'utf8') + '\n';
+    }).join('\n');
+
+    const paperSeoCode = `/**
+ * PAPYR STATIC SITE LIBRARY - SEO Toolkit Bundle
+ * v3.1.3 - Isomorphic SEO: Open Graph, Twitter Cards, Schema.org, Sitemaps, RSS, Canonical URLs
+ * Released under MIT License.
+ */
+
+(function(globalContext) {
+    let activeEffect = null;
+    let isDebug = false;
+
+${coreContents}
+
+    // Export isomorphic context BEFORE loading plugins
+    let papyrInstance = createPapyr();
+    if (typeof window !== 'undefined') {
+        window.papyr = papyrInstance;
+    } else if (typeof global !== 'undefined') {
+        global.papyr = papyrInstance;
+    }
+    const papyr = papyrInstance;
+
+${seoPluginsContent}
+
+    if (typeof module !== 'undefined' && module.exports) {
+        module.exports = papyrInstance;
+    } else if (typeof exports !== 'undefined') {
+        exports.papyr = papyrInstance;
+    }
+
+})(typeof window !== 'undefined' ? window : (typeof global !== 'undefined' ? global : this));
+`;
+    fs.writeFileSync(path.join(publicDir, 'papyr-seo.js'), paperSeoCode, 'utf8');
+    console.log("✨ Compiled papyr-seo.js successfully!");
+
+    const paperSeoEsmCode = `/**
+ * PAPYR STATIC SITE LIBRARY - SEO Toolkit Bundle (ESM)
+ * v3.1.3 - Isomorphic SEO: Open Graph, Twitter Cards, Schema.org, Sitemaps, RSS, Canonical URLs
+ * Released under MIT License.
+ */
+
+let activeEffect = null;
+let isDebug = false;
+
+${coreContents}
+
+const papyr = createPapyr();
+if (typeof window !== 'undefined') {
+    window.papyr = papyr;
+}
+
+${seoPluginsContent}
+
+export { papyr, createPapyr };
+export const signal = papyr.signal;
+export const computed = papyr.computed;
+export const watch = papyr.watch;
+export const effect = papyr.effect;
+export const mount = papyr.mount;
+export const route = papyr.route;
+export const page = papyr.page;
+export const theme = papyr.theme;
+export const plugin = papyr.plugin;
+export const seo = papyr.seo;
+export default papyr;
+`;
+    fs.writeFileSync(path.join(publicDir, 'papyr-seo.esm.js'), paperSeoEsmCode, 'utf8');
+    console.log("✨ Compiled papyr-seo.esm.js successfully!");
+
+    // 7i. Build papyr-watt.js — WATT SDK standalone bundle
+    const wattSdkFiles = ['core/watt-sdk.js'];
+    const wattSdkContent = wattSdkFiles.map(file => {
+        const fp = path.join(srcDir, file);
+        return `// --- MODULE: ${file} ---\n` + fs.readFileSync(fp, 'utf8') + '\n';
+    }).join('\n');
+
+    const paperWattCode = `/**
+ * PAPYR WATT SDK — Web Access Transparency Toolkit
+ * v3.1.3 - Permission flows, consent banners, transparency dialogs, privacy notices
+ * Released under MIT License.
+ */
+
+(function(globalContext) {
+    let activeEffect = null;
+    let isDebug = false;
+
+${coreContents}
+
+    let papyrInstance = createPapyr();
+    if (typeof window !== 'undefined') { window.papyr = papyrInstance; }
+    else if (typeof global !== 'undefined') { global.papyr = papyrInstance; }
+    const papyr = papyrInstance;
+
+${wattSdkContent}
+
+    if (typeof module !== 'undefined' && module.exports) { module.exports = papyrInstance; }
+    else if (typeof exports !== 'undefined') { exports.papyr = papyrInstance; }
+
+})(typeof window !== 'undefined' ? window : (typeof global !== 'undefined' ? global : this));
+`;
+    fs.writeFileSync(path.join(publicDir, 'papyr-watt.js'), paperWattCode, 'utf8');
+    console.log("✨ Compiled papyr-watt.js successfully!");
+
+    const paperWattEsmCode = `/**
+ * PAPYR WATT SDK (ESM)
+ * v3.1.3 - Permission flows, consent banners, transparency dialogs, privacy notices
+ * Released under MIT License.
+ */
+
+let activeEffect = null;
+let isDebug = false;
+
+${coreContents}
+
+const papyr = createPapyr();
+if (typeof window !== 'undefined') { window.papyr = papyr; }
+
+${wattSdkContent}
+
+export { papyr, createPapyr };
+export const signal = papyr.signal;
+export const watt = papyr.watt;
+export default papyr;
+`;
+    fs.writeFileSync(path.join(publicDir, 'papyr-watt.esm.js'), paperWattEsmCode, 'utf8');
+    console.log("✨ Compiled papyr-watt.esm.js successfully!");
+
+    // 7j. Build papyr-pssr.js — PSSR SDK standalone bundle
+    const pssrSdkFiles = ['core/pssr-sdk.js'];
+    const pssrSdkContent = pssrSdkFiles.map(file => {
+        const fp = path.join(srcDir, file);
+        return `// --- MODULE: ${file} ---\n` + fs.readFileSync(fp, 'utf8') + '\n';
+    }).join('\n');
+
+    const paperPssrCode = `/**
+ * PAPYR PSSR SDK — Advanced Rendering Strategy SDK
+ * v3.1.3 - Strategy builder, lazy islands, meta pipeline, edge config, SSG prerender
+ * Released under MIT License.
+ */
+
+(function(globalContext) {
+    let activeEffect = null;
+    let isDebug = false;
+
+${coreContents}
+
+    let papyrInstance = createPapyr();
+    if (typeof window !== 'undefined') { window.papyr = papyrInstance; }
+    else if (typeof global !== 'undefined') { global.papyr = papyrInstance; }
+    const papyr = papyrInstance;
+
+${pssrSdkContent}
+
+    if (typeof module !== 'undefined' && module.exports) { module.exports = papyrInstance; }
+    else if (typeof exports !== 'undefined') { exports.papyr = papyrInstance; }
+
+})(typeof window !== 'undefined' ? window : (typeof global !== 'undefined' ? global : this));
+`;
+    fs.writeFileSync(path.join(publicDir, 'papyr-pssr.js'), paperPssrCode, 'utf8');
+    console.log("✨ Compiled papyr-pssr.js successfully!");
+
+    const paperPssrEsmCode = `/**
+ * PAPYR PSSR SDK (ESM)
+ * v3.1.3 - Strategy builder, lazy islands, meta pipeline, edge config, SSG prerender
+ * Released under MIT License.
+ */
+
+let activeEffect = null;
+let isDebug = false;
+
+${coreContents}
+
+const papyr = createPapyr();
+if (typeof window !== 'undefined') { window.papyr = papyr; }
+
+${pssrSdkContent}
+
+export { papyr, createPapyr };
+export const pssr = papyr.pssr;
+export const isr = papyr.isr;
+export const edge = papyr.edge;
+export default papyr;
+`;
+    fs.writeFileSync(path.join(publicDir, 'papyr-pssr.esm.js'), paperPssrEsmCode, 'utf8');
+    console.log("✨ Compiled papyr-pssr.esm.js successfully!");
+
+    // 7k. Build papyr-trust.js — Trust Boundaries audit utility (no rendering engine, lightweight)
+    const trustFiles = ['core/trust.js', 'core/config.js', 'core/access.js'];
+    const trustContent = trustFiles.map(file => {
+        const fp = path.join(srcDir, file);
+        return `// --- MODULE: ${file} ---\n` + fs.readFileSync(fp, 'utf8') + '\n';
+    }).join('\n');
+
+    const paperTrustCode = `/**
+ * PAPYR TRUST — Trust Boundaries Audit Utility
+ * v3.1.3 - Zone-based trust model, runtime audit, third-party disclosure, access tiers
+ * Released under MIT License.
+ * Lightweight: no rendering engine. For CI/CD trust audits and runtime transparency.
+ */
+
+(function(globalContext) {
+    let activeEffect = null;
+    let isDebug = false;
+
+${coreContents}
+
+    let papyrInstance = createPapyr();
+    if (typeof window !== 'undefined') { window.papyr = papyrInstance; }
+    else if (typeof global !== 'undefined') { global.papyr = papyrInstance; }
+    const papyr = papyrInstance;
+
+${trustContent}
+
+    if (typeof module !== 'undefined' && module.exports) {
+        module.exports = { papyr: papyrInstance, trust: papyrInstance.trust, access: papyrInstance.access };
+    } else if (typeof exports !== 'undefined') {
+        exports.papyr = papyrInstance;
+        exports.trust = papyrInstance.trust;
+        exports.access = papyrInstance.access;
+    }
+
+})(typeof window !== 'undefined' ? window : (typeof global !== 'undefined' ? global : this));
+`;
+    fs.writeFileSync(path.join(publicDir, 'papyr-trust.js'), paperTrustCode, 'utf8');
+    console.log("✨ Compiled papyr-trust.js successfully!");
 
     // 8. Try optional minification
     try {
@@ -487,6 +807,11 @@ export default papyr;
         const minSsr = UglifyJS.minify(paperSsrCode, { sourceMap: { filename: 'papyr-ssr.min.js', url: 'papyr-ssr.min.js.map' } });
         if (minSsr.error) throw minSsr.error;
         fs.writeFileSync(path.join(publicDir, 'papyr-ssr.min.js'), minSsr.code, 'utf8');
+
+        // Minify Game
+        const minGame = UglifyJS.minify(paperGameCode, { sourceMap: { filename: 'papyr-game.min.js', url: 'papyr-game.min.js.map' } });
+        if (minGame.error) throw minGame.error;
+        fs.writeFileSync(path.join(publicDir, 'papyr-game.min.js'), minGame.code, 'utf8');
         
         console.log("✨ Minified bundles and source maps generated successfully!");
     } catch (e) {
@@ -629,5 +954,33 @@ copyFile(path.join(publicDir, 'papyr-ssr.esm.js'),  path.join(ssrPackDir, 'papyr
 syncSharedDocs(path.join(packagesDir, 'ssr'));
 console.log("   ✅ @eldrex/papyr-ssr distributed.");
 
-console.log("\n🚀 All workspace packages distributed successfully!\n");
+// ── @eldrex/papyr-game ───────────────────────────────────
+const gamePackDir = path.join(packagesDir, 'game', 'dist');
+ensureDir(gamePackDir);
+copyFile(path.join(publicDir, 'papyr-game.js'),      path.join(gamePackDir, 'papyr-game.js'));
+copyFile(path.join(publicDir, 'papyr-game.esm.js'),  path.join(gamePackDir, 'papyr-game.esm.js'));
+syncSharedDocs(path.join(packagesDir, 'game'));
+console.log("   ✅ @eldrex/papyr-game distributed.");
 
+// ── @eldrex/papyr-seo ────────────────────────────────────
+const seoPackDir = path.join(packagesDir, 'seo', 'dist');
+ensureDir(seoPackDir);
+copyFile(path.join(publicDir, 'papyr-seo.js'),       path.join(seoPackDir, 'papyr-seo.js'));
+copyFile(path.join(publicDir, 'papyr-seo.esm.js'),   path.join(seoPackDir, 'papyr-seo.esm.js'));
+console.log("   ✅ @eldrex/papyr-seo distributed.");
+
+// ── @eldrex/papyr-watt ───────────────────────────────────
+const wattPackDir = path.join(packagesDir, 'watt', 'dist');
+ensureDir(wattPackDir);
+copyFile(path.join(publicDir, 'papyr-watt.js'),      path.join(wattPackDir, 'papyr-watt.js'));
+copyFile(path.join(publicDir, 'papyr-watt.esm.js'),  path.join(wattPackDir, 'papyr-watt.esm.js'));
+console.log("   ✅ @eldrex/papyr-watt distributed.");
+
+// ── @eldrex/papyr-pssr ───────────────────────────────────
+const pssrPackDir = path.join(packagesDir, 'pssr', 'dist');
+ensureDir(pssrPackDir);
+copyFile(path.join(publicDir, 'papyr-pssr.js'),      path.join(pssrPackDir, 'papyr-pssr.js'));
+copyFile(path.join(publicDir, 'papyr-pssr.esm.js'),  path.join(pssrPackDir, 'papyr-pssr.esm.js'));
+console.log("   ✅ @eldrex/papyr-pssr distributed.");
+
+console.log("\n🚀 All workspace packages distributed successfully!\n");

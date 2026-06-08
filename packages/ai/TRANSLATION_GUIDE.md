@@ -818,7 +818,7 @@ When working on different environments (building standard websites vs complex ap
 #### Papyr Script Setup
 You include a script tag pointing to a CDN bundle:
 ```html
-<script src="https://cdn.jsdelivr.net/npm/@eldrex/papyr@3.0.1/dist/papyr.js"></script>
+<script src="https://unpkg.com/@eldrex/papyr@3.0.4/dist/papyr.js"></script>
 ```
 
 #### Code Usage

@@ -1,6 +1,6 @@
 {
   "name": "@eldrex/papyr-charts",
-  "version": "3.1.2",
+  "version": "3.1.3",
   "description": "Reactive charts plugin for Papyr.js",
   "main": "dist/papyr-charts.js",
   "module": "dist/papyr-charts.esm.js",
@@ -18,6 +18,22 @@
     "reactive",
     "papyr"
   ],
-  "author": "Eldrex Bula & Papyr Contributors",
-  "license": "MIT"
+  "author": {
+    "name": "Eldrex Delos Reyes Bula",
+    "url": "https://github.com/EldrexDelosReyesBula/PapyrusJS"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/EldrexDelosReyesBula/PapyrusJS.git",
+    "directory": "packages/charts"
+  },
+  "bugs": {
+    "url": "https://github.com/EldrexDelosReyesBula/PapyrusJS/issues"
+  },
+  "homepage": "https://papyrus-js.vercel.app/",
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org"
+  }
 }

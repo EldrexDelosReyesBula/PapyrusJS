@@ -1,6 +1,6 @@
 /**
  * PAPYR STATIC SITE LIBRARY - Complete Showcase Bundle (ESM)
- * v3.1.2 - Core Reactivity, SPA Routing, Reactive Math Logic, Persistent Local CRUD Database, Responsive Widgets
+ * v3.1.3 - Core Reactivity, SPA Routing, Reactive Math Logic, Persistent Local CRUD Database, Responsive Widgets
  * Released under MIT License.
  */
 
@@ -1359,7 +1359,12 @@ if (typeof module !== 'undefined' && module.exports) {
             camera: 'prompt',
             microphone: 'prompt',
             location: 'prompt',
-            storage: 'allow'
+            storage: 'allow',
+            notifications: 'prompt',
+            clipboard: 'prompt',
+            bluetooth: 'prompt',
+            usb: 'prompt',
+            sensors: 'prompt'
         };
 
         function securityConfig(config) {
@@ -1735,7 +1740,103 @@ if (typeof module !== 'undefined' && module.exports) {
             }
         });
 
-        // 1. Geolocation Access Interception
+        // ─── WATT + SSR Integration ───────────────────────────────────────────────
+        // When running in a server environment (SSR), all hardware APIs are automatically
+        // set to 'deny'. These APIs are client-only and must never be called during SSR.
+        // After hydration on the client, policies revert to configured 'prompt' defaults.
+
+        /**
+         * List of APIs that are strictly client-only and must be blocked during SSR.
+         * Developers can reference this list to understand what WATT auto-blocks server-side.
+         */
+        securityConfig.clientOnlyApis = [
+            'camera',
+            'microphone',
+            'location',
+            'notifications',
+            'bluetooth',
+            'usb',
+            'sensors',
+            'clipboard'
+        ];
+
+        /** Internal record of SSR-blocked APIs and their reasons */
+        const _ssrBlockLog = [];
+
+        /**
+         * Apply SSR mode: auto-denies all hardware/browser APIs.
+         * Called automatically when isServer() is true at initialization.
+         * @private
+         */
+        function _applySSRPolicies() {
+            securityConfig.clientOnlyApis.forEach(api => {
+                const prev = policies[api];
+                policies[api] = 'deny';
+                _ssrBlockLog.push({
+                    api,
+                    previousPolicy: prev,
+                    reason: 'SSR mode: client-only API auto-blocked by WATT',
+                    timestamp: new Date().toISOString()
+                });
+            });
+            console.log('[WATT + SSR] Server-side mode detected. All hardware APIs set to "deny". WATT will restore policies post-hydration.');
+        }
+
+        /**
+         * Returns a report of all APIs blocked during SSR by WATT.
+         * Useful for debugging and auditing SSR policy compliance.
+         *
+         * @returns {{ ssrMode: boolean, blockedApis: Array<{ api, previousPolicy, reason, timestamp }> }}
+         *
+         * @example
+         * if (papyr.isServer()) {
+         *   console.log(papyr.security.getSSRReport());
+         * }
+         */
+        securityConfig.getSSRReport = function() {
+            return {
+                ssrMode: papyr.isServer ? papyr.isServer() : false,
+                currentPolicies: { ...policies },
+                blockedApis: [..._ssrBlockLog]
+            };
+        };
+
+        /**
+         * Signals that client-side hydration is complete.
+         * Restores hardware API policies from 'deny' back to 'prompt' defaults.
+         * Call this after papyr.hydrate() or papyr.pssr.hydrate() completes.
+         *
+         * @example
+         * papyr.pssr.hydrate('#app');
+         * papyr.security.onHydrated();
+         */
+        securityConfig.onHydrated = function() {
+            if (papyr.isServer && papyr.isServer()) return; // No-op on server
+
+            // Restore client-side policies: previously 'deny' (from SSR mode) → 'prompt'
+            _ssrBlockLog.forEach(({ api, previousPolicy }) => {
+                if (policies[api] === 'deny' && previousPolicy !== 'deny') {
+                    policies[api] = previousPolicy || 'prompt';
+                }
+            });
+
+            console.log('[WATT + Hydration] Client hydration complete. Hardware API policies restored to prompt mode.');
+
+            // Flush any pending routeModes registered before PSSR initialized
+            if (papyr._pendingRouteModes && papyr.pssr && typeof papyr.pssr.setRouteMode === 'function') {
+                papyr._pendingRouteModes.forEach(({ path, mode }) => {
+                    papyr.pssr.setRouteMode(path, mode);
+                });
+                papyr._pendingRouteModes = [];
+            }
+        };
+
+        // Auto-apply SSR policies if running server-side
+        if (papyr.isServer && papyr.isServer()) {
+            _applySSRPolicies();
+        }
+
+
         if (typeof navigator !== 'undefined' && navigator.geolocation) {
             const geo = navigator.geolocation;
             const originalGetCurrentPosition = geo.getCurrentPosition;
@@ -1827,6 +1928,357 @@ if (typeof module !== 'undefined' && module.exports) {
                     }
                 });
             };
+        }
+
+        // 3. Notification API Interception
+        if (typeof window !== 'undefined' && window.Notification) {
+            const OriginalNotification = window.Notification;
+            const originalRequestPermission = OriginalNotification.requestPermission;
+            const handler = {
+                construct(target, args) {
+                    const policy = policies.notifications;
+                    if (policy === 'deny') {
+                        console.warn("Notification blocked by Papyr security policy.");
+                        return {};
+                    }
+                    if (policy === 'allow' || target.permission === 'granted') {
+                        return new target(...args);
+                    }
+                    // For prompt
+                    if (papyr.watt && typeof papyr.watt.triggerWattPrompt === 'function') {
+                        papyr.watt.triggerWattPrompt("Notifications", () => {
+                            originalRequestPermission.call(target).then(perm => {
+                                if (perm === 'granted') {
+                                    new target(...args);
+                                }
+                            });
+                        }, () => {});
+                    } else {
+                        return new target(...args);
+                    }
+                    return {};
+                },
+                get(target, prop) {
+                    if (prop === 'requestPermission') {
+                        return function(callback) {
+                            const policy = policies.notifications;
+                            if (policy === 'deny') {
+                                if (callback) callback('denied');
+                                return Promise.resolve('denied');
+                            }
+                            if (policy === 'allow') {
+                                return originalRequestPermission.call(target, callback);
+                            }
+                            return new Promise((resolve) => {
+                                if (papyr.watt && typeof papyr.watt.triggerWattPrompt === 'function') {
+                                    papyr.watt.triggerWattPrompt("Notifications", () => {
+                                        originalRequestPermission.call(target)
+                                            .then(perm => {
+                                                if (callback) callback(perm);
+                                                resolve(perm);
+                                            })
+                                            .catch(() => {
+                                                if (callback) callback('default');
+                                                resolve('default');
+                                            });
+                                    }, () => {
+                                        if (callback) callback('denied');
+                                        resolve('denied');
+                                    });
+                                } else {
+                                    originalRequestPermission.call(target).then(perm => {
+                                        if (callback) callback(perm);
+                                        resolve(perm);
+                                    });
+                                }
+                            });
+                        };
+                    }
+                    return Reflect.get(target, prop);
+                }
+            };
+            window.Notification = new Proxy(OriginalNotification, handler);
+        }
+
+        // 4. Clipboard API Interception
+        if (typeof navigator !== 'undefined' && navigator.clipboard) {
+            const originalReadText = navigator.clipboard.readText;
+            const originalWriteText = navigator.clipboard.writeText;
+            
+            navigator.clipboard.readText = function() {
+                const policy = policies.clipboard;
+                if (policy === 'deny') {
+                    return Promise.reject(new DOMException("Clipboard read denied by Papyr security policy.", "NotAllowedError"));
+                }
+                if (policy === 'allow') {
+                    return originalReadText.call(navigator.clipboard);
+                }
+                return new Promise((resolve, reject) => {
+                    if (papyr.watt && typeof papyr.watt.triggerWattPrompt === 'function') {
+                        papyr.watt.triggerWattPrompt("Clipboard Read", () => {
+                            originalReadText.call(navigator.clipboard).then(resolve).catch(reject);
+                        }, () => {
+                            reject(new DOMException("Clipboard read denied by user through WATT.", "NotAllowedError"));
+                        });
+                    } else {
+                        originalReadText.call(navigator.clipboard).then(resolve).catch(reject);
+                    }
+                });
+            };
+
+            navigator.clipboard.writeText = function(text) {
+                const policy = policies.clipboard;
+                if (policy === 'deny') {
+                    return Promise.reject(new DOMException("Clipboard write denied by Papyr security policy.", "NotAllowedError"));
+                }
+                if (policy === 'allow') {
+                    return originalWriteText.call(navigator.clipboard, text);
+                }
+                return new Promise((resolve, reject) => {
+                    if (papyr.watt && typeof papyr.watt.triggerWattPrompt === 'function') {
+                        papyr.watt.triggerWattPrompt("Clipboard Write", () => {
+                            originalWriteText.call(navigator.clipboard, text).then(resolve).catch(reject);
+                        }, () => {
+                            reject(new DOMException("Clipboard write denied by user through WATT.", "NotAllowedError"));
+                        });
+                    } else {
+                        originalWriteText.call(navigator.clipboard, text).then(resolve).catch(reject);
+                    }
+                });
+            };
+        }
+
+        // 5. Bluetooth API Interception
+        if (typeof navigator !== 'undefined' && navigator.bluetooth) {
+            const originalRequestDevice = navigator.bluetooth.requestDevice;
+            navigator.bluetooth.requestDevice = function(options) {
+                const policy = policies.bluetooth;
+                if (policy === 'deny') {
+                    return Promise.reject(new DOMException("Bluetooth access denied by Papyr security policy.", "NotAllowedError"));
+                }
+                if (policy === 'allow') {
+                    return originalRequestDevice.call(navigator.bluetooth, options);
+                }
+                return new Promise((resolve, reject) => {
+                    if (papyr.watt && typeof papyr.watt.triggerWattPrompt === 'function') {
+                        papyr.watt.triggerWattPrompt("Bluetooth Access", () => {
+                            originalRequestDevice.call(navigator.bluetooth, options).then(resolve).catch(reject);
+                        }, () => {
+                            reject(new DOMException("Bluetooth access denied by user through WATT.", "NotAllowedError"));
+                        });
+                    } else {
+                        originalRequestDevice.call(navigator.bluetooth, options).then(resolve).catch(reject);
+                    }
+                });
+            };
+        }
+
+        // 6. USB API Interception
+        if (typeof navigator !== 'undefined' && navigator.usb) {
+            const originalRequestDevice = navigator.usb.requestDevice;
+            navigator.usb.requestDevice = function(options) {
+                const policy = policies.usb;
+                if (policy === 'deny') {
+                    return Promise.reject(new DOMException("USB access denied by Papyr security policy.", "NotAllowedError"));
+                }
+                if (policy === 'allow') {
+                    return originalRequestDevice.call(navigator.usb, options);
+                }
+                return new Promise((resolve, reject) => {
+                    if (papyr.watt && typeof papyr.watt.triggerWattPrompt === 'function') {
+                        papyr.watt.triggerWattPrompt("USB Access", () => {
+                            originalRequestDevice.call(navigator.usb, options).then(resolve).catch(reject);
+                        }, () => {
+                            reject(new DOMException("USB access denied by user through WATT.", "NotAllowedError"));
+                        });
+                    } else {
+                        originalRequestDevice.call(navigator.usb, options).then(resolve).catch(reject);
+                    }
+                });
+            };
+        }
+
+        // 7. Sensor API Interception
+        if (typeof window !== 'undefined') {
+            const interceptPermission = (obj, prop, name) => {
+                if (obj && typeof obj[prop] === 'function') {
+                    const original = obj[prop];
+                    obj[prop] = function(...args) {
+                        const policy = policies.sensors;
+                        if (policy === 'deny') {
+                            return Promise.resolve('denied');
+                        }
+                        if (policy === 'allow') {
+                            return original.apply(this, args);
+                        }
+                        return new Promise((resolve, reject) => {
+                            if (papyr.watt && typeof papyr.watt.triggerWattPrompt === 'function') {
+                                papyr.watt.triggerWattPrompt(name, () => {
+                                    original.apply(this, args).then(resolve).catch(reject);
+                                }, () => {
+                                    resolve('denied');
+                                });
+                            } else {
+                                original.apply(this, args).then(resolve).catch(reject);
+                            }
+                        });
+                    };
+                }
+            };
+            
+            if (window.DeviceOrientationEvent) {
+                interceptPermission(window.DeviceOrientationEvent, 'requestPermission', "Motion Sensors");
+            }
+            if (window.DeviceMotionEvent) {
+                interceptPermission(window.DeviceMotionEvent, 'requestPermission', "Motion Sensors");
+            }
+
+            const sensorsList = ['Accelerometer', 'Gyroscope', 'Magnetometer', 'AmbientLightSensor'];
+            sensorsList.forEach(sensorName => {
+                if (window[sensorName]) {
+                    const OriginalSensor = window[sensorName];
+                    const handler = {
+                        construct(target, args) {
+                            const policy = policies.sensors;
+                            if (policy === 'deny') {
+                                throw new DOMException(`${sensorName} blocked by Papyr security policy.`, "SecurityError");
+                            }
+                            if (policy === 'allow') {
+                                return new target(...args);
+                            }
+                            const instance = new target(...args);
+                            const originalStart = instance.start;
+                            instance.start = function() {
+                                return new Promise((resolve, reject) => {
+                                    if (papyr.watt && typeof papyr.watt.triggerWattPrompt === 'function') {
+                                        papyr.watt.triggerWattPrompt(`${sensorName} Access`, () => {
+                                            try {
+                                                originalStart.call(instance);
+                                                resolve();
+                                            } catch (err) { reject(err); }
+                                        }, () => {
+                                            reject(new DOMException("Sensor access denied by user through WATT.", "NotAllowedError"));
+                                        });
+                                    } else {
+                                        try {
+                                            originalStart.call(instance);
+                                            resolve();
+                                        } catch (err) { reject(err); }
+                                    }
+                                });
+                            };
+                            return instance;
+                        }
+                    };
+                    window[sensorName] = new Proxy(OriginalSensor, handler);
+                }
+            });
+        }
+
+        // 8. Network Request Interception (fetch and XMLHttpRequest)
+        if (typeof window !== 'undefined') {
+            const originalFetch = window.fetch;
+            
+            const trackingProviders = {
+                'google-analytics.com': { name: 'Google Analytics', purpose: 'visitor tracking & site analytics', optOut: true },
+                'google-analytics': { name: 'Google Analytics', purpose: 'visitor tracking & site analytics', optOut: true },
+                'doubleclick.net': { name: 'DoubleClick', purpose: 'personalized advertising', optOut: true },
+                'facebook.net': { name: 'Meta Pixel', purpose: 'conversion tracking & ads targeting', optOut: true },
+                'fbevents.js': { name: 'Meta Pixel', purpose: 'conversion tracking & ads targeting', optOut: true },
+                'mixpanel.com': { name: 'Mixpanel', purpose: 'user behavior analytics', optOut: true },
+                'segment.io': { name: 'Segment', purpose: 'customer data platform mapping', optOut: true },
+                'segment.com': { name: 'Segment', purpose: 'customer data platform mapping', optOut: true }
+            };
+
+            const detectTrackingInfo = (url) => {
+                if (!url || typeof url !== 'string') return null;
+                const lowerUrl = url.toLowerCase();
+                for (const [key, provider] of Object.entries(trackingProviders)) {
+                    if (lowerUrl.includes(key)) {
+                        return { ...provider, url };
+                    }
+                }
+                return null;
+            };
+
+            window.fetch = function(input, init) {
+                const url = typeof input === 'string' ? input : (input && input.url ? input.url : '');
+                const trackingInfo = detectTrackingInfo(url);
+                
+                if (trackingInfo && papyr.security && papyr.security.currentTier !== 'none') {
+                    if (papyr.security.hasConsent) {
+                        return originalFetch.apply(this, arguments);
+                    }
+                    
+                    return new Promise((resolve, reject) => {
+                        if (papyr.watt && typeof papyr.watt.triggerTrackingPrompt === 'function') {
+                            papyr.watt.triggerTrackingPrompt(trackingInfo, () => {
+                                resolve(originalFetch.apply(this, arguments));
+                            }, (optOutSelected) => {
+                                if (optOutSelected && trackingInfo.optOut) {
+                                    if (trackingInfo.name === 'Google Analytics') {
+                                        window['ga-disable-UA-*'] = true;
+                                        window['ga-disable-G-*'] = true;
+                                    }
+                                }
+                                reject(new TypeError("Request blocked by user tracking preferences through WATT."));
+                            });
+                        } else {
+                            if (papyr.security.currentTier === 'high') {
+                                reject(new TypeError("Request blocked by high-privacy security policy."));
+                            } else {
+                                resolve(originalFetch.apply(this, arguments));
+                            }
+                        }
+                    });
+                }
+                
+                return originalFetch.apply(this, arguments);
+            };
+
+            const OriginalXHR = window.XMLHttpRequest;
+            window.XMLHttpRequest = function() {
+                const xhr = new OriginalXHR();
+                const originalOpen = xhr.open;
+                const originalSend = xhr.send;
+                let isTrackingRequest = false;
+                let trackingInfo = null;
+
+                xhr.open = function(method, url, ...rest) {
+                    trackingInfo = detectTrackingInfo(url);
+                    if (trackingInfo && papyr.security && papyr.security.currentTier !== 'none' && !papyr.security.hasConsent) {
+                        isTrackingRequest = true;
+                    }
+                    return originalOpen.apply(this, arguments);
+                };
+
+                xhr.send = function(body) {
+                    if (isTrackingRequest) {
+                        if (papyr.watt && typeof papyr.watt.triggerTrackingPrompt === 'function') {
+                            papyr.watt.triggerTrackingPrompt(trackingInfo, () => {
+                                originalSend.call(xhr, body);
+                            }, (optOutSelected) => {
+                                if (optOutSelected && trackingInfo.optOut) {
+                                    if (trackingInfo.name === 'Google Analytics') {
+                                        window['ga-disable-UA-*'] = true;
+                                        window['ga-disable-G-*'] = true;
+                                    }
+                                }
+                                xhr.dispatchEvent(new Event('error'));
+                            });
+                            return;
+                        } else if (papyr.security && papyr.security.currentTier === 'high') {
+                            xhr.dispatchEvent(new Event('error'));
+                            return;
+                        }
+                    }
+                    return originalSend.apply(this, arguments);
+                };
+
+                return xhr;
+            };
+            window.XMLHttpRequest.prototype = OriginalXHR.prototype;
+            Object.assign(window.XMLHttpRequest, OriginalXHR);
         }
 
         papyr.security = securityConfig;
@@ -2739,7 +3191,7 @@ coreInitializers.push((papyr) => {
         }
     };
 
-    papyr.page = (path, componentFn) => {
+    papyr.page = (path, componentFn, options = {}) => {
         if (typeof path === 'undefined') {
             return papyr.pageRouter();
         }
@@ -2751,6 +3203,17 @@ coreInitializers.push((papyr) => {
             keys: (cleanPath.match(/:\w+/g) || []).map(k => k.slice(1)),
             componentFn
         });
+
+        // Register rendering mode in PSSR registry if provided
+        if (options && options.mode) {
+            if (papyr.pssr && typeof papyr.pssr.setRouteMode === 'function') {
+                papyr.pssr.setRouteMode(cleanPath, options.mode);
+            } else {
+                // Queue for registration once PSSR is initialized
+                if (!papyr._pendingRouteModes) papyr._pendingRouteModes = [];
+                papyr._pendingRouteModes.push({ path: cleanPath, mode: options.mode });
+            }
+        }
 
         if (typeof window !== 'undefined' && pageRoutes.length > 0 && !currentPageView.value) {
             setTimeout(matchPageRoute, 10);
@@ -4905,6 +5368,807 @@ coreInitializers.push((papyr) => {
             }
         });
     };
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // 6. PSSR — Papyrus Server Side Rendering Enhanced Pipeline
+    // ──────────────────────────────────────────────────────────────────────────
+
+    /** Internal render-mode registry: path → mode */
+    const _renderModeRegistry = new Map();
+
+    /** SSR-blocked globals: any component accessing these during SSR gets a warning */
+    const _ssrBlockedGlobals = [
+        'window', 'document', 'localStorage', 'sessionStorage',
+        'navigator', 'location', 'history', 'screen',
+        'canvas', 'audio', 'camera', 'IndexedDB', 'WebSocket'
+    ];
+
+    /**
+     * Dynamic value detector: looks for common hydration-mismatch sources in a fn's source.
+     * @param {Function} fn
+     * @returns {string[]} List of detected dynamic patterns
+     * @private
+     */
+    function _detectDynamicValues(fn) {
+        if (typeof fn !== 'function') return [];
+        const src = fn.toString();
+        const issues = [];
+        if (/Date\.now\(\)/.test(src)) issues.push('Date.now()');
+        if (/Math\.random\(\)/.test(src)) issues.push('Math.random()');
+        if (/new Date\(\)/.test(src)) issues.push('new Date()');
+        if (/crypto\.randomUUID\(\)/.test(src)) issues.push('crypto.randomUUID()');
+        if (/Math\.floor\(Math\.random/.test(src)) issues.push('random ID generation');
+        return issues;
+    }
+
+    papyr.pssr = {
+
+        /**
+         * Selective hydration: hydrates only island elements marked with [data-papyr-island],
+         * leaving static content untouched and unaffected.
+         *
+         * @param {string} selector - Root container selector (e.g. '#app')
+         * @param {Function} [App] - Optional full-app component for full hydration fallback
+         * @param {Object} [options]
+         * @param {boolean} [options.islandsOnly=true] - If true, only hydrates islands
+         * @param {boolean} [options.warnMismatches=true] - Log hydration warnings
+         *
+         * @example
+         * papyr.pssr.hydrate('#app', null, { islandsOnly: true });
+         */
+        hydrate(selector, App, options = {}) {
+            if (!papyr.isBrowser()) return;
+
+            const { islandsOnly = true, warnMismatches = true } = options;
+
+            const root = document.querySelector(selector);
+            if (!root) {
+                console.error(`[Papyr PSSR] Hydration target "${selector}" not found.`);
+                return;
+            }
+
+            // Always hydrate islands
+            const islands = root.querySelectorAll('[data-papyr-island]');
+            if (islands.length > 0) {
+                console.log(`[Papyr PSSR] Hydrating ${islands.length} island(s) selectively.`);
+                islands.forEach(islandEl => {
+                    const name = islandEl.getAttribute('data-papyr-island');
+                    let props = {};
+                    try {
+                        const raw = islandEl.getAttribute('data-papyr-island-props');
+                        if (raw) props = JSON.parse(raw.replace(/&quot;/g, '"'));
+                    } catch (e) {
+                        console.warn(`[Papyr PSSR Island] Could not parse props for "${name}":`, e);
+                    }
+
+                    // Look up registered island component
+                    if (papyr.registerIsland) {
+                        const Component = papyr._islandRegistry && papyr._islandRegistry.get(name);
+                        if (Component) {
+                            try {
+                                const vEl = Component(props);
+                                if (papyr.hydrate) papyr.hydrate(islandEl, () => vEl);
+                                islandEl.setAttribute('data-papyr-hydrated', 'true');
+                                console.log(`[Papyr PSSR Island] Hydrated "${name}" ✓`);
+                            } catch (err) {
+                                console.error(`[Papyr PSSR Island] Failed to hydrate "${name}":`, err);
+                            }
+                        } else {
+                            if (warnMismatches) {
+                                console.warn(`[Papyr PSSR Island] Component "${name}" not registered. Call papyr.registerIsland("${name}", Component) before hydration.`);
+                            }
+                        }
+                    }
+                });
+            }
+
+            // Full-app hydration if not islands-only and App is provided
+            if (!islandsOnly && App) {
+                console.log('[Papyr PSSR] Full-page hydration starting...');
+                papyr.hydrate(selector, App);
+            }
+        },
+
+        /**
+         * Classify a component as static, interactive, realtime, or heavy.
+         * Used internally by adaptive rendering to pick the optimal strategy.
+         *
+         * @param {Function} Component
+         * @returns {'static'|'interactive'|'realtime'|'heavy'} Classification
+         *
+         * @example
+         * const type = papyr.pssr.classify(ChatWidget);
+         * // 'realtime'
+         */
+        classify(Component) {
+            if (typeof Component !== 'function') return 'static';
+            const src = Component.toString();
+
+            const realtimePatterns = [/WebSocket/, /EventSource/, /setInterval/, /papyr\.realtime/, /socket\.io/];
+            const interactivePatterns = [/addEventListener/, /onclick/, /onsubmit/, /papyr\.state/, /papyr\.signal/, /papyr\.form/];
+            const heavyPatterns = [/WebGL/, /WebGPU/, /canvas/, /papyr\.game/, /papyr\.physics/, /Worker/, /SharedArrayBuffer/];
+
+            if (realtimePatterns.some(p => p.test(src))) return 'realtime';
+            if (heavyPatterns.some(p => p.test(src))) return 'heavy';
+            if (interactivePatterns.some(p => p.test(src))) return 'interactive';
+            return 'static';
+        },
+
+        /**
+         * Wrap a component in an SSR safety guard.
+         * Warns if the component accesses browser-only APIs during server rendering.
+         *
+         * @param {Function} renderFn - Component or render function to guard
+         * @returns {Function} Guarded version of the function
+         *
+         * @example
+         * const safePage = papyr.pssr.ssrSafe(MyPage);
+         * const html = papyr.ssr(safePage());
+         */
+        ssrSafe(renderFn) {
+            return function ssrSafeWrapper(...args) {
+                // Hydration mismatch checks
+                const issues = _detectDynamicValues(renderFn);
+                if (issues.length > 0) {
+                    console.warn(
+                        `[Papyr PSSR SSR Safety] Component may cause hydration mismatches. ` +
+                        `Detected dynamic values: ${issues.join(', ')}. ` +
+                        `Wrap these in papyr.isBrowser() checks or use useEffect/onMounted.`
+                    );
+                    if (papyr.diagnostics) {
+                        papyr.diagnostics.errors.push({
+                            type: 'hydration-risk',
+                            message: `Hydration mismatch risk: ${issues.join(', ')}`,
+                            timestamp: new Date().toISOString()
+                        });
+                    }
+                }
+
+                // Server-side execution guard
+                if (papyr.isServer && papyr.isServer()) {
+                    // Proxy-guard the render function context to catch browser-only globals
+                    try {
+                        return renderFn(...args);
+                    } catch (err) {
+                        const blockedApi = _ssrBlockedGlobals.find(api =>
+                            err.message && err.message.toLowerCase().includes(api.toLowerCase())
+                        );
+                        if (blockedApi) {
+                            console.error(
+                                `[Papyr PSSR SSR Safety] Component accessed browser-only API ` +
+                                `"${blockedApi}" during SSR. Wrap with papyr.isBrowser() guard.`
+                            );
+                            return null;
+                        }
+                        throw err;
+                    }
+                }
+
+                return renderFn(...args);
+            };
+        },
+
+        /**
+         * Check a value for hydration-mismatch risk.
+         * Warns about Date.now(), Math.random(), dynamic IDs used in SSR output.
+         *
+         * @param {Function} fn - Function or component to inspect
+         * @returns {{ safe: boolean, issues: string[] }}
+         */
+        checkHydrationSafety(fn) {
+            const issues = _detectDynamicValues(fn);
+            return { safe: issues.length === 0, issues };
+        },
+
+        /**
+         * Declare the rendering mode for a route path.
+         * Called internally by papyr.page() when a mode option is provided.
+         *
+         * @param {string} path - Route path
+         * @param {'csr'|'ssr'|'ssg'|'isr'} mode - Rendering mode
+         */
+        setRouteMode(path, mode) {
+            const validModes = ['csr', 'ssr', 'ssg', 'isr'];
+            if (!validModes.includes(mode)) {
+                console.warn(`[Papyr PSSR] Invalid rendering mode "${mode}" for path "${path}". Valid modes: ${validModes.join(', ')}`);
+                return;
+            }
+            _renderModeRegistry.set(path, mode);
+            console.log(`[Papyr PSSR] Route "${path}" → mode: ${mode.toUpperCase()}`);
+        },
+
+        /**
+         * Get the declared rendering mode for a path.
+         * Returns 'csr' (default) if not explicitly set.
+         *
+         * @param {string} path - Route path
+         * @returns {'csr'|'ssr'|'ssg'|'isr'}
+         */
+        getRouteMode(path) {
+            return _renderModeRegistry.get(path) || 'csr';
+        },
+
+        /**
+         * Returns all registered route modes.
+         * @returns {Array<{ path: string, mode: string }>}
+         */
+        listRouteModes() {
+            return Array.from(_renderModeRegistry.entries()).map(([path, mode]) => ({ path, mode }));
+        },
+
+        /**
+         * Generate a static manifest for all SSG routes.
+         * Calls the registered component for each SSG route and returns { path, html } pairs.
+         * Useful for build-time static HTML generation.
+         *
+         * @param {Array<{ path: string, componentFn: Function }>} routes - Route definitions
+         * @returns {Promise<Array<{ path: string, html: string, mode: string }>>}
+         *
+         * @example
+         * const manifest = await papyr.pssr.generateStaticManifest(routes);
+         * manifest.forEach(({ path, html }) => fs.writeFileSync(`./dist${path}.html`, html));
+         */
+        async generateStaticManifest(routes = []) {
+            const results = [];
+            for (const route of routes) {
+                const mode = this.getRouteMode(route.path);
+                if (mode !== 'ssg') continue;
+
+                try {
+                    const element = typeof route.componentFn === 'function'
+                        ? route.componentFn({})
+                        : route.componentFn;
+                    const html = papyr.ssr(element);
+                    results.push({ path: route.path, html, mode });
+                } catch (err) {
+                    console.error(`[Papyr PSSR SSG] Failed to render "${route.path}":`, err);
+                    results.push({ path: route.path, html: '', mode, error: err.message });
+                }
+            }
+            return results;
+        },
+
+        /**
+         * Priority streaming: flushes SEO-critical content first, then streams the body.
+         * An enhanced version of papyr.ssr.stream() for PSSR use.
+         *
+         * @param {Function|Object} component - Component to render
+         * @param {Object} [options]
+         * @param {number} [options.chunkSize=1024] - Stream chunk size
+         * @returns {ReadableStream}
+         */
+        stream(component, options = {}) {
+            const { chunkSize = 1024 } = options;
+
+            return new ReadableStream({
+                start(controller) {
+                    try {
+                        const encoder = new TextEncoder();
+
+                        // Flush SEO head first if available
+                        let headContent = '';
+                        if (papyr.seo && typeof papyr.seo._flushHead === 'function') {
+                            headContent = papyr.seo._flushHead();
+                        }
+
+                        if (headContent) {
+                            controller.enqueue(encoder.encode(`<!--PAPYR-SEO-START-->\n${headContent}\n<!--PAPYR-SEO-END-->\n`));
+                        }
+
+                        // Then stream body
+                        const html = papyr.ssr(component);
+                        for (let i = 0; i < html.length; i += chunkSize) {
+                            controller.enqueue(encoder.encode(html.substring(i, i + chunkSize)));
+                        }
+                        controller.close();
+                    } catch (err) {
+                        controller.error(err);
+                    }
+                }
+            });
+        }
+    };
+
+    // Expose island registry for PSSR selective hydration
+    papyr._islandRegistry = papyr._islandRegistry || new Map();
+    const _origRegisterIsland = papyr.registerIsland;
+    if (typeof _origRegisterIsland === 'function') {
+        papyr.registerIsland = (name, Component) => {
+            papyr._islandRegistry.set(name, Component);
+            _origRegisterIsland(name, Component);
+        };
+    }
+});
+
+
+// --- MODULE: core/edge.js ---
+/**
+ * PAPYR EDGE RUNTIME
+ * Universal Edge Rendering Handler for Cloudflare Workers, Deno Deploy, Bun, and Node.js.
+ * Provides fetch-compatible Request/Response handlers and streaming SSR utilities.
+ * Part of the PSSR (Papyrus Server Side Rendering) architecture.
+ */
+
+coreInitializers.push((papyr) => {
+
+    papyr.edge = {
+
+        /**
+         * Detects if the current runtime is an Edge environment.
+         * Supports: Cloudflare Workers, Deno Deploy, Bun.
+         * @returns {boolean}
+         */
+        isEdge() {
+            return (
+                (typeof EdgeRuntime !== 'undefined') ||
+                (typeof Deno !== 'undefined') ||
+                (typeof Bun !== 'undefined' && typeof Bun.serve === 'function') ||
+                (typeof navigator !== 'undefined' && navigator.userAgent === 'Cloudflare-Workers')
+            );
+        },
+
+        /**
+         * Detects if the current runtime is Node.js.
+         * @returns {boolean}
+         */
+        isNode() {
+            return (
+                typeof process !== 'undefined' &&
+                process.versions != null &&
+                process.versions.node != null
+            );
+        },
+
+        /**
+         * Creates a fetch-compatible edge handler for a Papyrus App component.
+         * Compatible with: Cloudflare Workers, Deno Deploy, Bun.serve, Node.js (via adapter).
+         *
+         * @param {Function} App - A Papyrus component function receiving ({ url, request })
+         * @param {Object} options
+         * @param {Function} [options.shell] - Wraps the body HTML in a full document shell
+         * @param {Object} [options.headers] - Additional HTTP response headers
+         * @param {Function} [options.onError] - Custom error handler (err) => Response
+         * @returns {Function} Async fetch handler (request) => Response
+         *
+         * @example
+         * // Cloudflare Workers
+         * export default {
+         *   fetch: papyr.edge.handler(App)
+         * };
+         *
+         * // Deno Deploy
+         * Deno.serve(papyr.edge.handler(App));
+         */
+        handler(App, options = {}) {
+            const { headers: customHeaders = {}, onError = null } = options;
+
+            return async (request) => {
+                try {
+                    const url = new URL(request.url);
+                    const ctx = { url, request, method: request.method };
+
+                    const element = typeof App === 'function' ? App(ctx) : App;
+                    const bodyHtml = papyr.ssr(element);
+
+                    // Build SEO head string if papyr.seo is available
+                    let headHtml = '';
+                    if (papyr.seo && typeof papyr.seo._flushHead === 'function') {
+                        headHtml = papyr.seo._flushHead();
+                    }
+
+                    const fullHtml = options.shell
+                        ? options.shell(bodyHtml, headHtml)
+                        : `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  ${headHtml}
+</head>
+<body>
+${bodyHtml}
+</body>
+</html>`;
+
+                    return new Response(fullHtml, {
+                        status: 200,
+                        headers: {
+                            'Content-Type': 'text/html; charset=utf-8',
+                            'X-Powered-By': 'Papyrus PSSR',
+                            'Cache-Control': 'public, max-age=0, must-revalidate',
+                            ...customHeaders
+                        }
+                    });
+                } catch (err) {
+                    console.error('[Papyr Edge Handler Error]', err);
+                    if (onError) return onError(err);
+                    return new Response(
+                        `<!DOCTYPE html><html><head><title>Error</title></head><body>` +
+                        `<h1>Internal Server Error</h1><pre>${err.message}</pre></body></html>`,
+                        {
+                            status: 500,
+                            headers: { 'Content-Type': 'text/html; charset=utf-8' }
+                        }
+                    );
+                }
+            };
+        },
+
+        /**
+         * Creates a streaming SSR edge handler using ReadableStream + TextEncoder.
+         * Flushes SEO-critical head content immediately, then streams body chunks.
+         *
+         * @param {Function} App - Papyrus component function
+         * @param {Request} request - Incoming Request object
+         * @param {Object} options
+         * @param {Object} [options.headers] - Additional response headers
+         * @param {number} [options.chunkSize=1024] - Streaming chunk size in bytes
+         * @returns {Response} Streaming Response
+         *
+         * @example
+         * export default {
+         *   fetch: (req) => papyr.edge.stream(App, req)
+         * };
+         */
+        stream(App, request, options = {}) {
+            const { headers: customHeaders = {}, chunkSize = 1024 } = options;
+            const encoder = new TextEncoder();
+
+            const readableStream = new ReadableStream({
+                async start(controller) {
+                    try {
+                        // 1. Flush shell open immediately (best TTFB)
+                        let headHtml = '';
+                        if (papyr.seo && typeof papyr.seo._flushHead === 'function') {
+                            headHtml = papyr.seo._flushHead();
+                        }
+
+                        const shellOpen = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  ${headHtml}
+</head>
+<body>`;
+                        controller.enqueue(encoder.encode(shellOpen));
+
+                        // 2. Render component
+                        const url = request ? new URL(request.url) : null;
+                        const ctx = { url, request };
+                        const element = typeof App === 'function' ? App(ctx) : App;
+                        const html = papyr.ssr(element);
+
+                        // 3. Stream body in chunks
+                        for (let i = 0; i < html.length; i += chunkSize) {
+                            controller.enqueue(encoder.encode(html.substring(i, i + chunkSize)));
+                        }
+
+                        // 4. Close shell
+                        controller.enqueue(encoder.encode('\n</body>\n</html>'));
+                        controller.close();
+                    } catch (err) {
+                        console.error('[Papyr Edge Stream Error]', err);
+                        controller.enqueue(encoder.encode(`<p>Render Error: ${err.message}</p>`));
+                        controller.close();
+                    }
+                }
+            });
+
+            return new Response(readableStream, {
+                headers: {
+                    'Content-Type': 'text/html; charset=utf-8',
+                    'Transfer-Encoding': 'chunked',
+                    'X-Powered-By': 'Papyrus PSSR Stream',
+                    ...customHeaders
+                }
+            });
+        },
+
+        /**
+         * Creates a Node.js-compatible HTTP handler (compatible with http.createServer).
+         * @param {Function} App - Papyrus component function
+         * @param {Object} options
+         * @returns {Function} Node.js (req, res) => void handler
+         *
+         * @example
+         * const http = require('http');
+         * http.createServer(papyr.edge.nodeHandler(App)).listen(3000);
+         */
+        nodeHandler(App, options = {}) {
+            const { headers: customHeaders = {} } = options;
+
+            return async (req, res) => {
+                try {
+                    const baseUrl = `http://${req.headers.host || 'localhost'}`;
+                    const url = new URL(req.url || '/', baseUrl);
+                    const ctx = { url, request: req };
+
+                    const element = typeof App === 'function' ? App(ctx) : App;
+                    const bodyHtml = papyr.ssr(element);
+
+                    let headHtml = '';
+                    if (papyr.seo && typeof papyr.seo._flushHead === 'function') {
+                        headHtml = papyr.seo._flushHead();
+                    }
+
+                    const fullHtml = options.shell
+                        ? options.shell(bodyHtml, headHtml)
+                        : `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  ${headHtml}
+</head>
+<body>
+${bodyHtml}
+</body>
+</html>`;
+
+                    res.writeHead(200, {
+                        'Content-Type': 'text/html; charset=utf-8',
+                        'X-Powered-By': 'Papyrus PSSR',
+                        ...customHeaders
+                    });
+                    res.end(fullHtml);
+                } catch (err) {
+                    console.error('[Papyr Edge Node Handler Error]', err);
+                    res.writeHead(500, { 'Content-Type': 'text/html' });
+                    res.end(`<h1>Internal Server Error</h1><pre>${err.message}</pre>`);
+                }
+            };
+        }
+    };
+});
+
+
+// --- MODULE: core/isr.js ---
+/**
+ * PAPYR ISR ENGINE (Incremental Static Regeneration)
+ * Server-side stale-while-revalidate HTML cache with background regeneration.
+ * Requires a persistent Node.js or server process to maintain cache state.
+ * Part of the PSSR (Papyrus Server Side Rendering) architecture.
+ */
+
+coreInitializers.push((papyr) => {
+    // In-memory HTML cache store
+    const isrStore = new Map();
+
+    /**
+     * @typedef {Object} ISREntry
+     * @property {string} html - Cached rendered HTML
+     * @property {number} timestamp - Unix ms when cached
+     * @property {number} ttl - TTL in seconds
+     * @property {boolean} revalidating - Background revalidation in progress
+     */
+
+    papyr.isr = {
+
+        /**
+         * Serve or generate cached HTML for a given cache key.
+         * Uses stale-while-revalidate: returns stale cache immediately while regenerating in background.
+         *
+         * @param {string} key - Unique cache key (typically a route path)
+         * @param {Function} renderFn - Async function that returns a Papyrus element or HTML string
+         * @param {number} [ttlSeconds=60] - Cache TTL in seconds
+         * @returns {Promise<{ html: string, hit: boolean, stale: boolean, age: number }>}
+         *
+         * @example
+         * app.get('/blog', async (req, res) => {
+         *   const { html } = await papyr.isr.cache('/blog', () => BlogPage(), 300);
+         *   res.send(html);
+         * });
+         */
+        async cache(key, renderFn, ttlSeconds = 60) {
+            const now = Date.now();
+            const entry = isrStore.get(key);
+
+            // Fresh cache hit
+            if (entry && (now - entry.timestamp) < entry.ttl * 1000 && !entry.revalidating) {
+                return {
+                    html: entry.html,
+                    hit: true,
+                    stale: false,
+                    age: Math.floor((now - entry.timestamp) / 1000)
+                };
+            }
+
+            // Stale cache: return immediately, revalidate in background
+            if (entry) {
+                if (!entry.revalidating) {
+                    entry.revalidating = true;
+                    // Background regeneration — non-blocking
+                    Promise.resolve().then(async () => {
+                        try {
+                            const result = await renderFn();
+                            const html = (typeof result === 'string') ? result : papyr.ssr(result);
+                            isrStore.set(key, {
+                                html,
+                                timestamp: Date.now(),
+                                ttl: ttlSeconds,
+                                revalidating: false
+                            });
+                            if (papyr.diagnostics) {
+                                papyr.diagnostics.emit('isr', {
+                                    type: 'revalidated',
+                                    key,
+                                    timestamp: Date.now()
+                                });
+                            }
+                        } catch (err) {
+                            console.error(`[Papyr ISR] Background revalidation failed for "${key}":`, err);
+                            // Reset revalidating flag so next request retries
+                            const current = isrStore.get(key);
+                            if (current) current.revalidating = false;
+                        }
+                    });
+                }
+
+                return {
+                    html: entry.html,
+                    hit: true,
+                    stale: true,
+                    age: Math.floor((now - entry.timestamp) / 1000)
+                };
+            }
+
+            // Cache miss: render synchronously and store
+            try {
+                const result = await renderFn();
+                const html = (typeof result === 'string') ? result : papyr.ssr(result);
+                isrStore.set(key, {
+                    html,
+                    timestamp: Date.now(),
+                    ttl: ttlSeconds,
+                    revalidating: false
+                });
+
+                if (papyr.diagnostics) {
+                    papyr.diagnostics.emit('isr', {
+                        type: 'generated',
+                        key,
+                        timestamp: Date.now()
+                    });
+                }
+
+                return { html, hit: false, stale: false, age: 0 };
+            } catch (err) {
+                throw new Error(`[Papyr ISR] Initial render failed for key "${key}": ${err.message}`);
+            }
+        },
+
+        /**
+         * Immediately invalidate a single cache entry, forcing regeneration on next request.
+         * @param {string} key - Cache key to invalidate
+         * @returns {boolean} True if the key existed and was removed
+         */
+        invalidate(key) {
+            const existed = isrStore.has(key);
+            if (existed) isrStore.delete(key);
+            return existed;
+        },
+
+        /**
+         * Invalidate all ISR cache entries.
+         * @returns {number} Number of entries cleared
+         */
+        invalidateAll() {
+            const count = isrStore.size;
+            isrStore.clear();
+            return count;
+        },
+
+        /**
+         * Get the current cache status for a key without triggering a render.
+         * @param {string} key - Cache key
+         * @returns {{ exists: boolean, hit?: boolean, stale?: boolean, age?: number, ttl?: number, revalidating?: boolean }}
+         */
+        status(key) {
+            const entry = isrStore.get(key);
+            if (!entry) return { exists: false };
+
+            const now = Date.now();
+            const age = Math.floor((now - entry.timestamp) / 1000);
+            const fresh = age < entry.ttl;
+
+            return {
+                exists: true,
+                hit: fresh,
+                stale: !fresh,
+                age,
+                ttl: entry.ttl,
+                revalidating: entry.revalidating || false
+            };
+        },
+
+        /**
+         * Express/Node.js middleware. Intercepts requests and serves from ISR cache.
+         * Attach route-specific TTLs via `res.papyrISR.ttl` before calling next().
+         *
+         * @param {Object} [options]
+         * @param {number} [options.defaultTtl=60] - Default TTL for all routes
+         * @param {Function} [options.keyFn] - Custom key derivation: (req) => string
+         * @returns {Function} Express-compatible middleware function
+         *
+         * @example
+         * app.use(papyr.isr.middleware({ defaultTtl: 300 }));
+         * app.get('/blog', async (req, res) => {
+         *   res.papyrISR.ttl = 600;
+         *   const html = papyr.ssr(BlogPage());
+         *   res.papyrISR.save(html);
+         *   res.send(html);
+         * });
+         */
+        middleware(options = {}) {
+            const { defaultTtl = 60, keyFn = null } = options;
+
+            return (req, res, next) => {
+                const key = keyFn ? keyFn(req) : req.url;
+                const entry = isrStore.get(key);
+                const now = Date.now();
+
+                if (entry && (now - entry.timestamp) < entry.ttl * 1000) {
+                    res.setHeader('X-Papyr-ISR', 'HIT');
+                    res.setHeader('X-Papyr-ISR-Age', Math.floor((now - entry.timestamp) / 1000));
+                    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+                    return res.send(entry.html);
+                }
+
+                // Attach ISR helpers to response
+                res.papyrISR = {
+                    key,
+                    ttl: defaultTtl,
+                    save(html, ttl) {
+                        const effectiveTtl = ttl || defaultTtl;
+                        isrStore.set(key, {
+                            html,
+                            timestamp: Date.now(),
+                            ttl: effectiveTtl,
+                            revalidating: false
+                        });
+                    }
+                };
+
+                res.setHeader('X-Papyr-ISR', 'MISS');
+                next();
+            };
+        },
+
+        /**
+         * Total number of cached entries.
+         * @returns {number}
+         */
+        size() {
+            return isrStore.size;
+        },
+
+        /**
+         * All currently cached keys.
+         * @returns {string[]}
+         */
+        keys() {
+            return Array.from(isrStore.keys());
+        },
+
+        /**
+         * Returns a snapshot of cache metadata (without HTML content, for inspection).
+         * @returns {Array<{ key: string, age: number, ttl: number, stale: boolean }>}
+         */
+        inspect() {
+            const now = Date.now();
+            return Array.from(isrStore.entries()).map(([key, entry]) => {
+                const age = Math.floor((now - entry.timestamp) / 1000);
+                return {
+                    key,
+                    age,
+                    ttl: entry.ttl,
+                    stale: age >= entry.ttl,
+                    revalidating: entry.revalidating || false
+                };
+            });
+        }
+    };
 });
 
 
@@ -6078,9 +7342,172 @@ coreInitializers.push((papyr) => {
                 background-size: ${spacing}px ${spacing}px;
             `;
             document.body.appendChild(gridOverlay);
+        },
+
+        // ─── Plugin SDK ───────────────────────────────────────────────────────
+
+        plugin: {
+            /**
+             * Validate a plugin object before registration.
+             * Checks for required fields and warns about missing metadata.
+             *
+             * @param {Object} plugin - Plugin object to validate
+             * @returns {{ valid: boolean, warnings: string[] }}
+             */
+            validate(plugin) {
+                const warnings = [];
+                if (!plugin || typeof plugin !== 'object') {
+                    return { valid: false, warnings: ['Plugin must be an object.'] };
+                }
+                if (!plugin.name) warnings.push('Plugin is missing a "name" field.');
+                if (!plugin.install && !plugin.apply && !plugin.fn) {
+                    warnings.push('Plugin has no install(), apply(), or fn() handler.');
+                }
+                if (!plugin.version) warnings.push('Plugin is missing a "version" field.');
+                if (!plugin.scope) warnings.push('Plugin is missing a "scope" field (e.g. "animation", "layout").');
+
+                warnings.forEach(w => console.warn(`[Papyr SDK Plugin] ${w}`));
+                return { valid: warnings.filter(w => w.includes('missing a "name"') || w.includes('no install')).length === 0, warnings };
+            },
+
+            /**
+             * List all currently registered plugins.
+             * @returns {Array}
+             */
+            list() {
+                if (papyr.trust && papyr.trust.report) {
+                    return papyr.trust.report().zone2.plugins;
+                }
+                return [];
+            },
+
+            /**
+             * Get a registered plugin's declared scope.
+             * @param {string} name - Plugin name
+             * @returns {string|null}
+             */
+            scope(name) {
+                const plugins = this.list();
+                const plugin = plugins.find(p => p.name === name);
+                return plugin ? plugin.scope : null;
+            }
+        },
+
+        // ─── Adapter Registry ─────────────────────────────────────────────────
+
+        adapter: {
+            _registry: [],
+
+            /**
+             * Register a custom adapter (e.g. for a framework or rendering target).
+             *
+             * @param {string} name - Adapter name
+             * @param {Object} adapter - Adapter implementation
+             * @param {Object} [meta] - Metadata { type, version, description }
+             *
+             * @example
+             * papyr.sdk.adapter.register('preact', preactAdapter, { type: 'framework' });
+             */
+            register(name, adapter, meta = {}) {
+                if (!name || !adapter) return;
+                const existing = this._registry.findIndex(a => a.name === name);
+                const entry = { name, adapter, type: meta.type || 'custom', version: meta.version || '1.0.0', registeredAt: new Date().toISOString() };
+                if (existing !== -1) {
+                    this._registry[existing] = entry;
+                } else {
+                    this._registry.push(entry);
+                }
+                console.log(`[Papyr SDK] Adapter "${name}" registered (${entry.type}).`);
+            },
+
+            /**
+             * List all registered adapters.
+             * @returns {Array<{ name: string, type: string, version: string }>}
+             */
+            list() {
+                return this._registry.map(({ name, type, version, registeredAt }) => ({ name, type, version, registeredAt }));
+            },
+
+            /**
+             * Get a registered adapter by name.
+             * @param {string} name
+             * @returns {Object|null}
+             */
+            get(name) {
+                const entry = this._registry.find(a => a.name === name);
+                return entry ? entry.adapter : null;
+            },
+
+            /**
+             * Remove an adapter from the registry.
+             * @param {string} name
+             */
+            unregister(name) {
+                this._registry = this._registry.filter(a => a.name !== name);
+            }
+        },
+
+        // ─── Config Snapshot ──────────────────────────────────────────────────
+
+        config: {
+            /**
+             * Take a snapshot of the current papyr.config() state.
+             * @returns {Object} Deep clone of all config domains
+             *
+             * @example
+             * const snapshot = papyr.sdk.config.snapshot();
+             * // ... make changes ...
+             * papyr.sdk.config.restore(snapshot);
+             */
+            snapshot() {
+                if (!papyr.config || typeof papyr.config.getAll !== 'function') return {};
+                return papyr.config.getAll();
+            },
+
+            /**
+             * Restore a previously taken config snapshot.
+             * @param {Object} snapshot - Snapshot from papyr.sdk.config.snapshot()
+             */
+            restore(snapshot) {
+                if (!snapshot || !papyr.config) return;
+                Object.entries(snapshot).forEach(([domain, values]) => {
+                    papyr.config(domain, values);
+                });
+                console.log('[Papyr SDK] Config restored from snapshot.');
+            },
+
+            /**
+             * List a summary of all current config values across domains.
+             * @returns {Object}
+             */
+            summary() {
+                if (!papyr.config || typeof papyr.config.getAll !== 'function') return {};
+                const all = papyr.config.getAll();
+                return Object.entries(all).reduce((acc, [domain, values]) => {
+                    acc[domain] = Object.keys(values);
+                    return acc;
+                }, {});
+            }
+        },
+
+        // ─── Controls Introspection ───────────────────────────────────────────
+
+        controls: {
+            /**
+             * List all available control namespaces and their methods.
+             * @returns {Object} Map of namespace → method names
+             */
+            list() {
+                if (!papyr.controls) return {};
+                return Object.keys(papyr.controls).reduce((acc, ns) => {
+                    acc[ns] = Object.keys(papyr.controls[ns]).filter(k => typeof papyr.controls[ns][k] === 'function');
+                    return acc;
+                }, {});
+            }
         }
     };
 });
+
 
 
 // --- MODULE: core/virtualization.js ---
@@ -6330,6 +7757,1939 @@ coreInitializers.push((papyr) => {
         }
 
         return scrollContainer;
+    };
+});
+
+
+// --- MODULE: core/config.js ---
+/**
+ * PAPYR CONFIG ENGINE
+ * Unified runtime configuration and imperative control surface.
+ * papyr.config(domain, values) — declarative settings
+ * papyr.controls.*             — imperative runtime actions
+ *
+ * Domains: rendering | animation | layout | design | watt | ssr
+ */
+
+coreInitializers.push((papyr) => {
+
+    // ─── Internal Config Store ───────────────────────────────────────────────
+
+    const _store = {
+        rendering: {
+            mode: 'csr',
+            schedulerMode: 'adaptive',
+            targetFps: 60,
+            frameBudget: 16,
+            backgroundProcessing: true,
+            virtualization: true
+        },
+        animation: {
+            duration: 300,
+            curve: 'ease-in-out',
+            reducedMotion: 'auto',
+            gpuAcceleration: true,
+            springStiffness: 200,
+            springDamping: 20
+        },
+        layout: {
+            autoFlex: true,
+            breakpoints: { sm: 640, md: 768, lg: 1024, xl: 1280 },
+            adaptiveNavigation: true
+        },
+        design: {
+            theme: 'system',
+            colorMode: 'auto',
+            typography: { fontFamily: 'system-ui', scale: 1.0 },
+            reducedTransparency: 'auto'
+        },
+        watt: {
+            mode: 'default',
+            policies: {
+                camera: 'prompt',
+                microphone: 'prompt',
+                location: 'prompt',
+                notifications: 'prompt',
+                bluetooth: 'prompt',
+                usb: 'prompt',
+                sensors: 'prompt',
+                clipboard: 'prompt'
+            },
+            banners: true,
+            trackingConsent: true
+        },
+        ssr: {
+            hydrationStrategy: 'islands',
+            streaming: true,
+            edge: false
+        }
+    };
+
+    const _defaults = JSON.parse(JSON.stringify(_store));
+    const _changeListeners = [];
+
+    function _notify(domain, value) {
+        _changeListeners.forEach(fn => {
+            try { fn({ domain, value }); } catch (e) {}
+        });
+    }
+
+    function _applyWattMode(mode) {
+        if (mode === 'none') {
+            // Option A: full WATT disable — developer opts in, owns responsibility
+            if (papyr.security) papyr.security._wattEnabled = false;
+            console.warn(
+                '[Papyr Config] WATT mode set to "none". ' +
+                'All hardware API interceptions and protections are disabled. ' +
+                'This is entirely the developer\'s responsibility.'
+            );
+        } else if (mode === 'default') {
+            if (papyr.security) papyr.security._wattEnabled = true;
+        } else if (mode === 'strict') {
+            if (papyr.security && papyr.security.policies) {
+                const hwApis = Object.keys(_store.watt.policies);
+                hwApis.forEach(api => { papyr.security.policies[api] = 'deny'; });
+            }
+        }
+    }
+
+    // ─── papyr.config() ───────────────────────────────────────────────────────
+
+    /**
+     * Set configuration for a named domain.
+     *
+     * @param {string} domain - 'rendering' | 'animation' | 'layout' | 'design' | 'watt' | 'ssr'
+     * @param {Object} values - Partial config values to merge into the domain
+     *
+     * @example
+     * papyr.config('animation', { duration: 500, reducedMotion: 'force-reduce' });
+     * papyr.config('watt', { mode: 'strict' });
+     * papyr.config('rendering', { targetFps: 30, frameBudget: 33 });
+     */
+    const configFn = (domain, values) => {
+        if (!domain || typeof values !== 'object') return;
+
+        if (!_store[domain]) {
+            console.warn(
+                `[Papyr Config] Unknown config domain "${domain}". ` +
+                `Available: ${Object.keys(_store).join(', ')}`
+            );
+            return;
+        }
+
+        // Deep-merge into store
+        _store[domain] = { ..._store[domain], ...values };
+
+        // Side effects per domain
+        if (domain === 'watt' && values.mode !== undefined) {
+            _applyWattMode(values.mode);
+        }
+        if (domain === 'watt' && values.policies) {
+            if (papyr.security && papyr.security.policies) {
+                Object.assign(papyr.security.policies, values.policies);
+            }
+        }
+        if (domain === 'rendering' && values.targetFps !== undefined && papyr.power) {
+            papyr.power.targetFps.value = values.targetFps;
+        }
+        if (domain === 'animation') {
+            if (values.reducedMotion !== undefined && typeof document !== 'undefined') {
+                if (values.reducedMotion === 'force-reduce') {
+                    document.documentElement.classList.add('papyr-reduced-motion');
+                } else if (values.reducedMotion === 'force-normal') {
+                    document.documentElement.classList.remove('papyr-reduced-motion');
+                }
+            }
+            if (values.duration !== undefined && typeof document !== 'undefined') {
+                document.documentElement.style.setProperty('--papyr-duration', `${values.duration}ms`);
+            }
+        }
+        if (domain === 'design') {
+            if (values.theme !== undefined && typeof document !== 'undefined') {
+                document.documentElement.setAttribute('data-papyr-theme', values.theme);
+                document.documentElement.classList.toggle('dark', values.theme === 'dark');
+            }
+            if (values.typography && typeof document !== 'undefined') {
+                if (values.typography.fontFamily) {
+                    document.documentElement.style.setProperty('--papyr-font', values.typography.fontFamily);
+                }
+                if (values.typography.scale) {
+                    document.documentElement.style.setProperty('--papyr-scale', values.typography.scale);
+                }
+            }
+        }
+        if (domain === 'ssr' && values.hydrationStrategy && papyr.pssr) {
+            papyr.pssr._hydrationStrategy = values.hydrationStrategy;
+        }
+
+        _notify(domain, _store[domain]);
+    };
+
+    /**
+     * Read config value(s).
+     * @param {string} path - Domain name or dotted path ('rendering.mode')
+     * @returns {*} Config value or domain object
+     */
+    configFn.get = (path) => {
+        if (!path) return null;
+        const parts = path.split('.');
+        if (parts.length === 1) return _store[parts[0]] ? { ..._store[parts[0]] } : undefined;
+        if (parts.length === 2) {
+            const domain = _store[parts[0]];
+            return domain !== undefined ? domain[parts[1]] : undefined;
+        }
+        return undefined;
+    };
+
+    /** Get a full snapshot of all config domains. */
+    configFn.getAll = () => JSON.parse(JSON.stringify(_store));
+
+    /**
+     * Reset config to defaults.
+     * @param {string} [domain] - Reset a single domain, or all if omitted
+     */
+    configFn.reset = (domain) => {
+        if (domain && _defaults[domain]) {
+            _store[domain] = JSON.parse(JSON.stringify(_defaults[domain]));
+            _notify(domain, _store[domain]);
+        } else {
+            Object.keys(_defaults).forEach(d => {
+                _store[d] = JSON.parse(JSON.stringify(_defaults[d]));
+            });
+            _notify('all', _store);
+        }
+    };
+
+    /**
+     * Subscribe to config changes.
+     * @param {'change'} event
+     * @param {Function} handler - ({ domain, value }) => void
+     */
+    configFn.on = (event, handler) => {
+        if (event === 'change' && typeof handler === 'function') {
+            _changeListeners.push(handler);
+        }
+    };
+
+    /** Unsubscribe a change handler. */
+    configFn.off = (handler) => {
+        const idx = _changeListeners.indexOf(handler);
+        if (idx !== -1) _changeListeners.splice(idx, 1);
+    };
+
+    papyr.config = configFn;
+
+    // ─── papyr.controls ───────────────────────────────────────────────────────
+
+    /**
+     * Imperative runtime controls. Unlike papyr.config(), these are
+     * immediate actions rather than declarative state changes.
+     */
+    papyr.controls = {
+
+        /** Rendering runtime controls */
+        rendering: {
+            setPriority(level) {
+                const map = { low: 'idle', normal: 'normal', high: 'user-blocking', critical: 'immediate' };
+                _store.rendering.priority = level;
+                if (papyr.scheduler) {
+                    papyr.scheduler._defaultPriority = map[level] || 'normal';
+                }
+            },
+            setSchedulerMode(mode) {
+                _store.rendering.schedulerMode = mode;
+                console.log(`[Papyr Controls] Scheduler mode → ${mode}`);
+            },
+            setVirtualization(opts) {
+                _store.rendering.virtualization = opts;
+                if (papyr.virtualize && papyr.virtualize._config) {
+                    Object.assign(papyr.virtualize._config, typeof opts === 'object' ? opts : {});
+                }
+            },
+            setTargetFps(fps) {
+                _store.rendering.targetFps = fps;
+                if (papyr.power) papyr.power.targetFps.value = fps;
+            },
+            setFrameBudget(ms) {
+                _store.rendering.frameBudget = ms;
+            }
+        },
+
+        /** Animation runtime controls */
+        animation: {
+            setDuration(ms) {
+                _store.animation.duration = ms;
+                if (typeof document !== 'undefined') {
+                    document.documentElement.style.setProperty('--papyr-duration', `${ms}ms`);
+                }
+            },
+            setCurve(curve) {
+                _store.animation.curve = curve;
+                if (typeof document !== 'undefined') {
+                    document.documentElement.style.setProperty('--papyr-curve', curve);
+                }
+            },
+            enableGPU() {
+                _store.animation.gpuAcceleration = true;
+                if (typeof document !== 'undefined') {
+                    document.documentElement.classList.add('papyr-gpu');
+                }
+            },
+            disableGPU() {
+                _store.animation.gpuAcceleration = false;
+                if (typeof document !== 'undefined') {
+                    document.documentElement.classList.remove('papyr-gpu');
+                }
+            },
+            /** Accessibility override: disable all motion */
+            disableAll() {
+                _store.animation.reducedMotion = 'force-reduce';
+                if (typeof document !== 'undefined') {
+                    document.documentElement.classList.add('papyr-reduced-motion');
+                }
+            },
+            enableAll() {
+                _store.animation.reducedMotion = 'force-normal';
+                if (typeof document !== 'undefined') {
+                    document.documentElement.classList.remove('papyr-reduced-motion');
+                }
+            },
+            setSpring(stiffness, damping) {
+                _store.animation.springStiffness = stiffness;
+                _store.animation.springDamping = damping;
+            }
+        },
+
+        /** Layout runtime controls */
+        layout: {
+            setBreakpoints(breakpoints) {
+                _store.layout.breakpoints = { ..._store.layout.breakpoints, ...breakpoints };
+            },
+            setResponsive(enabled) {
+                _store.layout.autoFlex = enabled;
+            },
+            setAdaptiveNav(enabled) {
+                _store.layout.adaptiveNavigation = enabled;
+            }
+        },
+
+        /** Design system runtime controls */
+        design: {
+            setTheme(theme) {
+                _store.design.theme = theme;
+                if (typeof document !== 'undefined') {
+                    document.documentElement.setAttribute('data-papyr-theme', theme);
+                    document.documentElement.classList.toggle('dark', theme === 'dark');
+                }
+                if (papyr.theme) papyr.theme(theme);
+            },
+            /**
+             * Set CSS design tokens on the root element.
+             * @param {Object} tokens - e.g. { primary: '#6C63FF', radius: '8px' }
+             */
+            setTokens(tokens) {
+                if (typeof document !== 'undefined') {
+                    Object.entries(tokens).forEach(([key, value]) => {
+                        document.documentElement.style.setProperty(`--papyr-${key}`, value);
+                    });
+                }
+            },
+            setTypography(opts) {
+                _store.design.typography = { ..._store.design.typography, ...opts };
+                if (typeof document !== 'undefined') {
+                    if (opts.fontFamily) {
+                        document.documentElement.style.setProperty('--papyr-font', opts.fontFamily);
+                    }
+                    if (opts.scale) {
+                        document.documentElement.style.setProperty('--papyr-scale', opts.scale);
+                    }
+                }
+            },
+            setScale(scale) {
+                _store.design.typography.scale = scale;
+                if (typeof document !== 'undefined') {
+                    document.documentElement.style.setProperty('--papyr-scale', scale);
+                }
+            }
+        },
+
+        /** WATT permission and UI controls */
+        watt: {
+            setPolicy(api, policy) {
+                if (_store.watt.policies) _store.watt.policies[api] = policy;
+                if (papyr.security && papyr.security.policies) {
+                    papyr.security.policies[api] = policy;
+                }
+            },
+            setMode(mode) {
+                _store.watt.mode = mode;
+                _applyWattMode(mode);
+            },
+            showBanner(type) {
+                if (papyr.watt && papyr.watt.sdk) {
+                    papyr.watt.sdk.dialog({ type });
+                }
+            },
+            dismissBanner() {
+                if (typeof document !== 'undefined') {
+                    document.querySelectorAll('[data-papyr-watt-banner]').forEach(b => b.remove());
+                }
+            },
+            requestConsent(type, callback) {
+                if (papyr.watt && papyr.watt.sdk) {
+                    papyr.watt.sdk.consent({ categories: [type], onConsentChange: callback });
+                } else if (papyr.isBrowser && papyr.isBrowser()) {
+                    const granted = window.confirm(`Allow ${type}?`);
+                    if (callback) callback(granted ? [type] : []);
+                }
+            }
+        },
+
+        /** Scheduler and power runtime controls */
+        scheduler: {
+            setFrameBudget(ms) {
+                _store.rendering.frameBudget = ms;
+            },
+            setPowerMode(mode) {
+                if (!papyr.power) return;
+                const map = {
+                    'performance': 'active',
+                    'balanced': 'active',
+                    'low-power': 'idle',
+                    'ultra-low': 'away'
+                };
+                papyr.power.state.value = map[mode] || 'active';
+            },
+            pause() {
+                if (papyr.power) papyr.power.state.value = 'suspended';
+            },
+            resume() {
+                if (papyr.power) {
+                    papyr.power.state.value = 'active';
+                    if (typeof papyr.power.activity === 'function') papyr.power.activity();
+                }
+            }
+        }
+    };
+});
+
+
+// --- MODULE: core/trust.js ---
+/**
+ * PAPYR TRUST BOUNDARIES
+ * Runtime trust audit API. Documents and surfaces the 4-zone trust model:
+ *   Zone 1 — Papyrus Framework Core (framework-controlled, immutable)
+ *   Zone 2 — Plugin Layer (developer-installed, scoped)
+ *   Zone 3 — Third-Party Services (external, monitored by WATT)
+ *   Zone 4 — Developer Responsibility (application-owned)
+ *
+ * papyr.trust.report()     — full trust state snapshot
+ * papyr.trust.audit()      — surfaced warnings and violations
+ * papyr.trust.owns(ns)     — check if Papyrus owns a namespace
+ * papyr.trust.zone(ns)     — resolve namespace to a trust zone (1-4)
+ * papyr.trust.undisclosed() — surface untracked third-party services
+ * papyr.trust.disclose()   — register a known third-party service
+ */
+
+coreInitializers.push((papyr) => {
+
+    // Zone 1: namespaces owned by the Papyrus framework
+    const _zone1Namespaces = new Set([
+        'watt', 'security', 'scheduler', 'power', 'recovery',
+        'pssr', 'isr', 'edge', 'router', 'reactivity', 'config',
+        'controls', 'access', 'trust', 'seo', 'sdk', 'diagnostics',
+        'ssr', 'hydrate', 'island', 'registerIsland', 'theme',
+        'state', 'signal', 'computed', 'effect', 'watch',
+        'component', 'mount', 'h', 'isBrowser', 'isServer',
+        'warn', 'plugin', 'style', 'layout', 'animate', 'math',
+        'db', 'auth', 'api', 'payments', 'orm', 'crud',
+        'game', 'physics', 'ml', 'ocr', 'ai', 'charts',
+        'virtualize', 'accessibility', 'renovate', 'gateway',
+        'freeform', 'user'
+    ]);
+
+    // Zone 2: plugins registered by developers
+    const _zone2Plugins = [];
+
+    // Zone 3: detected and disclosed third-party services
+    const _zone3Detected = new Set();
+    const _zone3Disclosed = [];
+
+    // Zone 4: developer responsibilities (canonical static list)
+    const _zone4Responsibilities = [
+        'Application business logic',
+        'Authentication & authorization (sessions, tokens, roles)',
+        'Data validation & input sanitization',
+        'API key security (never expose in client bundles)',
+        'Privacy policy compliance (GDPR, CCPA, COPPA)',
+        'Content security (what is rendered)',
+        'Plugin auditing (third-party plugins)',
+        'Dependency security (npm packages)',
+        'Infrastructure & TLS certificates',
+        'AI prompt safety (Papyrus does not filter AI content)',
+        'ISR cache invalidation timing',
+        'Edge deployment secrets & environment variables'
+    ];
+
+    papyr.trust = {
+
+        /**
+         * Full trust state report for the current runtime.
+         * @returns {Object} Trust zone snapshot
+         */
+        report() {
+            const zone1 = {};
+            _zone1Namespaces.forEach(ns => {
+                zone1[ns] = papyr[ns] !== undefined ? 'active' : 'inactive';
+            });
+
+            return {
+                timestamp: new Date().toISOString(),
+                papyrusVersion: '3.1.3',
+                zone1: {
+                    description: 'Papyrus Framework Core — immutable, framework-controlled',
+                    systems: zone1
+                },
+                zone2: {
+                    description: 'Plugin Layer — developer-installed, scoped, additive',
+                    plugins: [..._zone2Plugins],
+                    adapters: (papyr.sdk && papyr.sdk.adapter) ? papyr.sdk.adapter.list() : []
+                },
+                zone3: {
+                    description: 'Third-Party Services — external, monitored by WATT, not controlled by Papyrus',
+                    monitoredOrigins: _zone3Detected.size,
+                    disclosedServices: _zone3Disclosed.map(s => s.name),
+                    undisclosedDetected: this.undisclosed()
+                },
+                zone4: {
+                    description: 'Developer Responsibility — application-owned, not managed by Papyrus',
+                    responsibilities: [..._zone4Responsibilities]
+                }
+            };
+        },
+
+        /**
+         * Check if Papyrus owns and is responsible for a given namespace.
+         * @param {string} namespace - e.g. 'watt.policies', 'state', 'my-plugin'
+         * @returns {boolean}
+         */
+        owns(namespace) {
+            const root = namespace.split('.')[0];
+            return _zone1Namespaces.has(root);
+        },
+
+        /**
+         * Resolve a namespace or service name to its trust zone (1–4).
+         * @param {string} namespace
+         * @returns {1|2|3|4}
+         */
+        zone(namespace) {
+            const root = namespace.split('.')[0];
+            if (_zone1Namespaces.has(root)) return 1;
+            if (_zone2Plugins.some(p => p.name === root)) return 2;
+            // Zone 4: common developer-owned concepts
+            const zone4Patterns = ['auth', 'business', 'api-key', 'prompt', 'content', 'state'];
+            if (zone4Patterns.some(p => root.includes(p))) return 4;
+            return 3; // Unknown = third-party by default
+        },
+
+        /**
+         * List third-party origins detected by WATT that have not been disclosed.
+         * @returns {string[]}
+         */
+        undisclosed() {
+            const disclosedDomains = _zone3Disclosed.map(s =>
+                s.domain || (s.name || '').toLowerCase().replace(/\s+/g, '')
+            );
+            return Array.from(_zone3Detected).filter(origin =>
+                !disclosedDomains.some(d => origin.includes(d))
+            );
+        },
+
+        /**
+         * Disclose a known third-party service to WATT.
+         * Prevents it from appearing in undisclosed() warnings.
+         *
+         * @param {Object} service
+         * @param {string} service.name - Display name (e.g. 'Google Analytics')
+         * @param {string} [service.domain] - Domain pattern (e.g. 'google-analytics.com')
+         * @param {string} [service.type] - 'analytics' | 'marketing' | 'payment' | 'auth' | 'cdn'
+         * @param {string[]} [service.dataCollected] - What data is collected
+         * @param {string} [service.privacyUrl] - Vendor privacy policy URL
+         *
+         * @example
+         * papyr.trust.disclose({
+         *   name: 'Google Analytics',
+         *   domain: 'google-analytics.com',
+         *   type: 'analytics',
+         *   dataCollected: ['page_views', 'device_info'],
+         *   privacyUrl: 'https://policies.google.com/privacy'
+         * });
+         */
+        disclose(service) {
+            if (!service || !service.name) return;
+            _zone3Disclosed.push(service);
+            console.log(`[Papyr Trust] Third-party service disclosed: "${service.name}" (${service.type || 'unknown type'})`);
+        },
+
+        /**
+         * Run a trust audit and surface all active warnings and violations.
+         * Emits console warnings/errors. Returns a structured result.
+         *
+         * @returns {{ passed: boolean, violations: Array, warnings: Array }}
+         *
+         * @example
+         * const result = papyr.trust.audit();
+         * if (!result.passed) process.exit(1); // Use in CI
+         */
+        audit() {
+            const violations = [];
+            const warnings = [];
+
+            // Check WATT mode
+            if (papyr.config) {
+                const wattConfig = papyr.config.get('watt');
+                if (wattConfig && wattConfig.mode === 'none') {
+                    violations.push({
+                        code: 'WATT_DISABLED',
+                        level: 'critical',
+                        message: 'WATT mode is "none". All hardware API protections and network interceptions are disabled.'
+                    });
+                }
+            }
+
+            // Check undisclosed services
+            const undisclosed = this.undisclosed();
+            if (undisclosed.length > 0) {
+                warnings.push({
+                    code: 'UNDISCLOSED_SERVICES',
+                    level: 'warn',
+                    message: `${undisclosed.length} undisclosed third-party origin(s) detected: ${undisclosed.join(', ')}`
+                });
+            }
+
+            // Check consent banner presence
+            if (papyr.isBrowser && papyr.isBrowser() && typeof document !== 'undefined') {
+                const hasBanner = document.querySelector('[data-papyr-watt-banner]') ||
+                                  document.querySelector('[data-papyr-consent]');
+                if (!hasBanner && _zone3Disclosed.length > 0) {
+                    warnings.push({
+                        code: 'MISSING_CONSENT_BANNER',
+                        level: 'warn',
+                        message: 'Third-party services are disclosed but no consent banner was detected. GDPR/CCPA compliance may be missing.'
+                    });
+                }
+            }
+
+            // Check for plugins with no declared scope
+            const unscopedPlugins = _zone2Plugins.filter(p => !p.scope || p.scope === 'unknown');
+            if (unscopedPlugins.length > 0) {
+                warnings.push({
+                    code: 'UNSCOPED_PLUGINS',
+                    level: 'warn',
+                    message: `${unscopedPlugins.length} plugin(s) have no declared scope: ${unscopedPlugins.map(p => p.name).join(', ')}`
+                });
+            }
+
+            // Emit to console
+            violations.forEach(v => {
+                console.error(`[Papyr Trust Audit] ⛔ ${v.code}: ${v.message}`);
+            });
+            warnings.forEach(w => {
+                console.warn(`[Papyr Trust Audit] ⚠️  ${w.code}: ${w.message}`);
+            });
+
+            if (violations.length === 0 && warnings.length === 0) {
+                console.log('[Papyr Trust Audit] ✅ No trust violations detected.');
+            }
+
+            return {
+                passed: violations.length === 0,
+                violations,
+                warnings,
+                timestamp: new Date().toISOString()
+            };
+        },
+
+        // ─── Internal APIs (used by WATT and plugin system) ──────────────────
+
+        /**
+         * @internal Called by WATT network monitor to register a detected origin.
+         */
+        _detectOrigin(url) {
+            try {
+                const origin = new URL(url).hostname;
+                _zone3Detected.add(origin);
+            } catch (e) {
+                if (url) _zone3Detected.add(String(url));
+            }
+        },
+
+        /**
+         * @internal Called by papyr.plugin() to register a plugin in Zone 2.
+         */
+        _registerPlugin(name, meta = {}) {
+            if (!_zone2Plugins.find(p => p.name === name)) {
+                _zone2Plugins.push({
+                    name,
+                    scope: meta.scope || 'unknown',
+                    version: meta.version || 'unknown',
+                    trustedBy: 'developer',
+                    registeredAt: new Date().toISOString()
+                });
+            }
+        }
+    };
+});
+
+
+// --- MODULE: core/access.js ---
+/**
+ * PAPYR ACCESS TIER SYSTEM
+ * Documents and enforces the 3-tier developer access model:
+ *
+ *   FULL       — components, state, router, design, animations, SDKs, plugins
+ *   RESTRICTED — internals with public APIs but should not be modified directly
+ *   PROTECTED  — framework-immutable: security kernel, WATT enforcement, recovery
+ *
+ * Access tiers are advisory in nature (warn in dev, never throw) to preserve
+ * Freeform Freedom. Developers are informed, not blocked.
+ */
+
+coreInitializers.push((papyr) => {
+
+    // ─── Tier Definitions ────────────────────────────────────────────────────
+
+    const _tiers = {
+        // FULL — complete developer access
+        full: new Set([
+            'state', 'signal', 'computed', 'effect', 'watch',
+            'component', 'mount', 'h', 'render', 'hydrate',
+            'router', 'route', 'page', 'navigate',
+            'theme', 'style', 'design', 'animate', 'layout',
+            'config', 'controls',
+            'plugin', 'sdk', 'adapter',
+            'db', 'auth', 'api', 'payments', 'orm', 'crud',
+            'game', 'physics', 'ml', 'ocr', 'ai', 'charts',
+            'math', 'seo', 'pssr', 'isr', 'edge',
+            'freeform', 'diagnostics', 'accessibility',
+            'watt.sdk', 'pssr.sdk', 'trust'
+        ]),
+
+        // RESTRICTED — has public API, but internals must not be modified directly
+        restricted: new Set([
+            'scheduler', 'power', 'virtualize',
+            'security', 'watt',
+            'reactivity',
+            'renovate', 'gateway',
+            'user'
+        ]),
+
+        // PROTECTED — framework-owned, modification is disallowed
+        protected: new Set([
+            'security._enforcer',
+            'security._interceptors',
+            'watt._kernel',
+            'recovery._monitor',
+            'scheduler._taskQueue',
+            'pssr._hydrationIntegrity',
+            'trust._zone1Namespaces'
+        ])
+    };
+
+    // ─── Access Tier Map (namespace → tier) ──────────────────────────────────
+
+    const _tierMap = new Map();
+    _tiers.full.forEach(ns => _tierMap.set(ns, 'full'));
+    _tiers.restricted.forEach(ns => _tierMap.set(ns, 'restricted'));
+    _tiers.protected.forEach(ns => _tierMap.set(ns, 'protected'));
+
+    // Track sealed namespaces (one-time, init-only)
+    const _sealed = new Set();
+    let _initComplete = false;
+
+    // ─── papyr.access ─────────────────────────────────────────────────────────
+
+    papyr.access = {
+
+        /**
+         * Get the access tier for a namespace.
+         * @param {string} namespace - e.g. 'security', 'state', 'watt._kernel'
+         * @returns {'full'|'restricted'|'protected'|'unknown'}
+         *
+         * @example
+         * papyr.access.tier('state');           // 'full'
+         * papyr.access.tier('security');        // 'restricted'
+         * papyr.access.tier('watt._kernel');    // 'protected'
+         */
+        tier(namespace) {
+            if (!namespace) return 'unknown';
+
+            // Check exact match first
+            if (_tierMap.has(namespace)) return _tierMap.get(namespace);
+
+            // Check root namespace
+            const root = namespace.split('.')[0];
+            if (_tierMap.has(root)) return _tierMap.get(root);
+
+            return 'unknown';
+        },
+
+        /**
+         * List all namespaces grouped by access tier.
+         * @returns {{ full: string[], restricted: string[], protected: string[] }}
+         */
+        list() {
+            return {
+                full: Array.from(_tiers.full),
+                restricted: Array.from(_tiers.restricted),
+                protected: Array.from(_tiers.protected)
+            };
+        },
+
+        /**
+         * Check if a namespace is freely accessible.
+         * @param {string} namespace
+         * @returns {boolean}
+         */
+        isAccessible(namespace) {
+            return this.tier(namespace) === 'full';
+        },
+
+        /**
+         * Seal a namespace — marks it as write-protected post-initialization.
+         * Only effective during the init phase (before papyr is fully loaded).
+         * Subsequent calls to seal() post-init are no-ops with a warning.
+         *
+         * @param {string} namespace
+         */
+        seal(namespace) {
+            if (_initComplete) {
+                console.warn(
+                    `[Papyr Access] papyr.access.seal("${namespace}") called after initialization. ` +
+                    `Sealing is a one-time, init-phase operation. This call is ignored.`
+                );
+                return;
+            }
+            _sealed.add(namespace);
+        },
+
+        /**
+         * Check if a namespace has been sealed.
+         * @param {string} namespace
+         * @returns {boolean}
+         */
+        isSealed(namespace) {
+            return _sealed.has(namespace);
+        },
+
+        /**
+         * Issue a framework advisory warning about access to a restricted namespace.
+         * Called internally when restricted/protected APIs are touched in unsafe ways.
+         *
+         * @param {string} message - Warning message
+         * @param {'restricted'|'protected'} tier - The access tier being violated
+         */
+        warn(message, tier = 'restricted') {
+            if (tier === 'protected') {
+                console.error(
+                    `[Papyr Access] 🔒 PROTECTED NAMESPACE ACCESS: ${message}\n` +
+                    `Protected systems may not be modified. If you need this capability, ` +
+                    `use the official SDK or plugin APIs instead.`
+                );
+            } else {
+                console.warn(
+                    `[Papyr Access] ⚠️  RESTRICTED NAMESPACE: ${message}\n` +
+                    `This namespace exposes APIs but its internals should not be modified directly. ` +
+                    `Use the documented public API instead.`
+                );
+            }
+        },
+
+        /**
+         * Declare that initialization is complete.
+         * Prevents further seal() operations from taking effect.
+         * Called automatically after all coreInitializers run.
+         * @internal
+         */
+        _markInitComplete() {
+            _initComplete = true;
+        },
+
+        /**
+         * Validate that a plugin or developer action is operating within its declared scope.
+         * Advisory only — emits warnings, does not block execution.
+         *
+         * @param {string} pluginName
+         * @param {string} targetNamespace
+         * @returns {boolean} true if within scope
+         */
+        validateScope(pluginName, targetNamespace) {
+            const t = this.tier(targetNamespace);
+
+            if (t === 'protected') {
+                this.warn(
+                    `Plugin "${pluginName}" attempted to access protected namespace "${targetNamespace}".`,
+                    'protected'
+                );
+                return false;
+            }
+
+            if (t === 'restricted') {
+                this.warn(
+                    `Plugin "${pluginName}" is accessing restricted namespace "${targetNamespace}". ` +
+                    `Ensure you are using only the documented public API.`,
+                    'restricted'
+                );
+                return true; // Advisory, not blocked
+            }
+
+            return true;
+        }
+    };
+
+    // Mark init complete after a short delay (post coreInitializers execution)
+    if (typeof Promise !== 'undefined') {
+        Promise.resolve().then(() => {
+            papyr.access._markInitComplete();
+        });
+    }
+});
+
+
+// --- MODULE: core/watt-sdk.js ---
+/**
+ * PAPYR WATT SDK
+ * Developer-facing privacy and consent toolkit. Extends WATT capabilities
+ * without modifying the protected WATT enforcement core.
+ *
+ * papyr.watt.sdk.flow()      — guided permission workflow
+ * papyr.watt.sdk.dialog()    — transparency dialogs
+ * papyr.watt.sdk.consent()   — tracking consent management
+ * papyr.watt.sdk.notice()    — privacy notices (GDPR/CCPA)
+ * papyr.watt.sdk.monitor     — API access event monitor (observe-only)
+ * papyr.watt.sdk.disclose()  — third-party service disclosure
+ *
+ * IMPORTANT: WATT SDK extends WATT without touching:
+ *   - papyr.security.policies (protected)
+ *   - WATT hardware intercepts (protected)
+ *   - Permission enforcement mechanisms (protected)
+ */
+
+coreInitializers.push((papyr) => {
+
+    // ─── Consent Storage ─────────────────────────────────────────────────────
+
+    function _readConsent(storageKey) {
+        try {
+            if (typeof localStorage !== 'undefined') {
+                const raw = localStorage.getItem(storageKey);
+                return raw ? JSON.parse(raw) : null;
+            }
+        } catch (e) {}
+        return null;
+    }
+
+    function _writeConsent(storageKey, data) {
+        try {
+            if (typeof localStorage !== 'undefined') {
+                localStorage.setItem(storageKey, JSON.stringify(data));
+            }
+        } catch (e) {}
+    }
+
+    // ─── Monitor (Observe-Only) ───────────────────────────────────────────────
+
+    const _monitorListeners = [];
+
+    const _monitor = {
+        /**
+         * Subscribe to WATT intercept events. Read-only — cannot modify enforcement.
+         * @param {'intercept'|'policy-change'|'consent'} event
+         * @param {Function} handler - ({ api, policy, blocked, url, timestamp }) => void
+         */
+        on(event, handler) {
+            if (typeof handler !== 'function') return;
+            _monitorListeners.push({ event, handler });
+        },
+
+        off(handler) {
+            const idx = _monitorListeners.findIndex(l => l.handler === handler);
+            if (idx !== -1) _monitorListeners.splice(idx, 1);
+        },
+
+        /** @internal Emit an event to all monitor subscribers */
+        _emit(event, data) {
+            _monitorListeners
+                .filter(l => l.event === event)
+                .forEach(l => {
+                    try { l.handler({ ...data, timestamp: new Date().toISOString() }); }
+                    catch (e) {}
+                });
+
+            // Also register detected origins with trust module
+            if (event === 'intercept' && data.url && papyr.trust) {
+                papyr.trust._detectOrigin(data.url);
+            }
+        }
+    };
+
+    // ─── DOM Helpers ──────────────────────────────────────────────────────────
+
+    function _createOverlay() {
+        const overlay = document.createElement('div');
+        overlay.style.cssText = `
+            position: fixed; inset: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 999998;
+            display: flex; align-items: center; justify-content: center;
+            font-family: system-ui, -apple-system, sans-serif;
+        `;
+        overlay.setAttribute('data-papyr-watt-overlay', 'true');
+        return overlay;
+    }
+
+    function _createCard(title, body, actions) {
+        const card = document.createElement('div');
+        card.style.cssText = `
+            background: #fff; color: #111;
+            border-radius: 12px; padding: 24px; max-width: 420px;
+            width: 90%; box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            animation: papyr-watt-in 0.2s ease;
+        `;
+
+        card.innerHTML = `
+            <h2 style="margin:0 0 8px;font-size:1.1rem;font-weight:600;">${title}</h2>
+            <p style="margin:0 0 20px;font-size:0.875rem;color:#555;line-height:1.5;">${body}</p>
+            <div class="papyr-watt-actions" style="display:flex;gap:8px;flex-wrap:wrap;"></div>
+        `;
+
+        const actionsContainer = card.querySelector('.papyr-watt-actions');
+        actions.forEach(action => {
+            const btn = document.createElement('button');
+            btn.textContent = action.label;
+            btn.style.cssText = `
+                padding: 8px 16px; border-radius: 6px; cursor: pointer;
+                font-size: 0.875rem; font-weight: 500; border: none;
+                background: ${action.primary ? '#6C63FF' : '#f3f4f6'};
+                color: ${action.primary ? '#fff' : '#111'};
+                transition: opacity 0.15s;
+            `;
+            btn.addEventListener('click', () => action.onClick && action.onClick());
+            actionsContainer.appendChild(btn);
+        });
+
+        return card;
+    }
+
+    function _injectStyles() {
+        if (typeof document === 'undefined') return;
+        if (document.getElementById('papyr-watt-styles')) return;
+        const style = document.createElement('style');
+        style.id = 'papyr-watt-styles';
+        style.textContent = `
+            @keyframes papyr-watt-in {
+                from { opacity: 0; transform: scale(0.95) translateY(8px); }
+                to   { opacity: 1; transform: scale(1) translateY(0); }
+            }
+            [data-papyr-watt-banner] {
+                position: fixed; bottom: 16px; left: 50%;
+                transform: translateX(-50%);
+                background: #1e1e2e; color: #fff;
+                border-radius: 10px; padding: 14px 20px;
+                display: flex; align-items: center; gap: 12px;
+                font-family: system-ui, sans-serif; font-size: 0.85rem;
+                box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+                z-index: 999997; max-width: 560px; width: 90%;
+                animation: papyr-watt-in 0.25s ease;
+            }
+        `;
+        document.head.appendChild(style);
+    }
+
+    // ─── WATT SDK Object ──────────────────────────────────────────────────────
+
+    const wattSDK = {
+
+        monitor: _monitor,
+
+        /**
+         * Guided permission workflow — multi-step UX for requesting hardware APIs.
+         *
+         * @param {Object} options
+         * @param {string} options.name - Workflow name (for logging)
+         * @param {string[]} options.apis - Hardware APIs needed (e.g. ['camera', 'microphone'])
+         * @param {string[]} [options.steps] - UX steps: 'explain' | 'request' | 'confirm' | 'fallback'
+         * @param {Function} [options.onGranted] - Called when all permissions granted
+         * @param {Function} [options.onDenied] - Called when any permission denied
+         *
+         * @example
+         * papyr.watt.sdk.flow({
+         *   name: 'camera-access',
+         *   apis: ['camera'],
+         *   onGranted: () => startCamera(),
+         *   onDenied: () => showFallback()
+         * });
+         */
+        flow(options = {}) {
+            const { name = 'permission-flow', apis = [], onGranted, onDenied } = options;
+
+            if (!papyr.isBrowser || !papyr.isBrowser()) {
+                console.warn('[WATT SDK] flow() requires a browser environment.');
+                return;
+            }
+
+            _injectStyles();
+
+            const apiLabels = {
+                camera: 'Camera', microphone: 'Microphone', location: 'Location',
+                notifications: 'Notifications', bluetooth: 'Bluetooth', usb: 'USB'
+            };
+            const apiNames = apis.map(a => apiLabels[a] || a).join(', ');
+
+            // Step: explain
+            const overlay = _createOverlay();
+            const card = _createCard(
+                `Allow ${apiNames}?`,
+                `This feature requires access to: ${apiNames}. ` +
+                `Your privacy is protected by WATT — access is logged and transparent.`,
+                [
+                    {
+                        label: 'Allow', primary: true,
+                        onClick: () => {
+                            overlay.remove();
+                            _monitor._emit('intercept', { api: apis.join(','), policy: 'allow', blocked: false, flow: name });
+                            if (onGranted) onGranted(apis);
+                        }
+                    },
+                    {
+                        label: 'Deny', primary: false,
+                        onClick: () => {
+                            overlay.remove();
+                            _monitor._emit('intercept', { api: apis.join(','), policy: 'deny', blocked: true, flow: name });
+                            if (onDenied) onDenied(apis);
+                        }
+                    }
+                ]
+            );
+
+            overlay.appendChild(card);
+            document.body.appendChild(overlay);
+            console.log(`[WATT SDK] Permission flow "${name}" started for: ${apiNames}`);
+        },
+
+        /**
+         * Show a custom transparency dialog.
+         *
+         * @param {Object} options
+         * @param {string} [options.type] - Dialog type identifier
+         * @param {string} [options.title] - Dialog heading
+         * @param {string} [options.body] - Dialog body text
+         * @param {Object[]} [options.actions] - Action buttons [{ label, value, primary }]
+         * @param {Function} [options.onAction] - Called with the action value on click
+         *
+         * @example
+         * papyr.watt.sdk.dialog({
+         *   title: 'How we use your data',
+         *   body: 'Your data is used only to improve your experience.',
+         *   actions: [{ label: 'Got it', value: 'ok', primary: true }],
+         *   onAction: (v) => console.log(v)
+         * });
+         */
+        dialog(options = {}) {
+            const {
+                title = 'Privacy Notice',
+                body = '',
+                actions = [{ label: 'Close', value: 'close', primary: true }],
+                onAction = null
+            } = options;
+
+            if (!papyr.isBrowser || !papyr.isBrowser()) return;
+            _injectStyles();
+
+            const overlay = _createOverlay();
+            const card = _createCard(
+                title, body,
+                actions.map(a => ({
+                    label: a.label,
+                    primary: !!a.primary,
+                    onClick: () => {
+                        overlay.remove();
+                        if (onAction) onAction(a.value);
+                    }
+                }))
+            );
+
+            overlay.setAttribute('data-papyr-watt-banner', 'dialog');
+            overlay.appendChild(card);
+            document.body.appendChild(overlay);
+        },
+
+        /**
+         * Show a consent management banner.
+         *
+         * @param {Object} options
+         * @param {string[]} options.categories - e.g. ['analytics', 'marketing', 'personalization']
+         * @param {'none'|'all'} [options.defaultState='none'] - Default consent state
+         * @param {string} [options.storageKey='papyr-consent'] - localStorage key for persistence
+         * @param {Function} [options.onConsentChange] - Called with granted categories array
+         *
+         * @example
+         * papyr.watt.sdk.consent({
+         *   categories: ['analytics', 'marketing'],
+         *   onConsentChange: (categories) => initAnalytics(categories)
+         * });
+         */
+        consent(options = {}) {
+            const {
+                categories = [],
+                defaultState = 'none',
+                storageKey = 'papyr-consent',
+                onConsentChange = null
+            } = options;
+
+            // Check existing stored consent
+            const stored = _readConsent(storageKey);
+            if (stored) {
+                if (onConsentChange) onConsentChange(stored.granted || []);
+                _monitor._emit('consent', { action: 'restored', categories: stored.granted });
+                return;
+            }
+
+            if (!papyr.isBrowser || !papyr.isBrowser()) return;
+            _injectStyles();
+
+            const banner = document.createElement('div');
+            banner.setAttribute('data-papyr-watt-banner', 'consent');
+            banner.setAttribute('data-papyr-consent', 'true');
+            banner.innerHTML = `
+                <span style="flex:1;">
+                    We use cookies for ${categories.join(', ')}.
+                    <a href="#" style="color:#a5b4fc;margin-left:4px;">Learn more</a>
+                </span>
+                <button id="papyr-consent-accept" style="
+                    background:#6C63FF;color:#fff;border:none;
+                    padding:7px 14px;border-radius:6px;cursor:pointer;
+                    font-size:0.8rem;font-weight:500;white-space:nowrap;
+                ">Accept All</button>
+                <button id="papyr-consent-reject" style="
+                    background:transparent;color:#aaa;border:1px solid #444;
+                    padding:7px 14px;border-radius:6px;cursor:pointer;
+                    font-size:0.8rem;font-weight:500;white-space:nowrap;
+                ">Reject All</button>
+            `;
+
+            document.body.appendChild(banner);
+
+            document.getElementById('papyr-consent-accept').addEventListener('click', () => {
+                _writeConsent(storageKey, { granted: categories, timestamp: Date.now() });
+                banner.remove();
+                _monitor._emit('consent', { action: 'accepted', categories });
+                if (onConsentChange) onConsentChange(categories);
+            });
+
+            document.getElementById('papyr-consent-reject').addEventListener('click', () => {
+                _writeConsent(storageKey, { granted: [], timestamp: Date.now() });
+                banner.remove();
+                _monitor._emit('consent', { action: 'rejected', categories: [] });
+                if (onConsentChange) onConsentChange([]);
+            });
+        },
+
+        /**
+         * Show a privacy notice (GDPR/CCPA banner).
+         *
+         * @param {Object} options
+         * @param {'gdpr'|'ccpa'|'custom'} [options.type='gdpr'] - Notice type
+         * @param {string} [options.message] - Notice message
+         * @param {string} [options.actionLabel='Accept'] - CTA label
+         * @param {string} [options.privacyUrl] - Privacy policy URL
+         * @param {Function} [options.onAccept] - Called when user accepts
+         */
+        notice(options = {}) {
+            const {
+                type = 'gdpr',
+                message = type === 'ccpa'
+                    ? 'We do not sell your personal information.'
+                    : 'We use cookies to improve your experience.',
+                actionLabel = 'Accept',
+                privacyUrl = null,
+                onAccept = null
+            } = options;
+
+            if (!papyr.isBrowser || !papyr.isBrowser()) return;
+            _injectStyles();
+
+            const banner = document.createElement('div');
+            banner.setAttribute('data-papyr-watt-banner', type);
+            banner.innerHTML = `
+                <span style="flex:1;">${message}${
+                    privacyUrl
+                        ? ` <a href="${privacyUrl}" target="_blank" rel="noopener" style="color:#a5b4fc;">Privacy Policy</a>`
+                        : ''
+                }</span>
+                <button id="papyr-notice-accept" style="
+                    background:#6C63FF;color:#fff;border:none;
+                    padding:7px 14px;border-radius:6px;cursor:pointer;
+                    font-size:0.8rem;font-weight:500;
+                ">${actionLabel}</button>
+            `;
+
+            document.body.appendChild(banner);
+            document.getElementById('papyr-notice-accept').addEventListener('click', () => {
+                banner.remove();
+                if (onAccept) onAccept();
+            });
+        },
+
+        /**
+         * Disclose a third-party service to WATT transparency logs.
+         * Also registers with papyr.trust.
+         *
+         * @param {Object} service
+         * @param {string} service.name - Service display name
+         * @param {string} [service.domain] - Domain pattern (e.g. 'google-analytics.com')
+         * @param {'analytics'|'marketing'|'payment'|'auth'|'cdn'|'other'} [service.type]
+         * @param {string[]} [service.dataCollected]
+         * @param {string} [service.privacyUrl]
+         */
+        disclose(service) {
+            if (papyr.trust && typeof papyr.trust.disclose === 'function') {
+                papyr.trust.disclose(service);
+            }
+            _monitor._emit('disclosure', { service });
+        }
+    };
+
+    // ─── Attach to papyr.watt ─────────────────────────────────────────────────
+
+    papyr.watt = papyr.watt || {};
+    papyr.watt.sdk = wattSDK;
+});
+
+
+// --- MODULE: core/pssr-sdk.js ---
+/**
+ * PAPYR PSSR SDK
+ * Advanced rendering strategy builder for complex applications.
+ * Extends papyr.pssr without modifying its core hydration integrity.
+ *
+ * papyr.pssr.sdk.strategy()   — rendering strategy builder
+ * papyr.pssr.sdk.islands()    — lazy island orchestration
+ * papyr.pssr.sdk.meta.pipe()  — metadata pipeline
+ * papyr.pssr.sdk.stream()     — priority-lane streaming renderer
+ * papyr.pssr.sdk.edge()       — edge deployment configuration
+ * papyr.pssr.sdk.build.*      — build-time SSG tools
+ */
+
+coreInitializers.push((papyr) => {
+
+    // ─── Route Pattern Matcher ────────────────────────────────────────────────
+
+    function _matchesPattern(path, pattern) {
+        if (pattern === path) return true;
+        // Wildcard: '/blog/*' matches '/blog/my-post'
+        if (pattern.endsWith('/*')) {
+            const prefix = pattern.slice(0, -2);
+            return path.startsWith(prefix + '/') || path === prefix;
+        }
+        // Param: '/products/:id'
+        const patternParts = pattern.split('/');
+        const pathParts = path.split('/');
+        if (patternParts.length !== pathParts.length) return false;
+        return patternParts.every((part, i) => part.startsWith(':') || part === pathParts[i]);
+    }
+
+    // ─── Metadata Pipeline ────────────────────────────────────────────────────
+
+    const _metaPipeline = [];
+
+    const metaSDK = {
+        /**
+         * Add a metadata transform to the SEO pipeline.
+         * Each function receives (context, previousMeta) and returns a meta object.
+         *
+         * @param {Function|Function[]} transforms
+         *
+         * @example
+         * papyr.pssr.sdk.meta.pipe([
+         *   (ctx) => ({ title: ctx.route.title }),
+         *   (ctx, prev) => ({ ...prev, og: { image: ctx.route.image } })
+         * ]);
+         */
+        pipe(transforms) {
+            const fns = Array.isArray(transforms) ? transforms : [transforms];
+            fns.forEach(fn => { if (typeof fn === 'function') _metaPipeline.push(fn); });
+        },
+
+        /**
+         * Run the metadata pipeline for a given context.
+         * @param {Object} context - Route/page context
+         * @returns {Object} Merged meta object
+         */
+        run(context = {}) {
+            let meta = {};
+            _metaPipeline.forEach(fn => {
+                try {
+                    const result = fn(context, { ...meta });
+                    if (result && typeof result === 'object') {
+                        meta = { ...meta, ...result };
+                    }
+                } catch (e) {
+                    console.error('[PSSR SDK Meta] Pipeline transform error:', e);
+                }
+            });
+
+            // Apply to papyr.seo if available
+            if (papyr.seo && typeof papyr.seo === 'function' && Object.keys(meta).length > 0) {
+                papyr.seo(meta);
+            }
+
+            return meta;
+        },
+
+        /** Clear the meta pipeline */
+        clear() {
+            _metaPipeline.length = 0;
+        }
+    };
+
+    // ─── PSSR SDK Object ──────────────────────────────────────────────────────
+
+    const pssrSDK = {
+
+        meta: metaSDK,
+
+        /**
+         * Build and apply a rendering strategy across multiple routes.
+         * Registers each route in the PSSR mode registry.
+         *
+         * @param {Object} options
+         * @param {'csr'|'ssr'|'ssg'|'isr'} [options.default='csr'] - Default mode
+         * @param {Object} [options.routes] - Route pattern → mode map
+         * @returns {{ apply: Function, list: Function }} Strategy object
+         *
+         * @example
+         * const strategy = papyr.pssr.sdk.strategy({
+         *   default: 'ssr',
+         *   routes: {
+         *     '/blog/*': 'ssg',
+         *     '/dashboard': 'ssr',
+         *     '/chat': 'csr',
+         *     '/products/:id': 'isr'
+         *   }
+         * });
+         * strategy.apply();
+         */
+        strategy(options = {}) {
+            const { default: defaultMode = 'csr', routes = {} } = options;
+
+            return {
+                _routes: routes,
+                _default: defaultMode,
+
+                /** Apply all route modes to the PSSR registry */
+                apply() {
+                    if (!papyr.pssr || typeof papyr.pssr.setRouteMode !== 'function') {
+                        console.warn('[PSSR SDK] papyr.pssr.setRouteMode not available. Load PSSR core first.');
+                        return;
+                    }
+
+                    Object.entries(routes).forEach(([pattern, mode]) => {
+                        papyr.pssr.setRouteMode(pattern, mode);
+                    });
+
+                    papyr.pssr._defaultMode = defaultMode;
+                    console.log(`[PSSR SDK] Strategy applied. Default: ${defaultMode}. Routes: ${Object.keys(routes).length}`);
+                },
+
+                /** Get the mode for a specific path */
+                resolve(path) {
+                    for (const [pattern, mode] of Object.entries(routes)) {
+                        if (_matchesPattern(path, pattern)) return mode;
+                    }
+                    return defaultMode;
+                },
+
+                /** List all strategy entries */
+                list() {
+                    return Object.entries(routes).map(([pattern, mode]) => ({ pattern, mode }));
+                }
+            };
+        },
+
+        /**
+         * Lazy island orchestration — hydrates islands only when they enter viewport.
+         * Uses IntersectionObserver for performance.
+         *
+         * @param {Object} options
+         * @param {string} [options.selector='[data-papyr-island]'] - Island selector
+         * @param {boolean} [options.lazy=true] - Use IntersectionObserver for lazy hydration
+         * @param {number} [options.threshold=0.1] - IO visibility threshold
+         * @param {number} [options.rootMargin=50] - IO root margin in px
+         *
+         * @example
+         * papyr.pssr.sdk.islands({ lazy: true, threshold: 0.2 });
+         */
+        islands(options = {}) {
+            const {
+                selector = '[data-papyr-island]',
+                lazy = true,
+                threshold = 0.1,
+                rootMargin = 50
+            } = options;
+
+            if (!papyr.isBrowser || !papyr.isBrowser()) return;
+
+            const islandEls = Array.from(document.querySelectorAll(selector));
+
+            if (!lazy || typeof IntersectionObserver === 'undefined') {
+                // Eager hydration fallback
+                if (papyr.pssr && typeof papyr.pssr.hydrate === 'function') {
+                    papyr.pssr.hydrate('body', null, { islandsOnly: true });
+                }
+                return;
+            }
+
+            // Lazy: hydrate when visible
+            const observer = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    if (!entry.isIntersecting) return;
+                    const el = entry.target;
+                    if (el.getAttribute('data-papyr-hydrated') === 'true') return;
+
+                    const name = el.getAttribute('data-papyr-island');
+                    const Component = papyr._islandRegistry && papyr._islandRegistry.get(name);
+
+                    if (Component) {
+                        let props = {};
+                        try {
+                            const raw = el.getAttribute('data-papyr-island-props');
+                            if (raw) props = JSON.parse(raw.replace(/&quot;/g, '"'));
+                        } catch (e) {}
+
+                        try {
+                            if (papyr.hydrate) papyr.hydrate(el, () => Component(props));
+                            el.setAttribute('data-papyr-hydrated', 'true');
+                            console.log(`[PSSR SDK Islands] Lazy-hydrated "${name}" ✓`);
+                        } catch (err) {
+                            console.error(`[PSSR SDK Islands] Failed to hydrate "${name}":`, err);
+                        }
+                    }
+
+                    observer.unobserve(el);
+                });
+            }, { threshold, rootMargin: `${rootMargin}px` });
+
+            islandEls.forEach(el => observer.observe(el));
+            console.log(`[PSSR SDK] Observing ${islandEls.length} island(s) for lazy hydration.`);
+        },
+
+        /**
+         * Priority-lane streaming renderer with SEO-first delivery.
+         *
+         * @param {Function|Object} App - Component to render
+         * @param {Object} [options]
+         * @param {Function} [options.shell] - (head, body) => fullHtml
+         * @param {string[]} [options.priority] - Ordered render priority lanes
+         * @returns {ReadableStream}
+         */
+        stream(App, options = {}) {
+            const { shell = null, chunkSize = 1024 } = options;
+
+            if (!papyr.pssr || typeof papyr.pssr.stream !== 'function') {
+                throw new Error('[PSSR SDK] papyr.pssr.stream not available.');
+            }
+
+            // Use the core PSSR priority stream (SEO head first, then body chunks)
+            return papyr.pssr.stream(App, { chunkSize });
+        },
+
+        /**
+         * Configure edge deployment for PSSR rendering.
+         *
+         * @param {Object} options
+         * @param {'cloudflare'|'deno'|'bun'|'node'|'auto'} [options.runtime='auto']
+         * @param {Object} [options.kv] - Edge KV namespace for ISR cache
+         * @param {string[]} [options.regions] - Deployment regions
+         * @param {number} [options.isrTtl=300] - Default ISR TTL for edge
+         *
+         * @example
+         * papyr.pssr.sdk.edge({ runtime: 'cloudflare', isrTtl: 600 });
+         */
+        edge(options = {}) {
+            const {
+                runtime = 'auto',
+                kv = null,
+                regions = ['auto'],
+                isrTtl = 300
+            } = options;
+
+            const detectedRuntime = runtime === 'auto'
+                ? (papyr.edge && papyr.edge.isEdge() ? 'edge' : 'node')
+                : runtime;
+
+            papyr.pssr._edgeConfig = { runtime: detectedRuntime, kv, regions, isrTtl };
+
+            // If KV is provided, override ISR cache with KV-backed storage
+            if (kv && papyr.isr) {
+                const originalCache = papyr.isr.cache.bind(papyr.isr);
+                papyr.isr.cache = async (key, renderFn, ttlSeconds) => {
+                    // Try KV first
+                    try {
+                        const cached = await kv.get(key);
+                        if (cached) {
+                            return { html: cached, hit: true, stale: false, age: 0 };
+                        }
+                    } catch (e) {}
+
+                    // Fallback to memory cache
+                    const result = await originalCache(key, renderFn, ttlSeconds || isrTtl);
+
+                    // Write to KV
+                    if (kv && result.html) {
+                        try { await kv.put(key, result.html, { expirationTtl: isrTtl }); }
+                        catch (e) {}
+                    }
+
+                    return result;
+                };
+            }
+
+            console.log(`[PSSR SDK] Edge config applied. Runtime: ${detectedRuntime}, Regions: ${regions.join(', ')}, ISR TTL: ${isrTtl}s`);
+            return papyr.pssr._edgeConfig;
+        },
+
+        /** Build-time SSG utilities */
+        build: {
+            /**
+             * Generate static pages for all SSG routes.
+             * @param {Array<{ path: string, componentFn: Function }>} routes
+             * @returns {Promise<Array<{ path: string, html: string }>>}
+             */
+            async manifest(routes) {
+                if (!papyr.pssr || typeof papyr.pssr.generateStaticManifest !== 'function') {
+                    console.warn('[PSSR SDK] generateStaticManifest not available.');
+                    return [];
+                }
+                return papyr.pssr.generateStaticManifest(routes);
+            },
+
+            /**
+             * Prerender a list of routes concurrently.
+             * @param {Object} options
+             * @param {Array<{ path: string, componentFn: Function }>} options.routes
+             * @param {number} [options.concurrency=4]
+             * @returns {Promise<Array<{ path: string, html: string, duration: number }>>}
+             */
+            async prerender(options = {}) {
+                const { routes = [], concurrency = 4 } = options;
+                const results = [];
+
+                // Process in batches of `concurrency`
+                for (let i = 0; i < routes.length; i += concurrency) {
+                    const batch = routes.slice(i, i + concurrency);
+                    const batchResults = await Promise.all(
+                        batch.map(async route => {
+                            const start = Date.now();
+                            try {
+                                const element = typeof route.componentFn === 'function'
+                                    ? route.componentFn({})
+                                    : route.componentFn;
+                                const html = papyr.ssr ? papyr.ssr(element) : '';
+                                return { path: route.path, html, duration: Date.now() - start };
+                            } catch (err) {
+                                console.error(`[PSSR SDK Prerender] Failed: ${route.path}`, err);
+                                return { path: route.path, html: '', duration: Date.now() - start, error: err.message };
+                            }
+                        })
+                    );
+                    results.push(...batchResults);
+                    console.log(`[PSSR SDK Prerender] Batch ${Math.floor(i / concurrency) + 1}: ${batch.length} pages rendered.`);
+                }
+
+                const total = results.reduce((acc, r) => acc + r.duration, 0);
+                console.log(`[PSSR SDK Prerender] ✅ ${results.length} pages prerendered in ${total}ms.`);
+                return results;
+            }
+        }
+    };
+
+    // ─── Attach to papyr.pssr ─────────────────────────────────────────────────
+
+    if (papyr.pssr) {
+        papyr.pssr.sdk = pssrSDK;
+    } else {
+        // Defer until pssr is available
+        papyr._pssrSDKPending = pssrSDK;
+    }
+});
+
+
+// --- MODULE: core/freeform.js ---
+/**
+ * PAPYR FREEFORM FREEDOM
+ * Framework-agnostic interoperability layer.
+ * Papyrus acts as an orchestration layer — it does not replace your stack.
+ *
+ * papyr.freeform.detect()    — detect frameworks currently on the page
+ * papyr.freeform.use([...])  — selectively activate Papyrus subsystems
+ * papyr.freeform.vanilla()   — vanilla JS compatibility mode (C: fully enabled, no auto-init)
+ * papyr.freeform.vue(app)    — Vue 3 reactivity bridge
+ * papyr.freeform.react(opts) — React hooks bridge (extends papyr.react if present)
+ *
+ * Resolution for Q2: vanilla() mode remains fully enabled.
+ * It prevents auto-initialization only — all papyr APIs stay accessible.
+ */
+
+coreInitializers.push((papyr) => {
+
+    // ─── Framework Detection ──────────────────────────────────────────────────
+
+    function _detectFrameworks() {
+        const detected = {
+            react: false,
+            vue: false,
+            angular: false,
+            svelte: false,
+            nextjs: false,
+            nuxt: false,
+            tailwind: false,
+            bootstrap: false,
+            materialDesign: false
+        };
+
+        if (typeof window === 'undefined') return detected;
+
+        // React
+        if (window.React || window.__REACT_DEVTOOLS_GLOBAL_HOOK__) detected.react = true;
+        if (document.querySelector('[data-reactroot]') || document.querySelector('[data-reactid]')) detected.react = true;
+
+        // Vue
+        if (window.Vue || window.__VUE__) detected.vue = true;
+        if (document.querySelector('[data-v-app]') || document.querySelector('#app.__vue_app__')) detected.vue = true;
+
+        // Angular
+        if (window.ng || window.getAllAngularRootElements) detected.angular = true;
+        if (document.querySelector('[ng-version]') || document.querySelector('app-root')) detected.angular = true;
+
+        // Svelte
+        if (window.__svelte || document.querySelector('[class*="svelte-"]')) detected.svelte = true;
+
+        // Next.js
+        if (window.__NEXT_DATA__ || window.next) detected.nextjs = true;
+
+        // Nuxt
+        if (window.__NUXT__ || window.$nuxt) detected.nuxt = true;
+
+        // Tailwind — look for utility class patterns in stylesheets
+        try {
+            const sheets = Array.from(document.styleSheets);
+            const hasTailwind = sheets.some(sheet => {
+                try {
+                    const rules = Array.from(sheet.cssRules || []);
+                    return rules.some(r => r.selectorText && r.selectorText.match(/\.(flex|grid|text-|bg-|p-\d|m-\d)/));
+                } catch (e) { return false; }
+            });
+            if (hasTailwind) detected.tailwind = true;
+        } catch (e) {}
+
+        // Bootstrap
+        if (window.bootstrap) detected.bootstrap = true;
+        if (document.querySelector('.container-fluid, .navbar-toggler') || window.jQuery) detected.bootstrap = true;
+
+        // Material Design (MDC Web or Angular Material)
+        if (window.mdc || document.querySelector('.mdc-button, .mat-button')) detected.materialDesign = true;
+
+        return detected;
+    }
+
+    // ─── Selective Subsystem Activation ──────────────────────────────────────
+
+    const _allSubsystems = [
+        'state', 'signal', 'computed', 'effect', 'watch',
+        'component', 'mount', 'h', 'router', 'page', 'route',
+        'theme', 'style', 'animate', 'layout',
+        'config', 'controls', 'access', 'trust',
+        'pssr', 'isr', 'edge', 'seo',
+        'scheduler', 'power', 'recovery',
+        'watt', 'security',
+        'db', 'auth', 'api', 'payments',
+        'sdk', 'plugin', 'freeform'
+    ];
+
+    let _activeSubsystems = new Set(_allSubsystems); // All active by default
+    let _vanillaMode = false;
+
+    // ─── Vue 3 Reactivity Bridge ──────────────────────────────────────────────
+
+    function _vueAdapter(app) {
+        if (!app || typeof app.config === 'undefined') {
+            console.warn('[Papyr Freeform] papyr.freeform.vue() requires a Vue 3 app instance.');
+            return;
+        }
+
+        // Expose papyr signals as Vue global properties
+        app.config.globalProperties.$papyr = papyr;
+        app.config.globalProperties.$signal = papyr.signal || papyr.state;
+        app.config.globalProperties.$computed = papyr.computed;
+
+        // Vue plugin install
+        app.provide('papyr', papyr);
+
+        console.log('[Papyr Freeform] Vue 3 bridge installed. Access papyr via inject("papyr") or this.$papyr.');
+
+        return {
+            /** Create a Vue ref backed by a Papyrus signal */
+            useSignal(initialValue) {
+                const sig = papyr.signal ? papyr.signal(initialValue) : papyr.state(initialValue);
+                // Return an object compatible with Vue's ref interface
+                return {
+                    get value() { return sig.value; },
+                    set value(v) { sig.value = v; },
+                    subscribe: sig.subscribe ? sig.subscribe.bind(sig) : () => {}
+                };
+            },
+
+            /** Create a Vue computed backed by papyr.computed */
+            useComputed(fn) {
+                return papyr.computed ? papyr.computed(fn) : { value: fn() };
+            }
+        };
+    }
+
+    // ─── papyr.freeform ───────────────────────────────────────────────────────
+
+    papyr.freeform = {
+
+        /**
+         * Detect which frameworks and libraries are currently active on the page.
+         * @returns {Object} Boolean map of detected frameworks
+         *
+         * @example
+         * const env = papyr.freeform.detect();
+         * // { react: true, tailwind: true, vue: false, ... }
+         */
+        detect() {
+            const frameworks = _detectFrameworks();
+            console.log('[Papyr Freeform] Detected environment:', frameworks);
+            return frameworks;
+        },
+
+        /**
+         * Selectively activate specific Papyrus subsystems.
+         * Disables all others to minimize footprint in mixed-stack apps.
+         *
+         * @param {string[]} subsystems - Subsystem names to keep active
+         *
+         * @example
+         * // Use only reactivity and animation in a React app
+         * papyr.freeform.use(['state', 'animate', 'theme']);
+         */
+        use(subsystems = []) {
+            if (!Array.isArray(subsystems) || subsystems.length === 0) {
+                console.warn('[Papyr Freeform] use() requires a non-empty array of subsystem names.');
+                return;
+            }
+
+            _activeSubsystems = new Set(subsystems);
+            console.log(`[Papyr Freeform] Active subsystems: ${subsystems.join(', ')}`);
+
+            // Null-op non-active subsystems (advisory — does not remove APIs)
+            _allSubsystems.forEach(sys => {
+                if (!_activeSubsystems.has(sys) && papyr[sys]) {
+                    papyr[sys]._papyrActive = false;
+                }
+            });
+
+            return papyr;
+        },
+
+        /**
+         * Vanilla JS compatibility mode.
+         * Prevents auto-mount and auto-router initialization.
+         * All papyr APIs remain fully accessible (Option C).
+         *
+         * @returns {Object} papyr instance
+         *
+         * @example
+         * papyr.freeform.vanilla();
+         * // Use papyr.state() and papyr.animate() directly in vanilla JS
+         */
+        vanilla() {
+            _vanillaMode = true;
+            papyr._vanillaMode = true;
+
+            // Prevent auto-initialization behaviors
+            if (papyr.router) papyr.router._autoInit = false;
+            if (papyr.pssr) papyr.pssr._autoHydrate = false;
+
+            console.log(
+                '[Papyr Freeform] Vanilla mode active. Auto-init disabled. ' +
+                'All papyr APIs remain fully available.'
+            );
+
+            return papyr;
+        },
+
+        /**
+         * Vue 3 integration bridge.
+         * Injects Papyrus reactivity into a Vue app without replacing Vue's own system.
+         *
+         * @param {Object} app - Vue 3 app instance (from createApp())
+         * @returns {Object} Bridge utilities (useSignal, useComputed)
+         *
+         * @example
+         * import { createApp } from 'vue';
+         * const app = createApp(App);
+         * const { useSignal } = papyr.freeform.vue(app);
+         * app.mount('#app');
+         */
+        vue(app) {
+            return _vueAdapter(app);
+        },
+
+        /**
+         * React bridge — wraps existing papyr.react() if present, adds bridge utilities.
+         *
+         * @example
+         * const { useSignal } = papyr.freeform.react();
+         */
+        react() {
+            if (papyr.react && typeof papyr.react === 'function') {
+                return papyr.react();
+            }
+            // Basic bridge when papyr-complete.js is not loaded
+            console.warn('[Papyr Freeform] Full React bridge requires papyr-complete.js or papyr-plugins.js.');
+            return {
+                useSignal: (initialValue) => {
+                    const sig = papyr.state ? papyr.state(initialValue) : { value: initialValue };
+                    return [sig.value, (v) => { sig.value = v; }];
+                }
+            };
+        },
+
+        /** @returns {boolean} True if vanilla mode is active */
+        isVanilla() {
+            return _vanillaMode;
+        },
+
+        /** @returns {string[]} List of currently active subsystems */
+        activeSubsystems() {
+            return Array.from(_activeSubsystems);
+        },
+
+        /** Restore all subsystems to active */
+        reset() {
+            _activeSubsystems = new Set(_allSubsystems);
+            _vanillaMode = false;
+            papyr._vanillaMode = false;
+            _allSubsystems.forEach(sys => {
+                if (papyr[sys]) papyr[sys]._papyrActive = true;
+            });
+            console.log('[Papyr Freeform] All subsystems restored.');
+            return papyr;
+        }
     };
 });
 
@@ -7842,18 +11202,28 @@ if (typeof window !== 'undefined') {
         const step = () => {
             if (cancelled) return;
             let done = true;
-            Object.entries(anims).forEach(([prop, anim]) => {
-                let force = -tension * (anim.current - anim.target) - friction * anim.velocity;
-                let acceleration = force / mass;
-                anim.velocity += acceleration * 0.016; // dt = 16ms
-                anim.current += anim.velocity * 0.016;
 
-                if (Math.abs(anim.velocity) > 0.01 || Math.abs(anim.current - anim.target) > 0.01) {
-                    done = false;
-                } else {
-                    anim.current = anim.target;
-                }
-            });
+            // Run 4 sub-steps per frame to ensure integration stability at high tension / low friction
+            const substeps = 4;
+            const dt = 0.016 / substeps;
+
+            for (let i = 0; i < substeps; i++) {
+                done = true;
+                Object.entries(anims).forEach(([prop, anim]) => {
+                    let force = -tension * (anim.current - anim.target) - friction * anim.velocity;
+                    let acceleration = force / mass;
+                    anim.velocity += acceleration * dt;
+                    anim.current += anim.velocity * dt;
+
+                    if (Math.abs(anim.velocity) > 0.005 || Math.abs(anim.current - anim.target) > 0.005) {
+                        done = false;
+                    } else {
+                        anim.current = anim.target;
+                        anim.velocity = 0;
+                    }
+                });
+                if (done) break;
+            }
 
             // Rebuild the transform string to apply x, y, and scale together
             let transformParts = [];
@@ -7906,18 +11276,43 @@ if (typeof window !== 'undefined') {
         const { onSwipeLeft, onSwipeRight, onDrag, onRelease } = options;
         let startX = 0, startY = 0, currentX = 0, currentY = 0;
         let isDragging = false;
+        let dragStartX = 0, dragStartY = 0;
 
         const start = (clientX, clientY) => {
+            let curX = 0;
+            let curY = 0;
+            const transformStr = el.style.transform || '';
+            const translateMatch = transformStr.match(/translate\(([^,]+),\s*([^)]+)\)/) || 
+                                   transformStr.match(/translate3d\(([^,]+),\s*([^,]+)/);
+            if (translateMatch) {
+                curX = parseFloat(translateMatch[1]) || 0;
+                curY = parseFloat(translateMatch[2]) || 0;
+            } else {
+                const translateXMatch = transformStr.match(/translateX\(([^)]+)\)/);
+                if (translateXMatch) curX = parseFloat(translateXMatch[1]) || 0;
+                const translateYMatch = transformStr.match(/translateY\(([^)]+)\)/);
+                if (translateYMatch) curY = parseFloat(translateYMatch[1]) || 0;
+            }
+
+            dragStartX = curX;
+            dragStartY = curY;
             startX = clientX;
             startY = clientY;
             isDragging = true;
             el.style.transition = 'none';
+
+            if (el._springCancel) {
+                el._springCancel();
+            }
+
+            window.addEventListener('mousemove', onMouseMove);
+            window.addEventListener('mouseup', onMouseUp);
         };
 
         const move = (clientX, clientY) => {
             if (!isDragging) return;
-            currentX = clientX - startX;
-            currentY = clientY - startY;
+            currentX = dragStartX + (clientX - startX);
+            currentY = dragStartY + (clientY - startY);
             if (onDrag) onDrag(currentX, currentY, el);
             else {
                 el.style.transform = `translate(${currentX}px, ${currentY}px)`;
@@ -7927,6 +11322,9 @@ if (typeof window !== 'undefined') {
         const end = () => {
             if (!isDragging) return;
             isDragging = false;
+
+            window.removeEventListener('mousemove', onMouseMove);
+            window.removeEventListener('mouseup', onMouseUp);
 
             if (onRelease) {
                 onRelease(currentX, currentY, el);
@@ -7944,13 +11342,32 @@ if (typeof window !== 'undefined') {
             currentY = 0;
         };
 
-        el.addEventListener('mousedown', (e) => start(e.clientX, e.clientY));
-        window.addEventListener('mousemove', (e) => move(e.clientX, e.clientY));
-        window.addEventListener('mouseup', end);
+        const onMouseMove = (e) => move(e.clientX, e.clientY);
+        const onMouseUp = () => end();
 
-        el.addEventListener('touchstart', (e) => start(e.touches[0].clientX, e.touches[0].clientY));
-        el.addEventListener('touchmove', (e) => move(e.touches[0].clientX, e.touches[0].clientY));
-        el.addEventListener('touchend', end);
+        el.addEventListener('mousedown', (e) => {
+            if (e.button !== 0) return;
+            start(e.clientX, e.clientY);
+        });
+
+        const onTouchMove = (e) => {
+            if (e.touches.length > 0) {
+                move(e.touches[0].clientX, e.touches[0].clientY);
+            }
+        };
+        const onTouchEnd = () => {
+            end();
+            window.removeEventListener('touchmove', onTouchMove);
+            window.removeEventListener('touchend', onTouchEnd);
+        };
+
+        el.addEventListener('touchstart', (e) => {
+            if (e.touches.length > 0) {
+                start(e.touches[0].clientX, e.touches[0].clientY);
+                window.addEventListener('touchmove', onTouchMove, { passive: true });
+                window.addEventListener('touchend', onTouchEnd, { passive: true });
+            }
+        });
 
         return el;
     };
@@ -7978,13 +11395,34 @@ if (typeof window !== 'undefined') {
             let isDragging = false;
             let animationFrame;
 
+            // Cache measurements to prevent layout thrashing
+            let elHeight = 50;
+            let parentHeight = window.innerHeight;
+
+            const recacheHeights = () => {
+                elHeight = el.offsetHeight || 50;
+                parentHeight = el.parentElement ? el.parentElement.clientHeight : window.innerHeight;
+            };
+
+            window.addEventListener('resize', recacheHeights);
+
+            // Cleanup resize listener if element is detached
+            if (typeof MutationObserver !== 'undefined' && typeof document !== 'undefined') {
+                const observer = new MutationObserver(() => {
+                    if (!document.body.contains(el)) {
+                        window.removeEventListener('resize', recacheHeights);
+                        observer.disconnect();
+                    }
+                });
+                observer.observe(document.body, { childList: true, subtree: true });
+            }
+
             const update = () => {
                 if (!isDragging) {
                     vy += gravity;
                     y += vy;
 
-                    let parentHeight = el.parentElement ? el.parentElement.clientHeight : window.innerHeight;
-                    let floor = parentHeight - el.offsetHeight;
+                    let floor = parentHeight - elHeight;
 
                     if (y > floor) {
                         y = floor;
@@ -8001,6 +11439,7 @@ if (typeof window !== 'undefined') {
             el.addEventListener('mousedown', () => {
                 isDragging = true;
                 el.style.cursor = 'grabbing';
+                recacheHeights();
             });
             window.addEventListener('mouseup', () => {
                 if (isDragging) {
@@ -8019,6 +11458,7 @@ if (typeof window !== 'undefined') {
             setTimeout(() => {
                 let initialBounds = el.getBoundingClientRect();
                 y = initialBounds.top || 0;
+                recacheHeights();
                 update();
             }, 50);
 
@@ -9844,6 +13284,121 @@ if (typeof window !== 'undefined') {
                     resolve(false);
                 });
             });
+        },
+
+        triggerTrackingPrompt(trackingInfo, onAllow, onDeny) {
+            if (typeof document === 'undefined') {
+                onDeny(false);
+                return;
+            }
+
+            const isScenario1 = trackingInfo.optOut === true;
+            
+            const title = `🛡️ Third-Party Tracker Detected`;
+            const message = `The application is trying to connect to: **${trackingInfo.name}** (${trackingInfo.url.substring(0, 50)}${trackingInfo.url.length > 50 ? '...' : ''}).`;
+            const purposeText = `Purpose: ${trackingInfo.purpose}.`;
+            const warningText = isScenario1 
+                ? "This provider may track your activity."
+                : "This provider may track activity.";
+
+            const optOutBtnText = "Ask App Not to Track";
+            const cancelBtnText = "Cancel";
+            const continueBtnText = "Continue";
+
+            const wattModal = papyr.div('.papyr-card.papyr-watt-box', {
+                role: 'dialog',
+                'aria-modal': 'true',
+                style: `
+                    position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+                    z-index: 99999; max-width: 420px; width: 90%;
+                    background: rgba(15, 23, 42, 0.9);
+                    backdrop-filter: blur(20px);
+                    -webkit-backdrop-filter: blur(20px);
+                    border: 1px solid ${this.config.branding.primaryColor}33;
+                    border-radius: 24px;
+                    padding: 28px;
+                    box-shadow: 0 30px 60px rgba(0,0,0,0.5);
+                    box-sizing: border-box;
+                    color: #fff;
+                    font-family: inherit;
+                `
+            },
+                papyr.h3(title, { style: "font-size: 20px; margin-bottom: 12px; font-weight: 700; color: #fff;" }),
+                papyr.p(message, { style: "color: #cbd5e1; font-size: 0.95rem; line-height: 1.5; margin-bottom: 8px;" }),
+                papyr.p(purposeText, { style: "color: #94a3b8; font-size: 0.85rem; margin-bottom: 16px; font-style: italic;" }),
+                papyr.p(warningText, { style: "color: #f43f5e; font-weight: bold; font-size: 0.95rem; margin-bottom: 24px;" }),
+
+                papyr.flex.row({ style: "justify-content: flex-end; gap: 12px;" },
+                    papyr.button(isScenario1 ? optOutBtnText : cancelBtnText, {
+                        style: "background: rgba(239, 68, 68, 0.1); color: #ef4444; border: 1px solid rgba(239,68,68,0.25); padding: 10px 18px; border-radius: 12px; cursor: pointer; font-family: inherit;",
+                        onclick: () => { 
+                            wattModal.remove(); 
+                            onDeny(isScenario1); 
+                        }
+                    }),
+                    papyr.button(continueBtnText, {
+                        style: `background: ${this.config.branding.primaryColor}; color: #fff; border: none; padding: 10px 18px; border-radius: 12px; cursor: pointer; font-weight: bold; font-family: inherit;`,
+                        onclick: () => { 
+                            wattModal.remove(); 
+                            onAllow(); 
+                        }
+                    })
+                )
+            );
+
+            document.body.appendChild(wattModal);
+        },
+
+        compliance: {
+            getGDPRNotice() {
+                return "Under the General Data Privacy Regulation (GDPR), users residing in the European Union have the right to access, rectify, port, and erase their personal data. This application acts as a Data Controller. By granting permission, you consent to the processing of specified parameters.";
+            },
+            getCCPANotice() {
+                return "Pursuant to the California Consumer Privacy Act (CCPA), California residents have the right to request disclosure of personal data collected, opt-out of the sale of personal information, and request deletion of personal information.";
+            },
+            getPDANotice() {
+                return "In compliance with the Philippine Data Privacy Act of 2012 (R.A. 10173), this app ensures standard security controls for protecting personal and sensitive information processed through its system.";
+            },
+            renderCookieConsent(options = {}) {
+                if (typeof document === 'undefined') return;
+                const {
+                    message = "We use cookies to enhance your experience and support compliance with privacy acts.",
+                    link = "#",
+                    linkText = "Privacy Policy",
+                    onAccept = () => {}
+                } = options;
+                
+                if (localStorage.getItem("papyr_cookie_consent") === "true") return;
+
+                const consentBanner = papyr.div('.watt-cookie-consent', {
+                    style: `
+                        position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+                        z-index: 99998; max-width: 600px; width: 90%;
+                        background: rgba(30, 41, 59, 0.95);
+                        backdrop-filter: blur(10px);
+                        border: 1px solid rgba(255,255,255,0.1);
+                        border-radius: 16px;
+                        padding: 16px 24px;
+                        box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+                        display: flex; justify-content: space-between; align-items: center; gap: 16px;
+                        color: #fff; font-family: inherit; font-size: 0.9rem;
+                    `
+                },
+                    papyr.div({ style: "flex-grow: 1;" },
+                        papyr.span(message),
+                        papyr.a(` ${linkText}`, { href: link, target: "_blank", style: "color: #6366f1; text-decoration: underline; margin-left: 8px;" })
+                    ),
+                    papyr.button("Accept", {
+                        style: "background: #6366f1; color: #fff; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer; font-weight: bold;",
+                        onclick: () => {
+                            localStorage.setItem("papyr_cookie_consent", "true");
+                            consentBanner.remove();
+                            onAccept();
+                        }
+                    })
+                );
+                document.body.appendChild(consentBanner);
+            }
         }
     };
 
@@ -9859,6 +13414,771 @@ if (typeof window !== 'undefined') {
         delete papyr._initialPrivacy;
     }
 })();
+
+
+// --- MODULE: plugins/seo.js ---
+/**
+ * PAPYR SEO TOOLKIT (papyr-seo)
+ * Isomorphic SEO metadata engine for titles, Open Graph, Twitter Cards,
+ * Schema.org JSON-LD, canonical URLs, sitemaps, robots.txt, and RSS feeds.
+ * Works during SSR (generates HTML strings) and on client (updates document.head).
+ * Part of the PSSR (Papyrus Server Side Rendering) architecture.
+ */
+(function (window) {
+    if (!window.papyr) {
+        console.warn("Papyr core not detected. SEO Toolkit requires papyr core to run.");
+        return;
+    }
+
+    const papyr = window.papyr;
+
+    // ─── Helpers ────────────────────────────────────────────────────────────────
+
+    const escapeHtml = (str) => String(str == null ? '' : str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+
+    // ─── Internal State ──────────────────────────────────────────────────────────
+
+    const _state = {
+        /** @type {Array<Object>} */
+        meta: []
+    };
+
+    function _pushMeta(item) {
+        _state.meta.push(item);
+    }
+
+    function _applyToDom() {
+        if (typeof document === 'undefined') return;
+
+        _state.meta.forEach(item => {
+            if (item.type === 'title') {
+                document.title = item.content;
+                return;
+            }
+
+            if (item.type === 'meta-name') {
+                let el = document.querySelector(`meta[name="${item.name}"]`);
+                if (!el) {
+                    el = document.createElement('meta');
+                    el.setAttribute('name', item.name);
+                    document.head.appendChild(el);
+                }
+                el.setAttribute('content', item.content);
+                return;
+            }
+
+            if (item.type === 'meta-property') {
+                let el = document.querySelector(`meta[property="${item.property}"]`);
+                if (!el) {
+                    el = document.createElement('meta');
+                    el.setAttribute('property', item.property);
+                    document.head.appendChild(el);
+                }
+                el.setAttribute('content', item.content);
+                return;
+            }
+
+            if (item.type === 'link') {
+                let el = document.querySelector(`link[rel="${item.rel}"]`);
+                if (!el) {
+                    el = document.createElement('link');
+                    el.setAttribute('rel', item.rel);
+                    document.head.appendChild(el);
+                }
+                el.setAttribute('href', item.href);
+                return;
+            }
+
+            if (item.type === 'jsonld') {
+                let el = document.querySelector('script[data-papyr-schema]');
+                if (!el) {
+                    el = document.createElement('script');
+                    el.setAttribute('type', 'application/ld+json');
+                    el.setAttribute('data-papyr-schema', 'true');
+                    document.head.appendChild(el);
+                }
+                el.textContent = item.content;
+                return;
+            }
+        });
+    }
+
+    // ─── SEO Object ─────────────────────────────────────────────────────────────
+
+    const PapyrSEO = {
+
+        /**
+         * Set page SEO metadata. Accepts a flat config object with all common fields.
+         *
+         * @param {Object} options
+         * @param {string} [options.title] - Page title
+         * @param {string} [options.description] - Meta description
+         * @param {string} [options.keywords] - Meta keywords (string or array)
+         * @param {string} [options.canonical] - Canonical URL
+         * @param {string} [options.robots] - Robots directive (e.g. "index, follow")
+         * @param {string} [options.author] - Author meta tag
+         * @param {Object} [options.og] - Open Graph options (passed to papyr.seo.og)
+         * @param {Object} [options.twitter] - Twitter Card options (passed to papyr.seo.twitter)
+         * @param {Object|Array} [options.schema] - Schema.org JSON-LD data
+         * @returns {PapyrSEO} Chainable
+         *
+         * @example
+         * papyr.seo({
+         *   title: "My Blog",
+         *   description: "The latest tech news",
+         *   canonical: "https://example.com/blog",
+         *   og: { image: "https://example.com/og.jpg" },
+         *   twitter: { card: "summary_large_image" }
+         * });
+         */
+        set(options = {}) {
+            // Reset state for new page
+            _state.meta = [];
+
+            if (options.title) {
+                _pushMeta({ type: 'title', content: options.title });
+            }
+
+            if (options.description) {
+                _pushMeta({ type: 'meta-name', name: 'description', content: options.description });
+            }
+
+            if (options.keywords) {
+                const kw = Array.isArray(options.keywords)
+                    ? options.keywords.join(', ')
+                    : options.keywords;
+                _pushMeta({ type: 'meta-name', name: 'keywords', content: kw });
+            }
+
+            if (options.author) {
+                _pushMeta({ type: 'meta-name', name: 'author', content: options.author });
+            }
+
+            if (options.robots) {
+                _pushMeta({ type: 'meta-name', name: 'robots', content: options.robots });
+            }
+
+            if (options.canonical) {
+                _pushMeta({ type: 'link', rel: 'canonical', href: options.canonical });
+            }
+
+            if (options.og) {
+                this.og(options.og);
+            }
+
+            if (options.twitter) {
+                this.twitter(options.twitter);
+            }
+
+            if (options.schema) {
+                this.schema(options.schema);
+            }
+
+            if (papyr.isBrowser && papyr.isBrowser()) {
+                _applyToDom();
+            }
+
+            return this;
+        },
+
+        /**
+         * Set canonical URL.
+         * @param {string} url
+         * @returns {PapyrSEO} Chainable
+         */
+        canonical(url) {
+            _pushMeta({ type: 'link', rel: 'canonical', href: url });
+            if (papyr.isBrowser && papyr.isBrowser()) {
+                _applyToDom();
+            }
+            return this;
+        },
+
+        /**
+         * Set Open Graph metadata.
+         * @param {Object} options
+         * @param {string} [options.title] - og:title
+         * @param {string} [options.description] - og:description
+         * @param {string} [options.image] - og:image URL
+         * @param {string} [options.image_alt] - og:image:alt
+         * @param {string} [options.image_width] - og:image:width
+         * @param {string} [options.image_height] - og:image:height
+         * @param {string} [options.url] - og:url
+         * @param {string} [options.type] - og:type (default: 'website')
+         * @param {string} [options.site_name] - og:site_name
+         * @param {string} [options.locale] - og:locale
+         * @returns {PapyrSEO} Chainable
+         */
+        og(options = {}) {
+            const ogMap = {
+                title: 'og:title',
+                description: 'og:description',
+                image: 'og:image',
+                image_alt: 'og:image:alt',
+                image_width: 'og:image:width',
+                image_height: 'og:image:height',
+                url: 'og:url',
+                type: 'og:type',
+                site_name: 'og:site_name',
+                locale: 'og:locale',
+                video: 'og:video',
+                audio: 'og:audio'
+            };
+
+            // Default type
+            if (!options.type) options.type = 'website';
+
+            Object.entries(options).forEach(([key, value]) => {
+                if (value != null && ogMap[key]) {
+                    _pushMeta({ type: 'meta-property', property: ogMap[key], content: String(value) });
+                }
+            });
+
+            if (papyr.isBrowser && papyr.isBrowser()) {
+                _applyToDom();
+            }
+            return this;
+        },
+
+        /**
+         * Set Twitter Card metadata.
+         * @param {Object} options
+         * @param {string} [options.card] - Card type: 'summary' | 'summary_large_image' | 'app' | 'player'
+         * @param {string} [options.title] - twitter:title
+         * @param {string} [options.description] - twitter:description
+         * @param {string} [options.image] - twitter:image URL
+         * @param {string} [options.image_alt] - twitter:image:alt
+         * @param {string} [options.site] - @username of website (e.g. "@papyrjs")
+         * @param {string} [options.creator] - @username of content creator
+         * @returns {PapyrSEO} Chainable
+         */
+        twitter(options = {}) {
+            const twitterMap = {
+                card: 'twitter:card',
+                title: 'twitter:title',
+                description: 'twitter:description',
+                image: 'twitter:image',
+                image_alt: 'twitter:image:alt',
+                site: 'twitter:site',
+                creator: 'twitter:creator',
+                app_id_iphone: 'twitter:app:id:iphone',
+                app_id_googleplay: 'twitter:app:id:googleplay'
+            };
+
+            if (!options.card) options.card = 'summary';
+
+            Object.entries(options).forEach(([key, value]) => {
+                if (value != null && twitterMap[key]) {
+                    _pushMeta({ type: 'meta-name', name: twitterMap[key], content: String(value) });
+                }
+            });
+
+            if (papyr.isBrowser && papyr.isBrowser()) {
+                _applyToDom();
+            }
+            return this;
+        },
+
+        /**
+         * Inject Schema.org JSON-LD structured data.
+         * @param {Object|Array|string} data - Schema.org JSON-LD object, array, or pre-stringified JSON
+         * @returns {PapyrSEO} Chainable
+         *
+         * @example
+         * papyr.seo.schema({
+         *   "@context": "https://schema.org",
+         *   "@type": "BlogPosting",
+         *   "headline": "My Article",
+         *   "author": { "@type": "Person", "name": "Eldrex Bula" }
+         * });
+         */
+        schema(data) {
+            const json = typeof data === 'string'
+                ? data
+                : JSON.stringify(data, null, 2);
+            _pushMeta({ type: 'jsonld', content: json });
+
+            if (papyr.isBrowser && papyr.isBrowser() && typeof document !== 'undefined') {
+                let el = document.querySelector('script[data-papyr-schema]');
+                if (!el) {
+                    el = document.createElement('script');
+                    el.setAttribute('type', 'application/ld+json');
+                    el.setAttribute('data-papyr-schema', 'true');
+                    document.head.appendChild(el);
+                }
+                el.textContent = json;
+            }
+            return this;
+        },
+
+        /**
+         * Render all accumulated metadata as an HTML string (for SSR head injection).
+         * @returns {string} HTML string of all head tags
+         */
+        renderHead() {
+            return _state.meta.map(item => {
+                if (item.type === 'title') {
+                    return `<title>${escapeHtml(item.content)}</title>`;
+                }
+                if (item.type === 'meta-name') {
+                    return `<meta name="${escapeHtml(item.name)}" content="${escapeHtml(item.content)}">`;
+                }
+                if (item.type === 'meta-property') {
+                    return `<meta property="${escapeHtml(item.property)}" content="${escapeHtml(item.content)}">`;
+                }
+                if (item.type === 'link') {
+                    return `<link rel="${escapeHtml(item.rel)}" href="${escapeHtml(item.href)}">`;
+                }
+                if (item.type === 'jsonld') {
+                    return `<script type="application/ld+json">${item.content}</script>`;
+                }
+                return '';
+            }).join('\n  ');
+        },
+
+        /** Internal: used by papyr.edge streaming to flush head immediately */
+        _flushHead() {
+            return this.renderHead();
+        },
+
+        // ─── Static Site Tools ─────────────────────────────────────────────────
+
+        /**
+         * Generate a Sitemap XML string.
+         * @param {Array<string|Object>} routes - Route paths or route objects
+         * @param {Object} [options]
+         * @param {string} [options.baseUrl='https://example.com'] - Base URL prefix
+         * @param {string} [options.defaultChangefreq='weekly'] - Default changefreq
+         * @param {string} [options.defaultPriority='0.8'] - Default priority
+         * @returns {string} Sitemap XML string
+         *
+         * @example
+         * const xml = papyr.seo.sitemap([
+         *   { path: '/', priority: '1.0', changefreq: 'daily' },
+         *   { path: '/about', priority: '0.7' },
+         *   '/contact'
+         * ], { baseUrl: 'https://example.com' });
+         */
+        sitemap(routes = [], options = {}) {
+            const {
+                baseUrl = 'https://example.com',
+                defaultChangefreq = 'weekly',
+                defaultPriority = '0.8'
+            } = options;
+
+            const urlEntries = routes.map(route => {
+                const r = typeof route === 'string' ? { path: route } : route;
+                const loc = escapeHtml((baseUrl + r.path).replace(/\/+$/, '') || baseUrl);
+                const changefreq = r.changefreq || defaultChangefreq;
+                const priority = r.priority || defaultPriority;
+                const lastmod = r.lastmod ? `\n    <lastmod>${r.lastmod}</lastmod>` : '';
+
+                return `  <url>
+    <loc>${loc}</loc>
+    <changefreq>${changefreq}</changefreq>
+    <priority>${priority}</priority>${lastmod}
+  </url>`;
+            }).join('\n');
+
+            return `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+${urlEntries}
+</urlset>`;
+        },
+
+        /**
+         * Generate a robots.txt string.
+         * @param {Object} rules
+         * @param {string|string[]} [rules.userAgent='*'] - User-agent(s)
+         * @param {string|string[]} [rules.allow=['/']] - Allow directives
+         * @param {string|string[]} [rules.disallow=[]] - Disallow directives
+         * @param {string} [rules.sitemap] - Sitemap URL
+         * @param {number} [rules.crawlDelay] - Crawl-delay in seconds
+         * @returns {string} robots.txt content
+         *
+         * @example
+         * const txt = papyr.seo.robots({
+         *   allow: ['/'],
+         *   disallow: ['/admin', '/private'],
+         *   sitemap: 'https://example.com/sitemap.xml'
+         * });
+         */
+        robots(rules = {}) {
+            const {
+                userAgent = '*',
+                allow = ['/'],
+                disallow = [],
+                sitemap = null,
+                crawlDelay = null
+            } = rules;
+
+            const agents = Array.isArray(userAgent) ? userAgent : [userAgent];
+            const allows = Array.isArray(allow) ? allow : (allow ? [allow] : []);
+            const disallows = Array.isArray(disallow) ? disallow : (disallow ? [disallow] : []);
+
+            let txt = '';
+            agents.forEach(agent => {
+                txt += `User-agent: ${agent}\n`;
+                allows.forEach(path => { if (path) txt += `Allow: ${path}\n`; });
+                disallows.forEach(path => { if (path) txt += `Disallow: ${path}\n`; });
+                if (crawlDelay != null) txt += `Crawl-delay: ${crawlDelay}\n`;
+                txt += '\n';
+            });
+
+            if (sitemap) txt += `Sitemap: ${sitemap}\n`;
+            return txt;
+        },
+
+        /**
+         * Generate an RSS 2.0 feed XML string.
+         * @param {Object} channelOptions - Feed channel metadata
+         * @param {string} channelOptions.title - Feed title
+         * @param {string} channelOptions.link - Feed URL
+         * @param {string} [channelOptions.description] - Feed description
+         * @param {string} [channelOptions.language='en-us'] - Language
+         * @param {string} [channelOptions.copyright] - Copyright notice
+         * @param {Array<Object>} [items=[]] - Feed items
+         * @param {string} items[].title - Item title
+         * @param {string} items[].link - Item URL
+         * @param {string} [items[].description] - Item description/excerpt
+         * @param {string} [items[].pubDate] - Publication date (RFC 822)
+         * @param {string} [items[].guid] - Unique identifier
+         * @param {string} [items[].author] - Author email or name
+         * @returns {string} RSS XML string
+         *
+         * @example
+         * const feed = papyr.seo.rss({
+         *   title: 'My Blog',
+         *   link: 'https://example.com',
+         *   description: 'Latest posts'
+         * }, posts.map(p => ({
+         *   title: p.title,
+         *   link: `https://example.com/blog/${p.slug}`,
+         *   description: p.excerpt,
+         *   pubDate: new Date(p.date).toUTCString()
+         * })));
+         */
+        rss(channelOptions = {}, items = []) {
+            const {
+                title = 'Feed',
+                description = '',
+                link = 'https://example.com',
+                language = 'en-us',
+                copyright = `Copyright ${new Date().getFullYear()}`
+            } = channelOptions;
+
+            const itemsXml = items.map(item => {
+                return `    <item>
+      <title>${escapeHtml(item.title || '')}</title>
+      <link>${escapeHtml(item.link || '')}</link>
+      <description>${escapeHtml(item.description || '')}</description>
+      <pubDate>${item.pubDate || new Date().toUTCString()}</pubDate>${
+    item.guid ? `\n      <guid isPermaLink="false">${escapeHtml(item.guid)}</guid>` : ''
+}${
+    item.author ? `\n      <author>${escapeHtml(item.author)}</author>` : ''
+}
+    </item>`;
+            }).join('\n');
+
+            return `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>${escapeHtml(title)}</title>
+    <link>${escapeHtml(link)}</link>
+    <description>${escapeHtml(description)}</description>
+    <language>${language}</language>
+    <copyright>${escapeHtml(copyright)}</copyright>
+    <atom:link href="${escapeHtml(link)}/rss.xml" rel="self" type="application/rss+xml"/>
+${itemsXml}
+  </channel>
+</rss>`;
+        }
+    };
+
+    // ─── Bind and Export ─────────────────────────────────────────────────────────
+
+    /**
+     * Main SEO entry point: papyr.seo(options)
+     * Also exposes sub-methods for granular control.
+     */
+    const seoFn = (options) => PapyrSEO.set(options);
+    seoFn.set = PapyrSEO.set.bind(PapyrSEO);
+    seoFn.canonical = PapyrSEO.canonical.bind(PapyrSEO);
+    seoFn.og = PapyrSEO.og.bind(PapyrSEO);
+    seoFn.twitter = PapyrSEO.twitter.bind(PapyrSEO);
+    seoFn.schema = PapyrSEO.schema.bind(PapyrSEO);
+    seoFn.sitemap = PapyrSEO.sitemap.bind(PapyrSEO);
+    seoFn.robots = PapyrSEO.robots.bind(PapyrSEO);
+    seoFn.rss = PapyrSEO.rss.bind(PapyrSEO);
+    seoFn.renderHead = PapyrSEO.renderHead.bind(PapyrSEO);
+    seoFn._flushHead = PapyrSEO._flushHead.bind(PapyrSEO);
+
+    papyr.seo = seoFn;
+
+})(typeof window !== 'undefined' ? window : this);
+
+
+// --- MODULE: plugins/game.js ---
+/**
+ * PAPYR GAME SDK (papyr-game-sdk)
+ * Unified, high-performance, and lightweight gaming infrastructure.
+ * Provides out-of-the-box adapters for Canvas, WebGL, WebGPU, Physics systems, Asset loaders, and Inputs.
+ * v3.1.3 - Foundation Strengthening Release
+ */
+(function (window) {
+    if (!window.papyr) {
+        console.warn("Papyr core not detected. Game SDK requires papyr core to run.");
+        return;
+    }
+
+    const papyr = window.papyr;
+
+    const GameSDK = {
+        // 1. Responsive Canvas Generator
+        canvas(options = {}) {
+            const { width = 600, height = 400, onInit = null } = options;
+            const container = papyr.div('.papyr-game-container', {
+                style: {
+                    position: 'relative',
+                    width: typeof width === 'number' ? `${width}px` : width,
+                    height: typeof height === 'number' ? `${height}px` : height,
+                    background: '#020205',
+                    borderRadius: '16px',
+                    overflow: 'hidden',
+                    border: '1px solid rgba(255,255,255,0.06)'
+                }
+            });
+            const cv = document.createElement('canvas');
+            cv.width = parseInt(width);
+            cv.height = parseInt(height);
+            cv.style.display = 'block';
+            cv.style.width = '100%';
+            cv.style.height = '100%';
+            container.appendChild(cv);
+            
+            if (onInit) {
+                setTimeout(() => onInit(cv), 50);
+            }
+            return container;
+        },
+
+        // 2. High-Precision Game Loop
+        loop(cb) {
+            let active = true;
+            const step = () => {
+                if (!active) return;
+                cb();
+                requestAnimationFrame(step);
+            };
+            requestAnimationFrame(step);
+            return () => { active = false; };
+        },
+
+        // 3. Unified Input System
+        input(el) {
+            const keys = {};
+            const mouse = { x: 0, y: 0, isDown: false };
+            const touches = [];
+            
+            const onKeyDown = (e) => { keys[e.key] = true; };
+            const onKeyUp = (e) => { keys[e.key] = false; };
+            
+            const onMouseMove = (e) => {
+                const rect = (el || document.body).getBoundingClientRect();
+                mouse.x = e.clientX - rect.left;
+                mouse.y = e.clientY - rect.top;
+            };
+            const onMouseDown = () => { mouse.isDown = true; };
+            const onMouseUp = () => { mouse.isDown = false; };
+
+            const onTouchStart = (e) => {
+                mouse.isDown = true;
+                updateTouches(e);
+            };
+            const onTouchMove = (e) => { updateTouches(e); };
+            const onTouchEnd = (e) => {
+                mouse.isDown = e.touches.length > 0;
+                updateTouches(e);
+            };
+
+            const updateTouches = (e) => {
+                touches.length = 0;
+                const rect = (el || document.body).getBoundingClientRect();
+                for (let i = 0; i < e.touches.length; i++) {
+                    touches.push({
+                        id: e.touches[i].identifier,
+                        x: e.touches[i].clientX - rect.left,
+                        y: e.touches[i].clientY - rect.top
+                    });
+                }
+            };
+
+            const target = el || window;
+            const mouseTarget = el || window;
+            
+            window.addEventListener('keydown', onKeyDown);
+            window.addEventListener('keyup', onKeyUp);
+            mouseTarget.addEventListener('mousemove', onMouseMove);
+            mouseTarget.addEventListener('mousedown', onMouseDown);
+            mouseTarget.addEventListener('mouseup', onMouseUp);
+            mouseTarget.addEventListener('touchstart', onTouchStart, { passive: true });
+            mouseTarget.addEventListener('touchmove', onTouchMove, { passive: true });
+            mouseTarget.addEventListener('touchend', onTouchEnd, { passive: true });
+
+            return {
+                isDown(key) { return !!keys[key]; },
+                getMouse() { return { ...mouse }; },
+                getTouches() { return [...touches]; },
+                destroy() {
+                    window.removeEventListener('keydown', onKeyDown);
+                    window.removeEventListener('keyup', onKeyUp);
+                    mouseTarget.removeEventListener('mousemove', onMouseMove);
+                    mouseTarget.removeEventListener('mousedown', onMouseDown);
+                    mouseTarget.removeEventListener('mouseup', onMouseUp);
+                    mouseTarget.removeEventListener('touchstart', onTouchStart);
+                    mouseTarget.removeEventListener('touchmove', onTouchMove);
+                    mouseTarget.removeEventListener('touchend', onTouchEnd);
+                }
+            };
+        },
+
+        // 4. Asynchronous Asset Preloader
+        assets: {
+            async load(manifest) {
+                const loaded = {};
+                const promises = Object.entries(manifest).map(([key, src]) => {
+                    const ext = src.split('.').pop().toLowerCase();
+                    if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'].includes(ext)) {
+                        return new Promise((resolve, reject) => {
+                            const img = new Image();
+                            img.onload = () => {
+                                loaded[key] = img;
+                                resolve();
+                            };
+                            img.onerror = (e) => reject(new Error(`Failed to load image: ${src}`));
+                            img.src = src;
+                        });
+                    } else if (['mp3', 'wav', 'ogg', 'aac'].includes(ext)) {
+                        return new Promise((resolve, reject) => {
+                            const audio = new Audio();
+                            audio.oncanplaythrough = () => {
+                                loaded[key] = audio;
+                                resolve();
+                            };
+                            audio.onerror = (e) => reject(new Error(`Failed to load audio: ${src}`));
+                            audio.src = src;
+                            audio.load();
+                        });
+                    } else {
+                        return fetch(src)
+                            .then(res => {
+                                if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+                                return ext === 'json' ? res.json() : res.text();
+                            })
+                            .then(data => {
+                                loaded[key] = data;
+                            });
+                    }
+                });
+                await Promise.all(promises);
+                return loaded;
+            }
+        },
+
+        // 5. Adaptable Graphics & Physics Connectors
+        adapters: {
+            // WebGL Renderer bootstrap
+            webgl(canvas, options = {}) {
+                const gl = canvas.getContext('webgl', options) || canvas.getContext('experimental-webgl', options);
+                if (!gl) {
+                    console.error("WebGL context not supported.");
+                    return null;
+                }
+                return {
+                    gl,
+                    createShader(type, source) {
+                        const shader = gl.createShader(type);
+                        gl.shaderSource(shader, source);
+                        gl.compileShader(shader);
+                        if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+                            const info = gl.getShaderInfoLog(shader);
+                            gl.deleteShader(shader);
+                            throw new Error("WebGL shader compile error: " + info);
+                        }
+                        return shader;
+                    },
+                    createProgram(vsSource, fsSource) {
+                        const vs = this.createShader(gl.VERTEX_SHADER, vsSource);
+                        const fs = this.createShader(gl.FRAGMENT_SHADER, fsSource);
+                        const program = gl.createProgram();
+                        gl.attachShader(program, vs);
+                        gl.attachShader(program, fs);
+                        gl.linkProgram(program);
+                        if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+                            throw new Error("WebGL program link error: " + gl.getProgramInfoLog(program));
+                        }
+                        return program;
+                    }
+                };
+            },
+
+            // WebGPU context initiator
+            async webgpu(canvas) {
+                if (!navigator.gpu) {
+                    console.warn("WebGPU not supported on this browser.");
+                    return null;
+                }
+                const adapter = await navigator.gpu.requestAdapter();
+                if (!adapter) {
+                    console.warn("WebGPU adapter request failed.");
+                    return null;
+                }
+                const device = await adapter.requestDevice();
+                const context = canvas.getContext('webgpu');
+                const format = navigator.gpu.getPreferredCanvasFormat();
+                context.configure({ device, format, alphaMode: 'opaque' });
+                return { adapter, device, context, format };
+            },
+
+            // Unified Physics adapter mapper
+            physics(type = 'verlet', options = {}) {
+                if (type === 'verlet' && papyr.physics && typeof papyr.physics.world === 'function') {
+                    return papyr.physics.world(options);
+                }
+                console.log(`[GameSDK] Physics adapter initialized for type: ${type}`);
+                return null;
+            }
+        }
+    };
+
+    papyr.game = GameSDK;
+
+    const gamePlugin = {
+        name: 'papyr-game',
+        version: '3.1.3',
+        install(p) {
+            p.game = GameSDK;
+        }
+    };
+
+    // Auto-register on core if available
+    const targetPapyr = window.papyr || (typeof global !== 'undefined' && global.papyr);
+    if (targetPapyr) {
+        targetPapyr.use(gamePlugin);
+    }
+
+    if (typeof module !== 'undefined' && module.exports) {
+        module.exports = gamePlugin;
+    } else if (typeof exports !== 'undefined') {
+        exports.default = gamePlugin;
+    } else {
+        window.papyrGame = gamePlugin;
+    }
+})(typeof window !== 'undefined' ? window : this);
 
 
 // --- MODULE: plugins/layout.js ---
@@ -12709,65 +17029,6 @@ if (typeof window !== 'undefined') {
             return papyr(json.tag || 'div', ...args);
         }
     };
-
-    // ==========================================
-    // 6. PAPYR GAMING & ADAPTER PROTOCOL GATEWAY
-    // ==========================================
-    papyr.game = {
-        canvas(options = {}) {
-            const { width = 600, height = 400, onInit = null } = options;
-            const container = papyr.div('.papyr-game-container', {
-                style: {
-                    position: 'relative',
-                    width: typeof width === 'number' ? `${width}px` : width,
-                    height: typeof height === 'number' ? `${height}px` : height,
-                    background: '#020205',
-                    borderRadius: '16px',
-                    overflow: 'hidden',
-                    border: '1px solid rgba(255,255,255,0.06)'
-                }
-            });
-            const cv = document.createElement('canvas');
-            cv.width = parseInt(width);
-            cv.height = parseInt(height);
-            cv.style.display = 'block';
-            cv.style.width = '100%';
-            cv.style.height = '100%';
-            container.appendChild(cv);
-            
-            if (onInit) {
-                setTimeout(() => onInit(cv), 50);
-            }
-            return container;
-        },
-        loop(cb) {
-            let active = true;
-            const step = () => {
-                if (!active) return;
-                cb();
-                requestAnimationFrame(step);
-            };
-            requestAnimationFrame(step);
-            return () => { active = false; };
-        },
-        input(el) {
-            const keys = {};
-            const onKeyDown = (e) => { keys[e.key] = true; };
-            const onKeyUp = (e) => { keys[e.key] = false; };
-            const target = el || window;
-            target.addEventListener('keydown', onKeyDown);
-            target.addEventListener('keyup', onKeyUp);
-            return {
-                isDown(key) { return !!keys[key]; },
-                destroy() {
-                    target.removeEventListener('keydown', onKeyDown);
-                    target.removeEventListener('keyup', onKeyUp);
-                }
-            };
-        }
-    };
-
-
 
     // Override use to support dynamic runtime loads
     const originalUse = papyr.use;

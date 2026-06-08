@@ -330,18 +330,28 @@
         const step = () => {
             if (cancelled) return;
             let done = true;
-            Object.entries(anims).forEach(([prop, anim]) => {
-                let force = -tension * (anim.current - anim.target) - friction * anim.velocity;
-                let acceleration = force / mass;
-                anim.velocity += acceleration * 0.016; // dt = 16ms
-                anim.current += anim.velocity * 0.016;
 
-                if (Math.abs(anim.velocity) > 0.01 || Math.abs(anim.current - anim.target) > 0.01) {
-                    done = false;
-                } else {
-                    anim.current = anim.target;
-                }
-            });
+            // Run 4 sub-steps per frame to ensure integration stability at high tension / low friction
+            const substeps = 4;
+            const dt = 0.016 / substeps;
+
+            for (let i = 0; i < substeps; i++) {
+                done = true;
+                Object.entries(anims).forEach(([prop, anim]) => {
+                    let force = -tension * (anim.current - anim.target) - friction * anim.velocity;
+                    let acceleration = force / mass;
+                    anim.velocity += acceleration * dt;
+                    anim.current += anim.velocity * dt;
+
+                    if (Math.abs(anim.velocity) > 0.005 || Math.abs(anim.current - anim.target) > 0.005) {
+                        done = false;
+                    } else {
+                        anim.current = anim.target;
+                        anim.velocity = 0;
+                    }
+                });
+                if (done) break;
+            }
 
             // Rebuild the transform string to apply x, y, and scale together
             let transformParts = [];
@@ -394,18 +404,43 @@
         const { onSwipeLeft, onSwipeRight, onDrag, onRelease } = options;
         let startX = 0, startY = 0, currentX = 0, currentY = 0;
         let isDragging = false;
+        let dragStartX = 0, dragStartY = 0;
 
         const start = (clientX, clientY) => {
+            let curX = 0;
+            let curY = 0;
+            const transformStr = el.style.transform || '';
+            const translateMatch = transformStr.match(/translate\(([^,]+),\s*([^)]+)\)/) || 
+                                   transformStr.match(/translate3d\(([^,]+),\s*([^,]+)/);
+            if (translateMatch) {
+                curX = parseFloat(translateMatch[1]) || 0;
+                curY = parseFloat(translateMatch[2]) || 0;
+            } else {
+                const translateXMatch = transformStr.match(/translateX\(([^)]+)\)/);
+                if (translateXMatch) curX = parseFloat(translateXMatch[1]) || 0;
+                const translateYMatch = transformStr.match(/translateY\(([^)]+)\)/);
+                if (translateYMatch) curY = parseFloat(translateYMatch[1]) || 0;
+            }
+
+            dragStartX = curX;
+            dragStartY = curY;
             startX = clientX;
             startY = clientY;
             isDragging = true;
             el.style.transition = 'none';
+
+            if (el._springCancel) {
+                el._springCancel();
+            }
+
+            window.addEventListener('mousemove', onMouseMove);
+            window.addEventListener('mouseup', onMouseUp);
         };
 
         const move = (clientX, clientY) => {
             if (!isDragging) return;
-            currentX = clientX - startX;
-            currentY = clientY - startY;
+            currentX = dragStartX + (clientX - startX);
+            currentY = dragStartY + (clientY - startY);
             if (onDrag) onDrag(currentX, currentY, el);
             else {
                 el.style.transform = `translate(${currentX}px, ${currentY}px)`;
@@ -415,6 +450,9 @@
         const end = () => {
             if (!isDragging) return;
             isDragging = false;
+
+            window.removeEventListener('mousemove', onMouseMove);
+            window.removeEventListener('mouseup', onMouseUp);
 
             if (onRelease) {
                 onRelease(currentX, currentY, el);
@@ -432,13 +470,32 @@
             currentY = 0;
         };
 
-        el.addEventListener('mousedown', (e) => start(e.clientX, e.clientY));
-        window.addEventListener('mousemove', (e) => move(e.clientX, e.clientY));
-        window.addEventListener('mouseup', end);
+        const onMouseMove = (e) => move(e.clientX, e.clientY);
+        const onMouseUp = () => end();
 
-        el.addEventListener('touchstart', (e) => start(e.touches[0].clientX, e.touches[0].clientY));
-        el.addEventListener('touchmove', (e) => move(e.touches[0].clientX, e.touches[0].clientY));
-        el.addEventListener('touchend', end);
+        el.addEventListener('mousedown', (e) => {
+            if (e.button !== 0) return;
+            start(e.clientX, e.clientY);
+        });
+
+        const onTouchMove = (e) => {
+            if (e.touches.length > 0) {
+                move(e.touches[0].clientX, e.touches[0].clientY);
+            }
+        };
+        const onTouchEnd = () => {
+            end();
+            window.removeEventListener('touchmove', onTouchMove);
+            window.removeEventListener('touchend', onTouchEnd);
+        };
+
+        el.addEventListener('touchstart', (e) => {
+            if (e.touches.length > 0) {
+                start(e.touches[0].clientX, e.touches[0].clientY);
+                window.addEventListener('touchmove', onTouchMove, { passive: true });
+                window.addEventListener('touchend', onTouchEnd, { passive: true });
+            }
+        });
 
         return el;
     };
@@ -466,13 +523,34 @@
             let isDragging = false;
             let animationFrame;
 
+            // Cache measurements to prevent layout thrashing
+            let elHeight = 50;
+            let parentHeight = window.innerHeight;
+
+            const recacheHeights = () => {
+                elHeight = el.offsetHeight || 50;
+                parentHeight = el.parentElement ? el.parentElement.clientHeight : window.innerHeight;
+            };
+
+            window.addEventListener('resize', recacheHeights);
+
+            // Cleanup resize listener if element is detached
+            if (typeof MutationObserver !== 'undefined' && typeof document !== 'undefined') {
+                const observer = new MutationObserver(() => {
+                    if (!document.body.contains(el)) {
+                        window.removeEventListener('resize', recacheHeights);
+                        observer.disconnect();
+                    }
+                });
+                observer.observe(document.body, { childList: true, subtree: true });
+            }
+
             const update = () => {
                 if (!isDragging) {
                     vy += gravity;
                     y += vy;
 
-                    let parentHeight = el.parentElement ? el.parentElement.clientHeight : window.innerHeight;
-                    let floor = parentHeight - el.offsetHeight;
+                    let floor = parentHeight - elHeight;
 
                     if (y > floor) {
                         y = floor;
@@ -489,6 +567,7 @@
             el.addEventListener('mousedown', () => {
                 isDragging = true;
                 el.style.cursor = 'grabbing';
+                recacheHeights();
             });
             window.addEventListener('mouseup', () => {
                 if (isDragging) {
@@ -507,6 +586,7 @@
             setTimeout(() => {
                 let initialBounds = el.getBoundingClientRect();
                 y = initialBounds.top || 0;
+                recacheHeights();
                 update();
             }, 50);
 

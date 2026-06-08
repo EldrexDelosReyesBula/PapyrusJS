@@ -289,65 +289,6 @@
         }
     };
 
-    // ==========================================
-    // 6. PAPYR GAMING & ADAPTER PROTOCOL GATEWAY
-    // ==========================================
-    papyr.game = {
-        canvas(options = {}) {
-            const { width = 600, height = 400, onInit = null } = options;
-            const container = papyr.div('.papyr-game-container', {
-                style: {
-                    position: 'relative',
-                    width: typeof width === 'number' ? `${width}px` : width,
-                    height: typeof height === 'number' ? `${height}px` : height,
-                    background: '#020205',
-                    borderRadius: '16px',
-                    overflow: 'hidden',
-                    border: '1px solid rgba(255,255,255,0.06)'
-                }
-            });
-            const cv = document.createElement('canvas');
-            cv.width = parseInt(width);
-            cv.height = parseInt(height);
-            cv.style.display = 'block';
-            cv.style.width = '100%';
-            cv.style.height = '100%';
-            container.appendChild(cv);
-            
-            if (onInit) {
-                setTimeout(() => onInit(cv), 50);
-            }
-            return container;
-        },
-        loop(cb) {
-            let active = true;
-            const step = () => {
-                if (!active) return;
-                cb();
-                requestAnimationFrame(step);
-            };
-            requestAnimationFrame(step);
-            return () => { active = false; };
-        },
-        input(el) {
-            const keys = {};
-            const onKeyDown = (e) => { keys[e.key] = true; };
-            const onKeyUp = (e) => { keys[e.key] = false; };
-            const target = el || window;
-            target.addEventListener('keydown', onKeyDown);
-            target.addEventListener('keyup', onKeyUp);
-            return {
-                isDown(key) { return !!keys[key]; },
-                destroy() {
-                    target.removeEventListener('keydown', onKeyDown);
-                    target.removeEventListener('keyup', onKeyUp);
-                }
-            };
-        }
-    };
-
-
-
     // Override use to support dynamic runtime loads
     const originalUse = papyr.use;
     papyr.use = (plugin) => {

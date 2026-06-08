@@ -299,4 +299,314 @@ coreInitializers.push((papyr) => {
             }
         });
     };
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // 6. PSSR — Papyrus Server Side Rendering Enhanced Pipeline
+    // ──────────────────────────────────────────────────────────────────────────
+
+    /** Internal render-mode registry: path → mode */
+    const _renderModeRegistry = new Map();
+
+    /** SSR-blocked globals: any component accessing these during SSR gets a warning */
+    const _ssrBlockedGlobals = [
+        'window', 'document', 'localStorage', 'sessionStorage',
+        'navigator', 'location', 'history', 'screen',
+        'canvas', 'audio', 'camera', 'IndexedDB', 'WebSocket'
+    ];
+
+    /**
+     * Dynamic value detector: looks for common hydration-mismatch sources in a fn's source.
+     * @param {Function} fn
+     * @returns {string[]} List of detected dynamic patterns
+     * @private
+     */
+    function _detectDynamicValues(fn) {
+        if (typeof fn !== 'function') return [];
+        const src = fn.toString();
+        const issues = [];
+        if (/Date\.now\(\)/.test(src)) issues.push('Date.now()');
+        if (/Math\.random\(\)/.test(src)) issues.push('Math.random()');
+        if (/new Date\(\)/.test(src)) issues.push('new Date()');
+        if (/crypto\.randomUUID\(\)/.test(src)) issues.push('crypto.randomUUID()');
+        if (/Math\.floor\(Math\.random/.test(src)) issues.push('random ID generation');
+        return issues;
+    }
+
+    papyr.pssr = {
+
+        /**
+         * Selective hydration: hydrates only island elements marked with [data-papyr-island],
+         * leaving static content untouched and unaffected.
+         *
+         * @param {string} selector - Root container selector (e.g. '#app')
+         * @param {Function} [App] - Optional full-app component for full hydration fallback
+         * @param {Object} [options]
+         * @param {boolean} [options.islandsOnly=true] - If true, only hydrates islands
+         * @param {boolean} [options.warnMismatches=true] - Log hydration warnings
+         *
+         * @example
+         * papyr.pssr.hydrate('#app', null, { islandsOnly: true });
+         */
+        hydrate(selector, App, options = {}) {
+            if (!papyr.isBrowser()) return;
+
+            const { islandsOnly = true, warnMismatches = true } = options;
+
+            const root = document.querySelector(selector);
+            if (!root) {
+                console.error(`[Papyr PSSR] Hydration target "${selector}" not found.`);
+                return;
+            }
+
+            // Always hydrate islands
+            const islands = root.querySelectorAll('[data-papyr-island]');
+            if (islands.length > 0) {
+                console.log(`[Papyr PSSR] Hydrating ${islands.length} island(s) selectively.`);
+                islands.forEach(islandEl => {
+                    const name = islandEl.getAttribute('data-papyr-island');
+                    let props = {};
+                    try {
+                        const raw = islandEl.getAttribute('data-papyr-island-props');
+                        if (raw) props = JSON.parse(raw.replace(/&quot;/g, '"'));
+                    } catch (e) {
+                        console.warn(`[Papyr PSSR Island] Could not parse props for "${name}":`, e);
+                    }
+
+                    // Look up registered island component
+                    if (papyr.registerIsland) {
+                        const Component = papyr._islandRegistry && papyr._islandRegistry.get(name);
+                        if (Component) {
+                            try {
+                                const vEl = Component(props);
+                                if (papyr.hydrate) papyr.hydrate(islandEl, () => vEl);
+                                islandEl.setAttribute('data-papyr-hydrated', 'true');
+                                console.log(`[Papyr PSSR Island] Hydrated "${name}" ✓`);
+                            } catch (err) {
+                                console.error(`[Papyr PSSR Island] Failed to hydrate "${name}":`, err);
+                            }
+                        } else {
+                            if (warnMismatches) {
+                                console.warn(`[Papyr PSSR Island] Component "${name}" not registered. Call papyr.registerIsland("${name}", Component) before hydration.`);
+                            }
+                        }
+                    }
+                });
+            }
+
+            // Full-app hydration if not islands-only and App is provided
+            if (!islandsOnly && App) {
+                console.log('[Papyr PSSR] Full-page hydration starting...');
+                papyr.hydrate(selector, App);
+            }
+        },
+
+        /**
+         * Classify a component as static, interactive, realtime, or heavy.
+         * Used internally by adaptive rendering to pick the optimal strategy.
+         *
+         * @param {Function} Component
+         * @returns {'static'|'interactive'|'realtime'|'heavy'} Classification
+         *
+         * @example
+         * const type = papyr.pssr.classify(ChatWidget);
+         * // 'realtime'
+         */
+        classify(Component) {
+            if (typeof Component !== 'function') return 'static';
+            const src = Component.toString();
+
+            const realtimePatterns = [/WebSocket/, /EventSource/, /setInterval/, /papyr\.realtime/, /socket\.io/];
+            const interactivePatterns = [/addEventListener/, /onclick/, /onsubmit/, /papyr\.state/, /papyr\.signal/, /papyr\.form/];
+            const heavyPatterns = [/WebGL/, /WebGPU/, /canvas/, /papyr\.game/, /papyr\.physics/, /Worker/, /SharedArrayBuffer/];
+
+            if (realtimePatterns.some(p => p.test(src))) return 'realtime';
+            if (heavyPatterns.some(p => p.test(src))) return 'heavy';
+            if (interactivePatterns.some(p => p.test(src))) return 'interactive';
+            return 'static';
+        },
+
+        /**
+         * Wrap a component in an SSR safety guard.
+         * Warns if the component accesses browser-only APIs during server rendering.
+         *
+         * @param {Function} renderFn - Component or render function to guard
+         * @returns {Function} Guarded version of the function
+         *
+         * @example
+         * const safePage = papyr.pssr.ssrSafe(MyPage);
+         * const html = papyr.ssr(safePage());
+         */
+        ssrSafe(renderFn) {
+            return function ssrSafeWrapper(...args) {
+                // Hydration mismatch checks
+                const issues = _detectDynamicValues(renderFn);
+                if (issues.length > 0) {
+                    console.warn(
+                        `[Papyr PSSR SSR Safety] Component may cause hydration mismatches. ` +
+                        `Detected dynamic values: ${issues.join(', ')}. ` +
+                        `Wrap these in papyr.isBrowser() checks or use useEffect/onMounted.`
+                    );
+                    if (papyr.diagnostics) {
+                        papyr.diagnostics.errors.push({
+                            type: 'hydration-risk',
+                            message: `Hydration mismatch risk: ${issues.join(', ')}`,
+                            timestamp: new Date().toISOString()
+                        });
+                    }
+                }
+
+                // Server-side execution guard
+                if (papyr.isServer && papyr.isServer()) {
+                    // Proxy-guard the render function context to catch browser-only globals
+                    try {
+                        return renderFn(...args);
+                    } catch (err) {
+                        const blockedApi = _ssrBlockedGlobals.find(api =>
+                            err.message && err.message.toLowerCase().includes(api.toLowerCase())
+                        );
+                        if (blockedApi) {
+                            console.error(
+                                `[Papyr PSSR SSR Safety] Component accessed browser-only API ` +
+                                `"${blockedApi}" during SSR. Wrap with papyr.isBrowser() guard.`
+                            );
+                            return null;
+                        }
+                        throw err;
+                    }
+                }
+
+                return renderFn(...args);
+            };
+        },
+
+        /**
+         * Check a value for hydration-mismatch risk.
+         * Warns about Date.now(), Math.random(), dynamic IDs used in SSR output.
+         *
+         * @param {Function} fn - Function or component to inspect
+         * @returns {{ safe: boolean, issues: string[] }}
+         */
+        checkHydrationSafety(fn) {
+            const issues = _detectDynamicValues(fn);
+            return { safe: issues.length === 0, issues };
+        },
+
+        /**
+         * Declare the rendering mode for a route path.
+         * Called internally by papyr.page() when a mode option is provided.
+         *
+         * @param {string} path - Route path
+         * @param {'csr'|'ssr'|'ssg'|'isr'} mode - Rendering mode
+         */
+        setRouteMode(path, mode) {
+            const validModes = ['csr', 'ssr', 'ssg', 'isr'];
+            if (!validModes.includes(mode)) {
+                console.warn(`[Papyr PSSR] Invalid rendering mode "${mode}" for path "${path}". Valid modes: ${validModes.join(', ')}`);
+                return;
+            }
+            _renderModeRegistry.set(path, mode);
+            console.log(`[Papyr PSSR] Route "${path}" → mode: ${mode.toUpperCase()}`);
+        },
+
+        /**
+         * Get the declared rendering mode for a path.
+         * Returns 'csr' (default) if not explicitly set.
+         *
+         * @param {string} path - Route path
+         * @returns {'csr'|'ssr'|'ssg'|'isr'}
+         */
+        getRouteMode(path) {
+            return _renderModeRegistry.get(path) || 'csr';
+        },
+
+        /**
+         * Returns all registered route modes.
+         * @returns {Array<{ path: string, mode: string }>}
+         */
+        listRouteModes() {
+            return Array.from(_renderModeRegistry.entries()).map(([path, mode]) => ({ path, mode }));
+        },
+
+        /**
+         * Generate a static manifest for all SSG routes.
+         * Calls the registered component for each SSG route and returns { path, html } pairs.
+         * Useful for build-time static HTML generation.
+         *
+         * @param {Array<{ path: string, componentFn: Function }>} routes - Route definitions
+         * @returns {Promise<Array<{ path: string, html: string, mode: string }>>}
+         *
+         * @example
+         * const manifest = await papyr.pssr.generateStaticManifest(routes);
+         * manifest.forEach(({ path, html }) => fs.writeFileSync(`./dist${path}.html`, html));
+         */
+        async generateStaticManifest(routes = []) {
+            const results = [];
+            for (const route of routes) {
+                const mode = this.getRouteMode(route.path);
+                if (mode !== 'ssg') continue;
+
+                try {
+                    const element = typeof route.componentFn === 'function'
+                        ? route.componentFn({})
+                        : route.componentFn;
+                    const html = papyr.ssr(element);
+                    results.push({ path: route.path, html, mode });
+                } catch (err) {
+                    console.error(`[Papyr PSSR SSG] Failed to render "${route.path}":`, err);
+                    results.push({ path: route.path, html: '', mode, error: err.message });
+                }
+            }
+            return results;
+        },
+
+        /**
+         * Priority streaming: flushes SEO-critical content first, then streams the body.
+         * An enhanced version of papyr.ssr.stream() for PSSR use.
+         *
+         * @param {Function|Object} component - Component to render
+         * @param {Object} [options]
+         * @param {number} [options.chunkSize=1024] - Stream chunk size
+         * @returns {ReadableStream}
+         */
+        stream(component, options = {}) {
+            const { chunkSize = 1024 } = options;
+
+            return new ReadableStream({
+                start(controller) {
+                    try {
+                        const encoder = new TextEncoder();
+
+                        // Flush SEO head first if available
+                        let headContent = '';
+                        if (papyr.seo && typeof papyr.seo._flushHead === 'function') {
+                            headContent = papyr.seo._flushHead();
+                        }
+
+                        if (headContent) {
+                            controller.enqueue(encoder.encode(`<!--PAPYR-SEO-START-->\n${headContent}\n<!--PAPYR-SEO-END-->\n`));
+                        }
+
+                        // Then stream body
+                        const html = papyr.ssr(component);
+                        for (let i = 0; i < html.length; i += chunkSize) {
+                            controller.enqueue(encoder.encode(html.substring(i, i + chunkSize)));
+                        }
+                        controller.close();
+                    } catch (err) {
+                        controller.error(err);
+                    }
+                }
+            });
+        }
+    };
+
+    // Expose island registry for PSSR selective hydration
+    papyr._islandRegistry = papyr._islandRegistry || new Map();
+    const _origRegisterIsland = papyr.registerIsland;
+    if (typeof _origRegisterIsland === 'function') {
+        papyr.registerIsland = (name, Component) => {
+            papyr._islandRegistry.set(name, Component);
+            _origRegisterIsland(name, Component);
+        };
+    }
 });
