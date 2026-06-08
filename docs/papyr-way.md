@@ -8,7 +8,7 @@ Papyr.js is designed to be lightweight and simple, but like all toolkits, it has
 
 In Papyr, you never query an element to get its value or mutate its content manually. Instead, you declare the relationship between your data and your elements.
 
-$$\text{State} \rightarrow \text{UI}$$
+** State → UI **
 
 Mutate the data state, and let the library mutate the DOM automatically.
 
