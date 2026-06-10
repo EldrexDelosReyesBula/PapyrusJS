@@ -118,7 +118,7 @@ You can adopt Papyrus incrementally without rewriting your project:
 
 ### Step 1: State only
 ```html
-<script src="https://cdn.papyrjs.com/papyr.js"></script>
+<script src="https://papyrus-js.vercel.app/papyr-complete.js"></script>
 <script>
   papyr.freeform.use(['state', 'animate']);
   const dark = papyr.state(false);
