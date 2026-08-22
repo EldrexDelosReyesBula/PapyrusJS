@@ -2,6 +2,7 @@
 
 *Write modern, secure, reactive, and privacy-first web applications with zero dependencies and zero compile steps.*
 
+> [!WARNING]
 > ⚠️ **Experimentation Ending / Deprecated**
 >
 > Papyr.js is approaching the end of its experimentation phase and is deprecated for new projects. Development and experimentation are moving to CairnJS, the successor project.
